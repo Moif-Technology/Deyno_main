@@ -23,13 +23,23 @@ const base = envTarget().replace(/\/$/, '')
 const health = await fetch(`${base}/health`)
 assert.equal(health.status, 200, `GET ${base}/health returned ${health.status}`)
 
-// No credentials on purpose: a 400/401 proves the route exists and validates.
-// A 404 would mean the POS namespace is not mounted on this deployment.
+// No credentials on purpose: the route should reject us with its OWN error.
 const stations = await fetch(`${base}/api/pos/device/stations`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({}),
 })
+const body = await stations.text()
 assert.notEqual(stations.status, 404, `POST ${base}/api/pos/device/stations is not mounted`)
 
-console.log(`ok — ${base} health 200, /api/pos/device/stations ${stations.status}`)
+// A bare {"message":"Unauthorized"} is the /api/pos auth middleware answering,
+// not the device route — it means this backend predates the device-enrollment
+// build and needs redeploying. The real route always answers with a `code`.
+const generic = stations.status === 401 && !/"code"/.test(body)
+assert.ok(
+  !generic,
+  `POST ${base}/api/pos/device/stations answered "${body.trim()}" — the device ` +
+    `endpoints are missing on this backend. Redeploy the API before continuing.`,
+)
+
+console.log(`ok — ${base} health 200, /api/pos/device/stations ${stations.status} ${body.trim()}`)
