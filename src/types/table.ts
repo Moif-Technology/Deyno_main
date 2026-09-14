@@ -5,4 +5,6 @@ export interface RestaurantTable {
   label: string
   seats: number
   status: TableStatus
+  areaId?: number
+  waiterId?: number
 }

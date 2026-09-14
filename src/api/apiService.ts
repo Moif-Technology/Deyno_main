@@ -149,6 +149,26 @@ class ApiService {
     await api.delete(`/groups/${encodeURIComponent(String(groupId))}`)
   }
 
+  async fetchSubGroups(opts?: { groupId?: string | number }): Promise<Row[]> {
+    const res = await api.get<Row>(`/sub-groups${qs({ groupId: opts?.groupId })}`)
+    return listOf(res, 'subGroups')
+  }
+
+  async fetchSubSubGroups(opts?: {
+    groupId?: string | number
+    subGroupId?: string | number
+  }): Promise<Row[]> {
+    const res = await api.get<Row>(
+      `/sub-sub-groups${qs({ groupId: opts?.groupId, subGroupId: opts?.subGroupId })}`,
+    )
+    return listOf(res, 'subSubGroups')
+  }
+
+  async fetchModifiers(): Promise<Row[]> {
+    const res = await api.get<Row>('/modifiers')
+    return listOf(res, 'modifiers')
+  }
+
   async fetchProducts(opts?: {
     groupId?: string | number
     search?: string
@@ -209,16 +229,21 @@ class ApiService {
   }
 
   async fetchOrderList(opts?: {
-    areaId?: string
+    areaId?: string | number
     search?: string
     jobNo?: string
     customerName?: string
     mobile?: string
     dateFrom?: string
     dateTo?: string
+    supplyType?: string
   }): Promise<Row[]> {
     const res = await api.get<Row>(
-      `/pos/kot/list${qs({ areaId: opts?.areaId, search: opts?.search ?? opts?.jobNo })}`,
+      `/pos/kot/list${qs({
+        areaId: opts?.areaId,
+        search: opts?.search ?? opts?.jobNo,
+        supplyType: opts?.supplyType,
+      })}`,
     )
     return listOf(res, 'data')
   }
@@ -415,15 +440,19 @@ class ApiService {
 
   // ── Dine-in tables ─────────────────────────────────────────────────────
 
+  async fetchAreas(): Promise<Row[]> {
+    const res = await api.get<Row>('/areas')
+    return listOf(res, 'areas')
+  }
+
   async fetchTables(): Promise<RestaurantTable[]> {
     const res = await api.get<Row>('/tables')
     return listOf(res, 'tables').map((t) => ({
       id: String(t.tableId ?? t.TableID ?? ''),
       label: String(t.tableName ?? t.TableName ?? t.tableCode ?? ''),
       seats: Number(t.noOfChairs ?? t.seats ?? 0) || 0,
-      // The server has no per-table occupancy for quick service — the Select
-      // Table flow was removed from this client (commit 88f77c5). Everything
-      // reads as free; occupancy would need ops.kot_master joined by table.
+      areaId: Number(t.areaId ?? t.AreaID ?? 0) || 0,
+      waiterId: Number(t.assignedWaiterId ?? t.WaiterID ?? t.waiterId ?? 0) || 0,
       status: 'available' as const,
     }))
   }
