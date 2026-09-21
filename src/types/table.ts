@@ -7,4 +7,6 @@ export interface RestaurantTable {
   status: TableStatus
   areaId?: number
   waiterId?: number
+  tableNo?: number
+  format?: string
 }

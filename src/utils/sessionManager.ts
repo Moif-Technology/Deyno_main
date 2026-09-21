@@ -8,6 +8,7 @@ const KEYS = {
   staffID: 'staffId',
   roleId: 'roleId',
   roleName: 'roleName',
+  designation: 'designation',
   accessToken: 'accessToken',
   refreshToken: 'refreshToken',
   companyId: 'companyId',
@@ -20,6 +21,7 @@ class SessionManagerImpl {
   staffID: string | null = localStorage.getItem(KEYS.staffID)
   roleId: string | null = localStorage.getItem(KEYS.roleId)
   roleName: string | null = localStorage.getItem(KEYS.roleName)
+  designation: string | null = localStorage.getItem(KEYS.designation)
   accessToken: string | null = localStorage.getItem(KEYS.accessToken)
   refreshToken: string | null = localStorage.getItem(KEYS.refreshToken)
   companyId: string | null = localStorage.getItem(KEYS.companyId)
@@ -37,6 +39,7 @@ class SessionManagerImpl {
     staffID: string
     roleId?: string
     roleName?: string
+    designation?: string
     accessToken?: string
     refreshToken?: string
     companyId?: string
@@ -53,6 +56,7 @@ class SessionManagerImpl {
     this.staffID = opts.staffID
     if (opts.roleId !== undefined) this.roleId = opts.roleId || null
     if (opts.roleName !== undefined) this.roleName = opts.roleName || null
+    if (opts.designation !== undefined) this.designation = opts.designation || null
     this.accessToken = opts.accessToken ?? this.accessToken
     this.refreshToken = opts.refreshToken ?? this.refreshToken
     this.companyId = opts.companyId ?? this.companyId
@@ -75,6 +79,10 @@ class SessionManagerImpl {
       if (opts.roleName) localStorage.setItem(KEYS.roleName, opts.roleName)
       else localStorage.removeItem(KEYS.roleName)
     }
+    if (opts.designation !== undefined) {
+      if (opts.designation) localStorage.setItem(KEYS.designation, opts.designation)
+      else localStorage.removeItem(KEYS.designation)
+    }
     if (opts.accessToken) localStorage.setItem(KEYS.accessToken, opts.accessToken)
     if (opts.refreshToken) localStorage.setItem(KEYS.refreshToken, opts.refreshToken)
     if (opts.companyId) localStorage.setItem(KEYS.companyId, opts.companyId)
@@ -91,6 +99,7 @@ class SessionManagerImpl {
     this.staffID = null
     this.roleId = null
     this.roleName = null
+    this.designation = null
     this.accessToken = null
     this.refreshToken = null
     this.companyId = null

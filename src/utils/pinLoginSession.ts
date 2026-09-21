@@ -12,6 +12,7 @@ export function applyPinLoginSession(session: Record<string, unknown>): void {
   const staffID = String(session.staffID ?? '').trim()
   const roleId = String(session.roleId ?? session.role ?? '').trim()
   const roleName = String(session.roleName ?? '').trim()
+  const designation = String(session.designation ?? '').trim()
   const accessToken = String(session.accessToken ?? '').trim()
   const refreshToken = session.refreshToken ? String(session.refreshToken) : undefined
   const enrollment = getEnrollment()
@@ -28,6 +29,7 @@ export function applyPinLoginSession(session: Record<string, unknown>): void {
     staffID,
     roleId,
     roleName,
+    designation,
     accessToken,
     refreshToken,
     companyId: companyId || undefined,

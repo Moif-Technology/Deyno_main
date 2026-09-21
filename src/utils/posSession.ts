@@ -1,13 +1,19 @@
 import { SessionManager } from './sessionManager'
+import { getEnrollment } from './deviceEnrollment'
 
 /** Session fields used for settle / job save (from SessionManager). */
 export function getPosSession() {
+  const enrolledStation = Number(getEnrollment()?.stationId || 0) || 0
+  const sessionStation = Number(SessionManager.stationId || 0) || 0
+  const stationId = sessionStation > 0 ? sessionStation : enrolledStation
   return {
     accessToken: SessionManager.accessToken || '',
-    stationId: Number(SessionManager.stationId || 0) || 0,
+    stationId,
     staffId: Number(SessionManager.staffID || 0) || 0,
     staffName: SessionManager.staffName || 'Admin',
-    counterNo: Number(SessionManager.stationId || 1) || 1,
+    roleName: SessionManager.roleName || '',
+    designation: SessionManager.designation || '',
+    counterNo: stationId > 0 ? stationId : 1,
   }
 }
 
