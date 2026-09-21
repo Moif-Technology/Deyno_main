@@ -36,6 +36,6 @@
     "appId": "com.moifone.deynopro",
     "productName": "Deyno Pro",
     "files": ["dist/**/*", "electron/**/*"],
-    "win": { "target": "nsis" }
+    "win": { "target": "nsis", "icon": "build/icon.png" }
   }
 }

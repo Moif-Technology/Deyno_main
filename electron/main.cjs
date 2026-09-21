@@ -10,6 +10,7 @@ function createWindow() {
     width: 1366,
     height: 768,
     show: false,
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     // ponytail: no nodeIntegration; the renderer talks HTTP only. Printing and
     // cash-drawer IPC land in preload.cjs when that work starts.
     webPreferences: {

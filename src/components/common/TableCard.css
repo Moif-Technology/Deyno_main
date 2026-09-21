@@ -1,0 +1,141 @@
+/* ── TableCard — reusable table tile (floor/table pickers) ───────────── */
+/* Status colors: green = vacant, blue = occupied, amber = reserved (no
+   reservation data yet — the state exists for when the backend adds it). */
+.tc-card {
+  --tc-free: #22c55e;
+  --tc-occupied: #2f6fed;
+  --tc-reserved: #f5b301;
+  --tc-chair-free: #d7e6fb;
+  --tc-chair-occupied: #2f6fed;
+  --tc-accent: var(--tc-free);
+
+  position: relative;
+  min-height: 84px;
+  padding: 12px 10px 10px 15px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: var(--r-lg);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  overflow: visible;
+}
+
+.tc-card::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--tc-accent);
+}
+
+.tc-card.is-occupied { --tc-accent: var(--tc-occupied); }
+.tc-card.is-reserved { --tc-accent: var(--tc-reserved); }
+
+.tc-card.is-selected {
+  border-color: var(--tc-accent);
+  box-shadow: 0 0 0 2px var(--tc-accent), var(--shadow-md);
+}
+
+.tc-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.1s ease;
+}
+
+.tc-body:active {
+  transform: scale(0.97);
+}
+
+.tc-label {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: var(--text-1);
+  line-height: 1.1;
+}
+
+.tc-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tc-status {
+  color: var(--text-3);
+}
+
+.tc-order {
+  color: #fff;
+  background: var(--tc-accent);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.tc-pax {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+/* ── Chair dots — peek outside the card edge, tap one to pick that chair. */
+.tc-chairs {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: space-evenly;
+  z-index: 2;
+}
+
+.tc-chairs-top { top: -8px; }
+.tc-chairs-bottom { bottom: -8px; }
+
+.tc-chair {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--tc-chair-free);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.12s ease;
+}
+
+.tc-chair:hover {
+  transform: scale(1.15);
+}
+
+.tc-chair.is-occupied {
+  background: var(--tc-chair-occupied);
+}
