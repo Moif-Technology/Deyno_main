@@ -1,6 +1,5 @@
 import { useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Monitor } from 'lucide-react'
 import { apiService } from '../api/apiService'
 import { getOrCreateDeviceToken, saveEnrollment } from '../utils/deviceEnrollment'
 
@@ -145,12 +144,13 @@ export default function EnrollPage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              padding: 9,
             }}
           >
-            <Monitor size={20} color="#fff" />
+            <img src="/icon-mark-white.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-1)' }}>Device Setup</div>
+            <div style={{ fontSize: 'var(--fs-h3)', fontWeight: 'var(--fw-heading)', color: 'var(--text-1)' }}>Device Setup</div>
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 2, fontWeight: 600 }}>
               {step === 1 ? 'Register this terminal to a station' : 'Select station for this terminal'}
             </div>

@@ -6,13 +6,55 @@ import { applyPinLoginSession } from '../utils/pinLoginSession'
 
 const NUMPAD = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '⌫']
 
+type StaffOption = {
+  staffId: number
+  staffName: string
+  roleName: string
+}
+
 export default function LoginPage() {
   const navigate = useNavigate()
   const enrollment = getEnrollment()
 
+  const [staffList, setStaffList] = useState<StaffOption[] | null>(null)
+  const [staffListError, setStaffListError] = useState<string | null>(null)
+  const [staffListLoading, setStaffListLoading] = useState(false)
+  const [selectedStaff, setSelectedStaff] = useState<StaffOption | null>(null)
+
   const [pin, setPin] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!enrollment) return
+    let cancelled = false
+    setStaffListLoading(true)
+    setStaffListError(null)
+    apiService
+      .fetchPosStaffList(enrollment.deviceToken ?? getOrCreateDeviceToken())
+      .then((rows) => {
+        if (cancelled) return
+        const options = rows
+          .map((r) => ({
+            staffId: Number(r.staffPk),
+            staffName: String(r.staffName ?? ''),
+            roleName: String(r.roleName ?? ''),
+          }))
+          .filter((s) => Number.isFinite(s.staffId) && s.staffName)
+        setStaffList(options)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setStaffListError(err instanceof Error ? err.message : 'Could not load staff list')
+      })
+      .finally(() => {
+        if (!cancelled) setStaffListLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrollment?.deviceToken])
 
   const pressKey = useCallback((k: string) => {
     if (k === '⌫' || k === 'Backspace') {
@@ -32,6 +74,10 @@ export default function LoginPage() {
   }, [])
 
   const login = useCallback(async () => {
+    if (!selectedStaff) {
+      setError('Select your name first')
+      return
+    }
     if (pin.length < 4) {
       setError('PIN must be 4–6 digits')
       return
@@ -47,6 +93,7 @@ export default function LoginPage() {
       const session = await apiService.pinLogin({
         pin,
         companyId: enrollment.companyId,
+        staffId: selectedStaff.staffId,
         deviceToken: enrollment.deviceToken ?? getOrCreateDeviceToken(),
       })
       applyPinLoginSession(session)
@@ -68,9 +115,10 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
-  }, [pin, enrollment, navigate])
+  }, [pin, enrollment, navigate, selectedStaff])
 
   useEffect(() => {
+    if (!selectedStaff) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         void login()
@@ -80,7 +128,7 @@ export default function LoginPage() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [pressKey, login])
+  }, [pressKey, login, selectedStaff])
 
   const pinDots = Array.from({ length: 6 }, (_, i) => i < pin.length)
 
@@ -99,7 +147,7 @@ export default function LoginPage() {
         style={{
           width: 340,
           flexShrink: 0,
-          background: 'linear-gradient(160deg, var(--brand) 0%, var(--brand-2) 60%, #4a0000 100%)',
+          background: 'linear-gradient(160deg, var(--brand) 0%, var(--brand-2) 60%, #450418 100%)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -135,32 +183,12 @@ export default function LoginPage() {
           }}
         />
 
-        <div
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 20,
-            background: 'rgba(255,255,255,0.14)',
-            border: '1.5px solid rgba(255,255,255,0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 28,
-            position: 'relative',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
-          }}
-        >
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.92)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
-            <path d="M7 2v20" />
-            <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
-          </svg>
-        </div>
-
-        <div style={{ color: '#fff', fontSize: 30, fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1, position: 'relative' }}>
-          DEYNO PRO
-        </div>
-        <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: 13, fontWeight: 700, letterSpacing: 2, marginTop: 8, textTransform: 'uppercase', position: 'relative' }}>
+        <img
+          src="/logo-white.png"
+          alt="Deyno"
+          style={{ width: 200, height: 'auto', position: 'relative', marginBottom: 14 }}
+        />
+        <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: 13, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', position: 'relative' }}>
           Restaurant POS
         </div>
 
@@ -234,122 +262,216 @@ export default function LoginPage() {
         }}
       >
         <div style={{ width: '100%', maxWidth: 320 }}>
-          <div style={{ marginBottom: 28 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-1)', lineHeight: 1.1 }}>Staff Sign In</h1>
-            <p style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 5, fontWeight: 600 }}>Enter your PIN to continue</p>
-          </div>
+          {!selectedStaff ? (
+            <>
+              <div style={{ marginBottom: 28 }}>
+                <h1 style={{ fontSize: 'var(--fs-h1)', fontWeight: 'var(--fw-heading)', color: 'var(--text-1)', lineHeight: 1.1 }}>Who's signing in?</h1>
+                <p style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 5, fontWeight: 600 }}>Select your name to continue</p>
+              </div>
 
-          {error && (
-            <div
-              style={{
-                marginBottom: 16,
-                padding: '10px 12px',
-                borderRadius: 8,
-                background: 'var(--red-bg)',
-                border: '1px solid var(--red-border)',
-                color: 'var(--red)',
-                fontSize: 13,
-                fontWeight: 700,
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          <div style={{ marginBottom: 22 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 800, color: 'var(--brand)', letterSpacing: 0.8, marginBottom: 10 }}>
-              PIN
-            </label>
-            <div
-              style={{
-                display: 'flex',
-                gap: 12,
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '18px 18px',
-                borderRadius: 'var(--r-md)',
-                background: 'var(--surface)',
-                border: '1.5px solid var(--brand)',
-                boxShadow: '0 0 0 3px var(--brand-glow)',
-              }}
-            >
-              {pinDots.map((filled, i) => (
+              {staffListError && (
                 <div
-                  key={i}
                   style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    background: filled ? 'var(--brand)' : 'var(--border)',
-                    transition: 'background 0.12s',
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7, marginBottom: 18 }}>
-            {NUMPAD.map((k) => {
-              const isAction = k === '⌫' || k === 'C'
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => pressKey(k)}
-                  style={{
-                    padding: '15px 0',
-                    borderRadius: 'var(--r-md)',
-                    border: `1.5px solid ${isAction ? 'var(--red-border)' : 'var(--border)'}`,
-                    background: isAction ? 'var(--red-bg)' : 'var(--surface)',
-                    color: isAction ? 'var(--red)' : 'var(--text-1)',
-                    fontSize: isAction ? 13 : 20,
+                    marginBottom: 16,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: 'var(--red-bg)',
+                    border: '1px solid var(--red-border)',
+                    color: 'var(--red)',
+                    fontSize: 13,
                     fontWeight: 700,
-                    fontFamily: k === '⌫' ? 'inherit' : "'JetBrains Mono', monospace",
-                    boxShadow: 'var(--shadow-xs)',
-                    transition: 'transform 0.08s, background 0.1s',
-                    cursor: 'pointer',
-                  }}
-                  onMouseDown={(e) => {
-                    e.currentTarget.style.transform = 'scale(0.93)'
-                  }}
-                  onMouseUp={(e) => {
-                    e.currentTarget.style.transform = 'scale(1)'
                   }}
                 >
-                  {k}
-                </button>
-              )
-            })}
-          </div>
+                  {staffListError}
+                </div>
+              )}
 
-          <button
-            type="button"
-            onClick={() => void login()}
-            disabled={loading}
-            style={{
-              width: '100%',
-              padding: '15px 0',
-              borderRadius: 'var(--r-lg)',
-              background: loading
-                ? 'var(--surface-3)'
-                : 'linear-gradient(145deg, var(--brand) 0%, var(--brand-2) 100%)',
-              color: loading ? 'var(--text-3)' : '#fff',
-              fontSize: 14,
-              fontWeight: 800,
-              letterSpacing: 1,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              boxShadow: loading ? 'none' : '0 4px 18px rgba(107,0,0,0.28)',
-              transition: 'all 0.18s',
-            }}
-          >
-            {loading
-              ? (
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    Signing in...
-                  </span>
-                )
-              : 'SIGN IN'}
-          </button>
+              {staffListLoading && (
+                <div style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 600 }}>Loading staff…</div>
+              )}
+
+              {!staffListLoading && staffList && staffList.length === 0 && !staffListError && (
+                <div style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 600 }}>
+                  No staff with a PIN found for this station.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {staffList?.map((s) => (
+                  <button
+                    key={s.staffId}
+                    type="button"
+                    onClick={() => {
+                      setSelectedStaff(s)
+                      setError(null)
+                      setPin('')
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '13px 16px',
+                      borderRadius: 'var(--r-md)',
+                      border: '1.5px solid var(--border)',
+                      background: 'var(--surface)',
+                      color: 'var(--text-1)',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <span>{s.staffName}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      {s.roleName}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ marginBottom: 28 }}>
+                <h1 style={{ fontSize: 'var(--fs-h1)', fontWeight: 'var(--fw-heading)', color: 'var(--text-1)', lineHeight: 1.1 }}>Hi, {selectedStaff.staffName}</h1>
+                <p style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 5, fontWeight: 600 }}>
+                  Enter your PIN to continue ·{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedStaff(null)
+                      setPin('')
+                      setError(null)
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: 'var(--brand)',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      fontSize: 14,
+                    }}
+                  >
+                    not you?
+                  </button>
+                </p>
+              </div>
+
+              {error && (
+                <div
+                  style={{
+                    marginBottom: 16,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: 'var(--red-bg)',
+                    border: '1px solid var(--red-border)',
+                    color: 'var(--red)',
+                    fontSize: 13,
+                    fontWeight: 700,
+                  }}
+                >
+                  {error}
+                </div>
+              )}
+
+              <div style={{ marginBottom: 22 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 800, color: 'var(--brand)', letterSpacing: 0.8, marginBottom: 10 }}>
+                  PIN
+                </label>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '18px 18px',
+                    borderRadius: 'var(--r-md)',
+                    background: 'var(--surface)',
+                    border: '1.5px solid var(--brand)',
+                    boxShadow: '0 0 0 3px var(--brand-glow)',
+                  }}
+                >
+                  {pinDots.map((filled, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: '50%',
+                        background: filled ? 'var(--brand)' : 'var(--border)',
+                        transition: 'background 0.12s',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7, marginBottom: 18 }}>
+                {NUMPAD.map((k) => {
+                  const isAction = k === '⌫' || k === 'C'
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => pressKey(k)}
+                      style={{
+                        padding: '15px 0',
+                        borderRadius: 'var(--r-md)',
+                        border: `1.5px solid ${isAction ? 'var(--red-border)' : 'var(--border)'}`,
+                        background: isAction ? 'var(--red-bg)' : 'var(--surface)',
+                        color: isAction ? 'var(--red)' : 'var(--text-1)',
+                        fontSize: isAction ? 13 : 20,
+                        fontWeight: 700,
+                        fontFamily: 'inherit',
+                        fontVariantNumeric: 'tabular-nums',
+                        boxShadow: 'var(--shadow-xs)',
+                        transition: 'transform 0.08s, background 0.1s',
+                        cursor: 'pointer',
+                      }}
+                      onMouseDown={(e) => {
+                        e.currentTarget.style.transform = 'scale(0.93)'
+                      }}
+                      onMouseUp={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)'
+                      }}
+                    >
+                      {k}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void login()}
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  padding: '15px 0',
+                  borderRadius: 'var(--r-lg)',
+                  background: loading
+                    ? 'var(--surface-3)'
+                    : 'linear-gradient(145deg, var(--brand) 0%, var(--brand-2) 100%)',
+                  color: loading ? 'var(--text-3)' : '#fff',
+                  fontSize: 14,
+                  fontWeight: 800,
+                  letterSpacing: 1,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  boxShadow: loading ? 'none' : '0 4px 18px rgba(107,0,0,0.28)',
+                  transition: 'all 0.18s',
+                }}
+              >
+                {loading
+                  ? (
+                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        Signing in...
+                      </span>
+                    )
+                  : 'SIGN IN'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

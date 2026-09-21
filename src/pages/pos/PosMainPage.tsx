@@ -19,14 +19,16 @@
  *   ItemName paints ↳ modifier in green under the item
  *   Ok writes rtxtmodifier back onto the current row's Modifir cell
  */
-import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Hash, Home, LogOut, Search, StickyNote, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, ShieldCheck, UserPlus, GitMerge, CheckCircle2, AlertTriangle, Info, HelpCircle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, Hash, Home, LogOut, Search, StickyNote, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, ShieldCheck, UserPlus, CheckCircle2, AlertTriangle, Info, HelpCircle, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Zap, Merge } from 'lucide-react'
 import { SessionManager } from '../../utils/sessionManager'
 import { clearStaffSession } from '../../utils/pinLoginSession'
 import { getEnrollment } from '../../utils/deviceEnrollment'
 import { getPosSession } from '../../utils/posSession'
 import { apiService, ApiError } from '../../api/apiService'
+import { TableCard, TableGlyph } from '../../components/common/TableCard'
+import { Toast, type ToastKind } from '../../components/common/Toast'
 import './posMain.css'
 import SettlementScreen, { type SettlementBill, type SettlementDone } from './SettlementScreen'
 import SalesViewerDialog from './SalesViewerDialog'
@@ -38,8 +40,119 @@ import FloorDesignDialog from './FloorDesignDialog'
 import FloorRuntimeCanvas from './FloorRuntimeCanvas'
 import AreaChangeDialog from './AreaChangeDialog'
 
-const NAV = ['New Sale', 'Transactions', 'Credit', 'Reports', 'Entry', 'Admin', 'Settings'] as const
+const NAV = ['New Sale', 'Edit', 'Transactions', 'Credit', 'Reports', 'Admin', 'Settings'] as const
 const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const
+
+/** A nav dropdown item is either a plain leaf, a leaf that shows a chevron
+ * but has no known submenu yet (so no flyout box), or a real flyout parent —
+ * whose children can themselves be any of these, for multi-level flyouts. */
+type NavMenuEntry = string | { label: string; arrow: true } | { label: string; children: readonly NavMenuEntry[] }
+
+const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> = {
+  'New Sale': [
+    'Area Entry',
+    'Table Entry',
+    'Main Group Entry',
+    'Group Entry',
+    'Sub Group Entry',
+    'Product Entry',
+    'Kitchen Message',
+    'Combo',
+    'Recipe Entry',
+    'Barcode Print Utility',
+    'Notes Entry',
+    'Online Source Entry',
+    'Payment Mode Entry',
+    'Mess Master Entry',
+    'Add On',
+    { label: 'Table Booking', children: ['Booking', 'Booking List'] },
+    'Floor Design',
+  ],
+  Edit: [
+    'Area Edit',
+    'Table Edit',
+    'Group Edit',
+    'SubGroup Edit',
+    'Product Edit',
+    'Combo Edit',
+    'Recipe List',
+    'Mess List',
+  ],
+  Transactions: [
+    'Stock Adjustment',
+    'Stock Adjust List',
+    { label: 'Production', children: ['Entry', 'List'] },
+    'Opening Stock Entry',
+    'Stock report',
+    'Movement Report',
+    {
+      label: 'Product Transfer/Receive',
+      children: ['Product Request', 'Product receipt', 'Product Transfer', 'Transfer List', 'Receipt List'],
+    },
+    { label: 'Upload/Download', children: ['Upload To Main Server', 'Download New Item From main server'] },
+    { label: 'Purchase', children: ['SupplierList', 'Purchase entry', 'Purchase List', 'Purchase Return', 'Purchase ReturnList'] },
+    'Damage Entry',
+    'Damage List',
+    'Cash/Cash Out',
+  ],
+  Credit: [
+    'Advance Payment',
+    'Credit payment Receipt',
+    'PaymentList',
+    'Os Balance List',
+    'ReceiptList',
+    'Advance Viewer',
+    'Mess Bill Viewer',
+  ],
+  Reports: [
+    'Bill Reprint',
+    'Counter Close',
+    {
+      label: 'Reports Receipt Printer',
+      children: [
+        'Area Wise report',
+        'Group Wise',
+        'Item Wise',
+        'Item Void Report',
+        'Cancel Bill Details',
+        'Cancel Bill Summary',
+        'CounterClose Reports',
+        'Sales BillWise',
+        'DayWise',
+      ],
+    },
+    {
+      label: 'Reports A4',
+      children: [
+        'Sales Viewer',
+        'Pending Order List',
+        'CounterWise',
+        'CounterWise Timewise',
+        { label: 'Itemwise', children: ['Summary', 'Details'] },
+        'Groupwise Summary',
+        'Areawise',
+        'Waiterwise',
+        'Salesman Wise',
+        { label: 'Customer Analysis', children: ['Detailed', 'Summary'] },
+        'Income Expense',
+        'CounterClose Details',
+        'Item Void',
+        'Production Report',
+        'Graph Report',
+        {
+          label: 'Tax Report',
+          children: ['Tax Report', 'Vat Sale', 'Vat Purchase', 'Vat Summary', 'Sales Vat Detailed', 'Sales Vat Summary'],
+        },
+        'Bill Wise Detailed',
+        'Purchase Sales Report',
+        'Areawise ItemWise',
+        'Itemwise Viewer',
+        'Del. Boy commission',
+        { label: 'Product Movement', children: ['Fast Move', 'Slow Move'] },
+      ],
+    },
+  ],
+}
 
 type StripLevel = 'group' | 'subgroup' | 'subsub'
 type Cat = { id: number; name: string; code: string }
@@ -621,21 +734,166 @@ function BtnIcon({
   )
 }
 
-/** SF Symbol-like dining table (top-down, four seats). */
-function TableGlyph({ size = 34 }: { size?: number }) {
+/** Shared 7-8-9 / 4-5-6 / 1-2-3 / C-0-. keypad — reused by the main entry pad
+ * and every qty/price/discount change dialog. */
+function NumberKeypad({
+  className = 'pd-keys',
+  onKey,
+}: {
+  className?: string
+  onKey: (k: string) => void
+}) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden>
-      <rect x="22" y="3" width="20" height="11" rx="5.5" fill="currentColor" opacity="0.92" />
-      <rect x="22" y="50" width="20" height="11" rx="5.5" fill="currentColor" opacity="0.92" />
-      <rect x="3" y="22" width="11" height="20" rx="5.5" fill="currentColor" opacity="0.92" />
-      <rect x="50" y="22" width="11" height="20" rx="5.5" fill="currentColor" opacity="0.92" />
-      <circle cx="32" cy="32" r="16.5" fill="currentColor" />
-      <circle cx="32" cy="32" r="11" fill="none" stroke="#fff" strokeWidth="2.4" opacity="0.55" />
-      <circle cx="32" cy="32" r="3.2" fill="#fff" opacity="0.7" />
-    </svg>
+    <div className={className}>
+      {KEYS.map((k) => (
+        <button key={k} type="button" className="pd-key" onClick={() => onKey(k)}>
+          {k}
+        </button>
+      ))}
+    </div>
   )
 }
 
+const QTY_PICKER_ROW_HEIGHT = 32
+
+/** Vertical scroll-wheel style picker (drag or mouse-wheel to change the
+ * value) — sits alongside the keypad so the same value can be typed too. */
+function QtyScrollPicker({
+  value,
+  onChange,
+  min = 1,
+}: {
+  value: number
+  onChange: (n: number) => void
+  min?: number
+}) {
+  const dragRef = useRef<{ pointerId: number; startY: number; startValue: number } | null>(null)
+  const isDraggingRef = useRef(false)
+  const prevValueRef = useRef(value)
+  const [trackY, setTrackY] = useState(0)
+  const [animate, setAnimate] = useState(false)
+
+  // Any value change that didn't come from an in-progress drag (wheel, click,
+  // typing on the keypad) rolls the strip in from the row it came from
+  // instead of just swapping the numbers in place.
+  useEffect(() => {
+    if (prevValueRef.current !== value && !isDraggingRef.current) {
+      const from = (prevValueRef.current - value) * QTY_PICKER_ROW_HEIGHT
+      setAnimate(false)
+      setTrackY(from)
+      const raf = requestAnimationFrame(() => {
+        setAnimate(true)
+        setTrackY(0)
+      })
+      prevValueRef.current = value
+      return () => cancelAnimationFrame(raf)
+    }
+    prevValueRef.current = value
+  }, [value])
+
+  function commit(n: number) {
+    if (n !== value) onChange(Math.max(min, n))
+  }
+
+  function onWheel(e: React.WheelEvent<HTMLDivElement>) {
+    e.preventDefault()
+    commit(value + (e.deltaY > 0 ? 1 : -1))
+  }
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    isDraggingRef.current = true
+    setAnimate(false)
+    dragRef.current = { pointerId: e.pointerId, startY: e.clientY, startValue: value }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== e.pointerId) return
+    const rawPx = drag.startY - e.clientY
+    const steps = Math.round(rawPx / QTY_PICKER_ROW_HEIGHT)
+    setTrackY(-(rawPx - steps * QTY_PICKER_ROW_HEIGHT))
+    commit(drag.startValue + steps)
+  }
+
+  function onPointerUp() {
+    dragRef.current = null
+    isDraggingRef.current = false
+    setAnimate(true)
+    setTrackY(0)
+  }
+
+  return (
+    <div
+      className="pd-qty-picker"
+      onWheel={onWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
+      <div className="pd-qty-picker-highlight" aria-hidden />
+      <div
+        className={`pd-qty-picker-track${animate ? ' is-settling' : ''}`}
+        style={{ transform: `translateY(${trackY}px)` }}
+      >
+        {[-2, -1, 0, 1, 2].map((offset) => {
+          const n = value + offset
+          const isCurrent = offset === 0
+          return (
+            <button
+              key={offset}
+              type="button"
+              className={`pd-qty-picker-row${isCurrent ? ' is-current' : ''} pd-qty-picker-row-d${Math.abs(offset)}`}
+              style={n < min ? { visibility: 'hidden' } : undefined}
+              tabIndex={-1}
+              onClick={() => commit(n)}
+            >
+              {n}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/** Renders a nav dropdown's items, recursing into flyouts for entries that
+ * carry `children` (which may themselves have further flyouts). */
+function NavMenuList({ entries, onPick }: { entries: readonly NavMenuEntry[]; onPick: (label: string) => void }) {
+  return (
+    <>
+      {entries.map((entry) => {
+        if (typeof entry === 'string') {
+          return (
+            <button key={entry} type="button" className="pd-nav-menu-item" onClick={() => onPick(entry)}>
+              {entry}
+            </button>
+          )
+        }
+        if ('arrow' in entry) {
+          return (
+            <button key={entry.label} type="button" className="pd-nav-menu-item" onClick={() => onPick(entry.label)}>
+              <span>{entry.label}</span>
+              <ChevronRight size={13} className="pd-nav-menu-arrow" />
+            </button>
+          )
+        }
+        return (
+          <div key={entry.label} className="pd-nav-menu-item pd-nav-menu-parent">
+            <span>{entry.label}</span>
+            <ChevronRight size={13} className="pd-nav-menu-arrow" />
+            <div className="pd-nav-submenu">
+              <NavMenuList entries={entry.children} onPick={onPick} />
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+/** SF Symbol-like dining table (top-down, four seats). */
 /** SF Symbol-like side chair. */
 function ChairGlyph({ size = 30 }: { size?: number }) {
   return (
@@ -649,17 +907,40 @@ function ChairGlyph({ size = 30 }: { size?: number }) {
   )
 }
 
+/** Best-effort icon per category name — cosmetic only, falls back to a generic plate. */
+function categoryIcon(name: string): ComponentType<{ size?: number; strokeWidth?: number }> {
+  const n = name.toUpperCase()
+  if (/BURGER|SANDWICH|CLUB/.test(n)) return Sandwich
+  if (/PIZZA/.test(n)) return Pizza
+  if (/CHICKEN/.test(n)) return Drumstick
+  if (/BEEF|MUTTON|MEAT/.test(n)) return Beef
+  if (/FISH|SEAFOOD|PRAWN/.test(n)) return Fish
+  if (/EGG/.test(n)) return Egg
+  if (/SALAD/.test(n)) return Salad
+  if (/SOUP|BIRIYANI|NOODLE|RICE/.test(n)) return Soup
+  if (/BREAKFAST|MORNING/.test(n)) return Sunrise
+  if (/CHARCOAL|GRILL|BBQ|TANDOOR/.test(n)) return Flame
+  if (/JUICE|BEVERAGE/.test(n)) return GlassWater
+  if (/DRINK|SHAKE|SODA/.test(n)) return CupSoda
+  if (/DESSERT|SWEET|CAKE|\bICE\b/.test(n)) return Cake
+  if (/COFFEE|TEA/.test(n)) return Coffee
+  if (/KIDS/.test(n)) return Smile
+  if (/SPECIAL|KISMATH|TOP MOVE|STARTER/.test(n)) return Star
+  return UtensilsCrossed
+}
+
 export default function PosMainPage() {
   const navigate = useNavigate()
   const enrollment = getEnrollment()
   const waiter = SessionManager.staffName || 'ADMIN'
   const counter = enrollment?.stationName || 'Counter 01'
   const lineKey = useRef(1)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const modifierTextRef = useRef<HTMLTextAreaElement | null>(null)
 
   const [nav, setNav] = useState<(typeof NAV)[number]>('New Sale')
   const [reportsMenuOpen, setReportsMenuOpen] = useState(false)
-  const [reportViewersOpen, setReportViewersOpen] = useState(false)
+  const [, setReportViewersOpen] = useState(false)
   const [salesViewerOpen, setSalesViewerOpen] = useState(false)
   const [counterCloseOpen, setCounterCloseOpen] = useState(false)
   const [entryMenuOpen, setEntryMenuOpen] = useState(false)
@@ -679,6 +960,9 @@ export default function PosMainPage() {
   const [alertBox, setAlertBox] = useState<AlertBox | null>(null)
   const alertResolveRef = useRef<((ok: boolean) => void) | null>(null)
   const alertOkRef = useRef<HTMLButtonElement | null>(null)
+  const [notesHint, setNotesHint] = useState<string | null>(null)
+  const [notesKind, setNotesKind] = useState<ToastKind>('error')
+  const [openNavMenu, setOpenNavMenu] = useState<(typeof NAV)[number] | null>(null)
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; key: number } | null>(null)
   const [qtyChangeOpen, setQtyChangeOpen] = useState(false)
   const [qtyChangeKey, setQtyChangeKey] = useState<number | null>(null)
@@ -757,6 +1041,7 @@ export default function PosMainPage() {
   const [orderListAreaId, setOrderListAreaId] = useState(0)
   const [areaOpen, setAreaOpen] = useState(false)
   const [areaChangeOpen, setAreaChangeOpen] = useState(false)
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentsDraft, setCommentsDraft] = useState('')
   const [itemCancelOpen, setItemCancelOpen] = useState(false)
@@ -816,6 +1101,12 @@ export default function PosMainPage() {
     const t = window.setInterval(() => setNow(new Date()), 30_000)
     return () => window.clearInterval(t)
   }, [])
+
+  useEffect(() => {
+    if (!notesHint) return
+    const t = window.setTimeout(() => setNotesHint(null), 1800)
+    return () => window.clearTimeout(t)
+  }, [notesHint])
 
   useEffect(() => {
     if (!reportsMenuOpen && !entryMenuOpen) return
@@ -913,6 +1204,20 @@ export default function PosMainPage() {
   }, [rowMenu])
 
   useEffect(() => {
+    if (!openNavMenu) return
+    const close = () => setOpenNavMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [openNavMenu])
+
+  useEffect(() => {
+    if (!moreActionsOpen) return
+    const close = () => setMoreActionsOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [moreActionsOpen])
+
+  useEffect(() => {
     let alive = true
     setCatalogueState('loading')
     Promise.all([
@@ -920,9 +1225,8 @@ export default function PosMainPage() {
       apiService.fetchProducts({ limit: 2000 }),
       apiService.fetchSubGroups().catch(() => []),
       apiService.fetchSubSubGroups().catch(() => []),
-      apiService.fetchModifiers().catch(() => []),
     ])
-      .then(([groupRows, productRows, subGroupRows, subSubRows, modifierRows]) => {
+      .then(([groupRows, productRows, subGroupRows, subSubRows]) => {
         if (!alive) return
         const cats = mapGroups(groupRows)
         const tiles = mapProducts(productRows).filter((p) =>
@@ -933,7 +1237,6 @@ export default function PosMainPage() {
         setAllSubGroups(mapSubGroups(subGroupRows).filter((s) => groupIds.has(s.groupId)))
         setAllSubSubGroups(mapSubSubGroups(subSubRows))
         setAllProducts(tiles)
-        setModifiers(mapModifiers(modifierRows))
         setStripLevel('group')
         setGroupId(null)
         setSubGroupId(null)
@@ -963,7 +1266,7 @@ export default function PosMainPage() {
         id: Number(t.id) || 0,
         name: t.label,
         areaId: Number(t.areaId) || 0,
-        seats: t.seats,
+        seats: Number(t.seats) || 0,
         waiterId: Number(t.waiterId) || 0,
         tableNo: Number(t.tableNo) || 0,
         format: String(t.format ?? 'SQUARE'),
@@ -1351,15 +1654,17 @@ export default function PosMainPage() {
     setEntry((prev) => (prev + k).slice(0, 8))
   }
 
-  function deleteSelected() {
-    if (selectedLine == null) return
-    const line = lines.find((l) => l.key === selectedLine)
-    if (line && !line.kotPending) {
+  /** Per-row delete (the trash icon on each line) — only lines that haven't
+   * fired to the kitchen yet can be removed outright. */
+  function deleteLine(key: number) {
+    const line = lines.find((l) => l.key === key)
+    if (!line) return
+    if (!line.kotPending) {
       toast('Use Item Cancel...')
       return
     }
-    setLines((prev) => prev.filter((l) => l.key !== selectedLine))
-    setSelectedLine(null)
+    setLines((prev) => prev.filter((l) => l.key !== key))
+    setSelectedLine((prev) => (prev === key ? null : prev))
   }
 
   const notesLine = notesLineKey == null ? null : lines.find((l) => l.key === notesLineKey) ?? null
@@ -1408,6 +1713,15 @@ export default function PosMainPage() {
 
   function closeModifierForm() {
     setNotesOpen(false)
+  }
+
+  /** Opens the radial row menu centred on (x, y), clamped so its buttons never
+   * render off-screen near a viewport edge. */
+  function openRowMenuAt(x: number, y: number, key: number) {
+    const margin = 90
+    const cx = Math.min(Math.max(x, margin), window.innerWidth - margin)
+    const cy = Math.min(Math.max(y, margin), window.innerHeight - margin)
+    setRowMenu({ x: cx, y: cy, key })
   }
 
   const qtyChangeLine = qtyChangeKey == null ? null : lines.find((l) => l.key === qtyChangeKey) ?? null
@@ -2195,8 +2509,20 @@ export default function PosMainPage() {
     }
     const dine = pickAreaForService('DINE IN')
     if (!dine) {
+      // No area is tagged as DINE IN in this setup — still open the table
+      // layout modal (empty) instead of silently failing with just a toast.
       setService('DINE IN')
-      toast('DINE IN Area Not Found........')
+      setAreaId(0)
+      setTableId(0)
+      setTableName('')
+      setChairNo(0)
+      setTablePopupOpen(false)
+      setChairPromptOpen(false)
+      setKotSelectOpen(false)
+      setCoversPrompt(null)
+      setTablePopupMode('tables')
+      setTableFloorOpen(true)
+      toast('No DINE IN area is configured yet — set one up in Admin.')
       return
     }
     areaButtonClick(dine)
@@ -2363,6 +2689,14 @@ export default function PosMainPage() {
     clearQty()
   }
 
+  /** Tapping a chair dot directly on a table card — picks that table + chair
+   * in one step instead of the table-then-chair two-screen flow. */
+  async function dotChairClick(table: TableRow, chair: number) {
+    setTableId(table.id)
+    setTableName(table.name)
+    await chairBtnClick(chair, table)
+  }
+
   /** KI tile — takeaway/delivery existing KOT */
   async function kotTileClick(kot: OccupiedKot) {
     setIsTablePopup(0)
@@ -2411,9 +2745,13 @@ export default function PosMainPage() {
     })
   }
 
-  function toast(msg: string) {
-    const kind = inferAlertKind(msg)
-    void showAlert({ kind, title: inferAlertTitle(kind), message: msg })
+  function toast(msg: string, kind?: ToastKind) {
+    const inferred = inferAlertKind(msg)
+    const resolved: ToastKind =
+      kind ??
+      (inferred === 'success' ? 'success' : inferred === 'warning' ? 'alert' : inferred === 'info' ? 'info' : 'error')
+    setNotesHint(msg)
+    setNotesKind(resolved)
   }
 
   function ask(message: string) {
@@ -2430,7 +2768,7 @@ export default function PosMainPage() {
     const rows = kotDetailsRows(payload)
     if (!rows.length) {
       toast('NO Item for KOT')
-      return false
+      return null
     }
     const first = rows[0]
     const nextLines: TicketLine[] = rows.map((row) => {
@@ -2580,6 +2918,13 @@ export default function PosMainPage() {
   /**
    * btnSaveKOT_Click → SaveBilDetailsToHoldTable("BillHold","KotSave")
    * Validations match Mainfrm.vb one-for-one. Printing is deferred.
+   *
+   * `linesOverride` lets a caller save an explicit array instead of live `lines` state —
+   * needed when orchestrating a multi-step flow (e.g. moving a line to another KOT) where
+   * the next step can't wait a render for `setLines` to land. Context fields (area/table/
+   * customer/waiter/covers) still come from component state, since by the time an override
+   * is used the state has already been switched to the right ticket via `takeOrder`.
+   * Returns the saved/kept KOT id, or null if validation blocked the save or it failed.
    */
   async function saveKotInternal(opts?: {
     forSettlement?: boolean
@@ -3059,9 +3404,11 @@ export default function PosMainPage() {
     void loadOrderList('ALL', orderListSearch, next)
   }
 
-  /** DisplayKOT — Order List and table load. AppendItems=0 replaces; =1 keeps NEW lines. */
-  async function takeOrder(kotMasterId: number, append = false) {
-    if (kotMasterId <= 0 || loadingKot) return
+  /** DisplayKOT — Order List and table load. AppendItems=0 replaces; =1 keeps NEW lines.
+   *  Returns the freshly-loaded lines so a caller mid-orchestration (e.g. moving a line
+   *  to another KOT) can use them directly instead of racing the `lines` state update. */
+  async function takeOrder(kotMasterId: number, append = false): Promise<TicketLine[] | null> {
+    if (kotMasterId <= 0 || loadingKot) return null
     setLoadingKot(true)
     try {
       const details = await apiService.fetchKotDetails(String(kotMasterId))
@@ -3069,11 +3416,13 @@ export default function PosMainPage() {
         orderListRows.find((r) => r.kotMasterId === kotMasterId)?.remarks
         || occupiedKots.find((k) => k.kotMasterId === kotMasterId)?.remarks
         || ''
-      const ok = applyKotDetails(details, allProducts, append, listedRemarks)
-      if (!ok) return
+      const result = applyKotDetails(details, allProducts, append, listedRemarks)
+      if (!result) return null
       setOrderListOpen(false)
+      return result
     } catch (err) {
       toast(`Error loading KOT: ${errMessage(err, 'failed')}`)
+      return null
     } finally {
       setLoadingKot(false)
       clearQty()
@@ -3179,132 +3528,56 @@ export default function PosMainPage() {
     <div className="pos-main">
       <header className="pd-header">
         <div className="pd-logo">
-          MOIF<span>DEYNO PRO</span>
+          <img src="/logo-white.png" alt="Deyno" className="pd-logo-img" />
+          <span>PRO</span>
         </div>
         <nav className="pd-nav">
-          {NAV.map((item) =>
-            item === 'Reports' ? (
-              <div key={item} className="pd-nav-wrap" ref={reportsMenuRef}>
+          {NAV.map((item) => {
+            const menu = NAV_MENUS[item]
+            if (!menu) {
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  className={`pd-nav-btn${item === nav ? ' is-active' : ''}`}
+                  onClick={() => setNav(item)}
+                >
+                  {item}
+                </button>
+              )
+            }
+            return (
+              <div key={item} className="pd-nav-menu-wrap">
                 <button
                   type="button"
-                  className={`pd-nav-btn${nav === 'Reports' || reportsMenuOpen ? ' is-active' : ''}`}
-                  onClick={() => {
-                    setNav('Reports')
-                    setEntryMenuOpen(false)
-                    setReportsMenuOpen((open) => {
-                      if (open) setReportViewersOpen(false)
-                      return !open
-                    })
+                  className={`pd-nav-btn${item === nav ? ' is-active' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setNav(item)
+                    setOpenNavMenu((open) => (open === item ? null : item))
                   }}
                 >
-                  Reports
+                  {item}
                 </button>
-                {reportsMenuOpen ? (
-                  <div className="pd-nav-menu" role="menu">
-                    <button
-                      type="button"
-                      className={`pd-nav-parent${reportViewersOpen ? ' is-open' : ''}`}
-                      role="menuitem"
-                      onClick={() => setReportViewersOpen((open) => !open)}
-                    >
-                      Report Viewers
-                      <ChevronRight size={14} />
-                    </button>
-                    {reportViewersOpen ? (
-                      <div className="pd-nav-submenu">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setSalesViewerOpen(true)
-                            setReportsMenuOpen(false)
-                            setReportViewersOpen(false)
-                          }}
-                        >
-                          Sales Viewer
-                        </button>
-                      </div>
-                    ) : null}
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setReportsMenuOpen(false)
-                        setReportViewersOpen(false)
-                        requestAdmin('counter-close-all', true)
+                {openNavMenu === item ? (
+                  <div className="pd-nav-menu" onClick={(e) => e.stopPropagation()}>
+                    <NavMenuList
+                      entries={menu}
+                      onPick={(label) => {
+                        setOpenNavMenu(null)
+                        if (label === 'Area Entry' || label === 'Area Edit') setAreaMasterOpen(true)
+                        else if (label === 'Table Entry' || label === 'Table Edit') setTableMasterOpen(true)
+                        else if (label === 'Floor Design') setFloorDesignOpen(true)
+                        else if (label === 'Sales Viewer') setSalesViewerOpen(true)
+                        else if (label === 'Counter Close') requestAdmin('counter-close-all', true)
+                        else toast(`${label} — coming soon`, 'info')
                       }}
-                    >
-                      Counter Close ALL
-                    </button>
+                    />
                   </div>
                 ) : null}
               </div>
-            ) : item === 'Entry' ? (
-              <div key={item} className="pd-nav-wrap" ref={entryMenuRef}>
-                <button
-                  type="button"
-                  className={`pd-nav-btn${nav === 'Entry' || entryMenuOpen ? ' is-active' : ''}`}
-                  onClick={() => {
-                    setNav('Entry')
-                    setReportsMenuOpen(false)
-                    setReportViewersOpen(false)
-                    setEntryMenuOpen((open) => !open)
-                  }}
-                >
-                  Entry
-                </button>
-                {entryMenuOpen ? (
-                  <div className="pd-nav-menu" role="menu">
-                    <p className="pd-nav-menu-label">Masters</p>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setEntryMenuOpen(false)
-                        setAreaMasterOpen(true)
-                      }}
-                    >
-                      Area Entry
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setEntryMenuOpen(false)
-                        setTableMasterOpen(true)
-                      }}
-                    >
-                      Table Entry
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setEntryMenuOpen(false)
-                        setFloorDesignOpen(true)
-                      }}
-                    >
-                      Floor Design
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <button
-                key={item}
-                type="button"
-                className={`pd-nav-btn${item === nav ? ' is-active' : ''}`}
-                onClick={() => {
-                  setNav(item)
-                  setReportsMenuOpen(false)
-                  setReportViewersOpen(false)
-                  setEntryMenuOpen(false)
-                }}
-              >
-                {item}
-              </button>
-            ),
-          )}
+            )
+          })}
         </nav>
         <div className="pd-header-right">
           <div className="pd-user">
@@ -3328,14 +3601,8 @@ export default function PosMainPage() {
       <div className="pd-main">
         <section className="pd-panel">
           <div className="pd-order-head">
-            <h1>{currentKotId > 0 ? 'OPEN KOT' : 'NEW ORDER'}</h1>
+            <h1>{currentKotId > 0 ? 'Open KOT' : 'Order'} #{kotLabel}</h1>
             <div className="pd-meta">
-              <span>
-                ORDER <b>#{kotLabel}</b>
-              </span>
-              <span>
-                <b>{currentArea?.name || service}</b>
-              </span>
               <button
                 type="button"
                 className="pd-meta-btn"
@@ -3344,8 +3611,10 @@ export default function PosMainPage() {
                   else setAreaOpen(true)
                 }}
               >
-                TABLE <b>{tableName || (tableId > 0 ? String(tableId) : '—')}</b>
-                {chairNo > 0 ? <b>{` / CH ${chairNo}`}</b> : null}
+                <span className="pd-pill-icon"><TableGlyph size={10} /></span>
+                Table {tableName || (tableId > 0 ? String(tableId) : '—')}
+                {chairNo > 0 ? ` / CH ${chairNo}` : ''}
+                <ChevronDown size={11} className="pd-pill-chevron" />
               </button>
               <button
                 type="button"
@@ -3353,14 +3622,18 @@ export default function PosMainPage() {
                 onClick={() => setCovers((n) => (n >= 12 ? 1 : n + 1))}
                 title="Number of persons"
               >
-                <b>{covers}</b> COVERS
+                <span className="pd-pill-icon"><Users size={10} /></span>
+                {covers} {covers === 1 ? 'Cover' : 'Covers'}
+                <ChevronDown size={11} className="pd-pill-chevron" />
               </button>
               <button
                 type="button"
                 className="pd-meta-btn"
                 onClick={() => openCustomerSelect()}
               >
-                <b>{customerName || 'CASH CUSTOMER'}</b>
+                <span className="pd-pill-icon"><User size={10} /></span>
+                {customerName || 'Cash Customer'}
+                <ChevronDown size={11} className="pd-pill-chevron" />
               </button>
             </div>
           </div>
@@ -3371,12 +3644,12 @@ export default function PosMainPage() {
                 <tr>
                   <th className="col-no">#</th>
                   <th className="col-item">Item</th>
-                  <th className="col-mod">M</th>
                   <th className="col-qty num">Qty</th>
                   <th className="col-money num">Price</th>
                   <th className="col-money num">Disc</th>
                   <th className="col-money num">Tax</th>
                   <th className="col-money num">Total</th>
+                  <th className="col-menu" aria-hidden="true" />
                 </tr>
               </thead>
               <tbody>
@@ -3390,10 +3663,14 @@ export default function PosMainPage() {
                       key={line.key}
                       className={selectedLine === line.key ? 'is-selected' : undefined}
                       onClick={() => setSelectedLine(line.key)}
+                      onDoubleClick={(e) => {
+                        setSelectedLine(line.key)
+                        openRowMenuAt(e.clientX, e.clientY, line.key)
+                      }}
                       onContextMenu={(e) => {
                         e.preventDefault()
                         setSelectedLine(line.key)
-                        setRowMenu({ x: e.clientX, y: e.clientY, key: line.key })
+                        openRowMenuAt(e.clientX, e.clientY, line.key)
                       }}
                     >
                       <td className="col-no">{i + 1}</td>
@@ -3402,19 +3679,6 @@ export default function PosMainPage() {
                         {line.modifiers ? (
                           <span className="pd-item-mod">↳ {line.modifiers}</span>
                         ) : null}
-                      </td>
-                      <td className="col-mod">
-                        <button
-                          type="button"
-                          className="pd-modifir"
-                          title="Add Modifier"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openModifierForm(line.key)
-                          }}
-                        >
-                          M
-                        </button>
                       </td>
                       <td
                         className={`col-qty num pd-qty-cell${line.qty < 0 ? ' is-return' : ''}`}
@@ -3425,10 +3689,24 @@ export default function PosMainPage() {
                       >
                         {line.qty}
                       </td>
-                      <td className="col-money num">{money(line.price)}</td>
-                      <td className="col-money num">{money(line.disc)}</td>
-                      <td className="col-money num">{money(line.tax)}</td>
+                      <td className="col-money num pd-money-muted">{money(line.price)}</td>
+                      <td className="col-money num pd-money-muted">{money(line.disc)}</td>
+                      <td className="col-money num pd-money-muted">{money(line.tax)}</td>
                       <td className="col-money num">{money(line.total)}</td>
+                      <td className="col-menu">
+                        <button
+                          type="button"
+                          className="pd-row-delete"
+                          aria-label="Delete item"
+                          title="Delete item"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteLine(line.key)
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -3437,6 +3715,48 @@ export default function PosMainPage() {
           </div>
 
           <div className="pd-foot">
+            <div className="pd-summary">
+              <div className="pd-summary-scroll">
+                <span className="pd-summary-item">
+                  <span className="label">
+                    <span className="label-full">Items</span>
+                    <span className="label-short">Itm</span>
+                  </span>
+                  <span className="val">{summary.itemCount}</span>
+                </span>
+                <span className="pd-summary-item">
+                  <span className="label">Qty</span>
+                  <span className="val">{summary.qty}</span>
+                </span>
+                <span className="pd-summary-item">
+                  <span className="label">
+                    <span className="label-full">Total</span>
+                    <span className="label-short">Tot</span>
+                  </span>
+                  <span className="val">{money(summary.gross)}</span>
+                </span>
+                <span className="pd-summary-item">
+                  <span className="label">Disc</span>
+                  <span className="val">{money(discountType === 2 ? summary.itemDiscount : summary.billDiscount)}</span>
+                </span>
+                <span className="pd-summary-item">
+                  <span className="label">Txbl</span>
+                  <span className="val">{money(summary.taxableSubTotal)}</span>
+                </span>
+                <span className="pd-summary-item">
+                  <span className="label">Tax</span>
+                  <span className="val">{money(summary.tax)}</span>
+                </span>
+              </div>
+              <span className="pd-summary-item pd-summary-net">
+                <span className="total-label">
+                  <span className="label-full">NET AMT</span>
+                  <span className="label-short">Net</span>
+                </span>
+                <span className="total-val">{money(summary.total)}</span>
+              </span>
+            </div>
+
             <div className="pd-service">
               {([
                 { id: 'DINE IN' as const, icon: Utensils },
@@ -3450,102 +3770,35 @@ export default function PosMainPage() {
                   onClick={() => onServiceClick(s.id)}
                 >
                   <BtnIcon icon={s.icon} />
-                  {s.id}
+                  <span className="pd-service-label">{s.id}</span>
                 </button>
               ))}
-            </div>
-
-            <div className="pd-summary">
-              <span className="pd-counts" style={{ gridColumn: '1 / -1', textAlign: 'right' }}>
-                Items {summary.itemCount} · Qty {summary.qty}
-              </span>
-              <span className="label">Subtotal</span>
-              <span className="val">{money(summary.lineSubtotal)}</span>
-              <span className="label">Discount</span>
-              <span className="val">{money(discountType === 2 ? summary.itemDiscount : summary.billDiscount)}</span>
-              <span className="label">Tax</span>
-              <span className="val">{money(summary.tax)}</span>
-              <span className="total-label">TOTAL</span>
-              <span className="total-val">{money(summary.total)}</span>
-            </div>
-
-            <div className="pd-quick">
-              <button type="button" className="pd-chip is-danger" onClick={deleteSelected}>
-                <BtnIcon icon={Trash2} /> Delete
-              </button>
-              <button type="button" className="pd-chip is-brand" onClick={clearData}>
-                <BtnIcon icon={Plus} /> New KOT
-              </button>
-              <button type="button" className="pd-chip is-brand" onClick={() => openQtyChange()}>
-                <BtnIcon icon={SlidersHorizontal} /> Change Qty
-              </button>
-              <button type="button" className="pd-chip is-amber" onClick={() => openPriceChange()}>
-                <BtnIcon icon={Tag} /> Change Price
-              </button>
-              <button type="button" className="pd-chip is-amber">
-                <BtnIcon icon={Percent} /> Line Discount
-              </button>
-              <button type="button" className="pd-chip is-blue" onClick={openModifierForSelection}>
-                <BtnIcon icon={StickyNote} /> Notes
+              <button
+                type="button"
+                className={`pd-service-btn pd-service-btn-end${lines.length > 0 ? '' : ' is-hidden'}`}
+                onClick={clearData}
+                disabled={lines.length === 0}
+                aria-hidden={lines.length === 0}
+                tabIndex={lines.length === 0 ? -1 : 0}
+              >
+                <BtnIcon icon={Plus} /> <span className="pd-service-label">New KOT</span>
               </button>
             </div>
           </div>
         </section>
 
-        <aside className="pd-panel pd-group-col">
-          <button type="button" className="pd-cat pd-top-move">
-            TOP MOVE
-          </button>
-          <div
-            ref={groupStripRef}
-            className="pd-cats"
-            onPointerDown={onGroupStripPointerDown}
-            onPointerMove={onGroupStripPointerMove}
-            onPointerUp={onGroupStripPointerUp}
-            onPointerCancel={onGroupStripPointerUp}
-          >
-            {stripButtons.map((c) => (
-              <button
-                key={`${c.kind}-${c.id}`}
-                type="button"
-                className={`pd-cat${c.kind !== 'group' ? ' is-sub' : ''}${activeStripId === c.id ? ' is-active' : ''}`}
-                onClick={() =>
-                  onStripTap(() => {
-                    if (c.kind === 'group') onGroupClick(c.id)
-                    else if (c.kind === 'sub') onSubGroupClick(c.id)
-                    else onSubSubClick(c.id)
-                  })
-                }
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-          {stripLevel !== 'group' ? (
-            <button type="button" className="pd-cat pd-back" onClick={onBack}>
-              <ChevronLeft size={14} /> Back
-            </button>
-          ) : null}
-        </aside>
-
-        <section className="pd-panel pd-right">
-          {flpAreas.length ? (
-            <div className="pd-flp-area">
-              {flpAreas.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`pd-area-btn is-${flpAreaTone(a)}${areaId === a.id ? ' is-on' : ''}`}
-                  onClick={() => areaButtonClick(a)}
-                >
-                  {a.name}
-                </button>
-              ))}
+        <section className="pd-panel pd-catalogue">
+        <div className="pd-search-row">
+          {crumb ? (
+            <div className="pd-crumb">
+              <span className="pd-crumb-title">{crumb}</span>
+              <span className="pd-crumb-count">{products.length} items</span>
             </div>
           ) : null}
           <label className="pd-search">
             <Search size={14} color="var(--text-3)" />
             <input
+              ref={searchInputRef}
               value={query}
               onChange={(e) => {
                 const next = e.target.value
@@ -3566,8 +3819,75 @@ export default function PosMainPage() {
               </button>
             ) : null}
           </label>
+          <button
+            type="button"
+            className="pd-barcode-btn"
+            aria-label="Scan barcode"
+            onClick={() => searchInputRef.current?.focus()}
+          >
+            <ScanBarcode size={14} />
+          </button>
+        </div>
 
-          {crumb ? <div className="pd-crumb">{crumb}</div> : null}
+        <div className="pd-catalogue-body">
+        <aside className="pd-cat-col">
+          <div
+            ref={groupStripRef}
+            className="pd-cats"
+            onPointerDown={onGroupStripPointerDown}
+            onPointerMove={onGroupStripPointerMove}
+            onPointerUp={onGroupStripPointerUp}
+            onPointerCancel={onGroupStripPointerUp}
+          >
+            {stripButtons.map((c) => {
+              const CatIcon = categoryIcon(c.name)
+              return (
+                <button
+                  key={`${c.kind}-${c.id}`}
+                  type="button"
+                  className={`pd-cat${c.kind !== 'group' ? ' is-sub' : ''}${activeStripId === c.id ? ' is-active' : ''}`}
+                  onClick={() =>
+                    onStripTap(() => {
+                      if (c.kind === 'group') onGroupClick(c.id)
+                      else if (c.kind === 'sub') onSubGroupClick(c.id)
+                      else onSubSubClick(c.id)
+                    })
+                  }
+                >
+                  <CatIcon size={13} strokeWidth={2} />
+                  <span className="pd-cat-label">{c.name.toLowerCase()}</span>
+                </button>
+              )
+            })}
+          </div>
+          {stripLevel !== 'group' ? (
+            <button type="button" className="pd-cat pd-back" onClick={onBack}>
+              <ChevronLeft size={14} />
+              <span className="pd-cat-label">Back</span>
+            </button>
+          ) : (
+            <button type="button" className="pd-cat pd-top-move">
+              <Star size={13} strokeWidth={2} />
+              <span className="pd-cat-label">Top Move</span>
+            </button>
+          )}
+        </aside>
+
+        <div className="pd-right">
+          {flpAreas.length ? (
+            <div className="pd-flp-area">
+              {flpAreas.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={`pd-area-btn is-${flpAreaTone(a)}${areaId === a.id ? ' is-on' : ''}`}
+                  onClick={() => areaButtonClick(a)}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {tablePopupOpen ? (
             <div className="pd-table-popup">
@@ -3614,23 +3934,18 @@ export default function PosMainPage() {
                       const occ = occupiedByTable.get(t.id) ?? []
                       const occupied = occ.length > 0
                       return (
-                        <button
+                        <TableCard
                           key={t.id}
-                          type="button"
-                          className={`pd-seat pd-seat-table${occupied ? ' is-busy' : ' is-free'}${tableId === t.id ? ' is-on' : ''}`}
+                          label={t.name}
+                          seats={t.seats}
+                          status={occupied ? 'occupied' : 'free'}
+                          orderNo={occupied ? occ[0].kotNo : undefined}
+                          pax={occupied ? occ[0].pax : undefined}
+                          selected={tableId === t.id}
                           onClick={() => void tableBtnClick(t)}
-                        >
-                          {occupied && occ[0].pax > 0 ? <em className="pd-tbl-pax">{occ[0].pax}</em> : null}
-                          <span className="pd-seat-glyph" aria-hidden>
-                            <TableGlyph />
-                          </span>
-                          <span className="pd-seat-name">{t.name}</span>
-                          {occupied ? (
-                            <small className="pd-seat-pill">{occ[0].kotNo}</small>
-                          ) : (
-                            <small className="pd-seat-status">Free</small>
-                          )}
-                        </button>
+                          occupiedChairs={occ.filter((k) => k.chairNo > 0).map((k) => k.chairNo)}
+                          onChairSelect={(chair) => void dotChairClick(t, chair)}
+                        />
                       )
                     })}
                     {tablesForArea.length === 0 ? <p className="pd-cat-msg">No tables in this area</p> : null}
@@ -3682,33 +3997,50 @@ export default function PosMainPage() {
             ) : products.length === 0 ? (
               <p className="pd-cat-msg">{emptyHint}</p>
             ) : (
-              products.map((p) => (
-                <button key={p.id} type="button" className="pd-product" onClick={() => onItemClick(p)}>
-                  <span className="pd-product-name">
-                    {p.name}
-                    {p.sub && p.sub !== p.name ? <span className="pd-product-sub">{p.sub}</span> : null}
-                  </span>
-                  <span className="pd-product-price">AED {money(p.price)}</span>
-                </button>
-              ))
+              <>
+              {products.map((p) => (
+                  <button key={p.id} type="button" className="pd-product" onClick={() => onItemClick(p)}>
+                    <span className="pd-product-name">
+                      {p.name.toLowerCase()}
+                      {p.sub && p.sub !== p.name ? (
+                        <span className="pd-product-sub">{p.sub.toLowerCase()}</span>
+                      ) : null}
+                    </span>
+                    <span className="pd-product-foot">
+                      <span className="pd-product-price">AED {money(p.price)}</span>
+                    </span>
+                  </button>
+              ))}
+              <button
+                type="button"
+                className="pd-product pd-product-add"
+                onClick={() => toast('Add New Item — coming soon')}
+              >
+                <span className="pd-product-add-icon" aria-hidden>
+                  <Plus size={18} strokeWidth={2.4} />
+                </span>
+                <span className="pd-product-add-label">Add New Item</span>
+              </button>
+              </>
             )}
           </div>
           )}
 
           <div className="pd-actions">
-            <div className="pd-groups">
-              <div className="pd-group">
-                <div className="pd-group-title">ORDER</div>
-                <div className="pd-group-btns">
-                  <button type="button" className="pd-act" onClick={onOrderListClick}>
-                    <BtnIcon icon={ClipboardList} /> <span>Order List</span>
+            <div className="pd-actions-main">
+            <div className="pd-keypad-wrap">
+              <div className="pd-keypad-left">
+                <div className="pd-entry">
+                  <span>{entry || '0'}</span>
+                  <button type="button" className="pd-entry-qty" onClick={onQtyClick}>
+                    QTY {padQty}
                   </button>
-                  <button type="button" className="pd-act" onClick={onKotJoinClick}>
-                    <BtnIcon icon={GitMerge} /> <span>KOT Join</span>
-                  </button>
-                  <button type="button" className="pd-act">
-                    <BtnIcon icon={Printer} /> <span>Reprint KOT</span>
-                  </button>
+                </div>
+                <NumberKeypad onKey={onKey} />
+              </div>
+
+              <div className="pd-group-btns">
+                <div className="pd-quick-actions">
                   <button
                     type="button"
                     className="pd-act"
@@ -3716,6 +4048,14 @@ export default function PosMainPage() {
                     disabled={savingKot}
                   >
                     <BtnIcon icon={Save} /> <span>{savingKot ? 'Saving…' : 'Save KOT'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="pd-act"
+                    onClick={() => void onSaveKot()}
+                    disabled={savingKot}
+                  >
+                    <BtnIcon icon={Zap} /> <span>Quick KOT</span>
                   </button>
                   <button
                     type="button"
@@ -3728,79 +4068,74 @@ export default function PosMainPage() {
                   >
                     <BtnIcon icon={MessageSquare} /> <span>Comments</span>
                   </button>
-                </div>
-              </div>
-              <div className="pd-group">
-                <div className="pd-group-title">BILL</div>
-                <div className="pd-group-btns">
-                  <button type="button" className="pd-act is-amber" onClick={onDiscountClick}>
-                    <BtnIcon icon={Percent} /> <span>Discount</span>
-                  </button>
-                  <button type="button" className="pd-act is-blue">
-                    <BtnIcon icon={Printer} /> <span>Print Bill</span>
-                  </button>
-                  <button type="button" className="pd-act is-blue">
-                    <BtnIcon icon={FileText} /> <span>Dummy Bill</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="pd-act is-danger"
-                    onClick={onBillCancelClick}
-                    disabled={cancelBusy}
-                  >
-                    <BtnIcon icon={Ban} /> <span>Cancel Bill</span>
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            <div className="pd-entry">
-              <span className={`pd-entry-qty${Number(padQty) < 0 ? ' is-return' : ''}`}>QTY {padQty}</span>
-              <span>{entry || '0'}</span>
-            </div>
+                  <div className="pd-more-wrap">
+                    <button
+                      type="button"
+                      className={`pd-act pd-more-btn${moreActionsOpen ? ' is-active' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setMoreActionsOpen((v) => !v)
+                      }}
+                    >
+                      <BtnIcon icon={MoreHorizontal} /> <span>More</span>
+                    </button>
 
-            <div className="pd-keypad-wrap">
-              <div className="pd-keys">
-                {KEYS.map((k) => (
-                  <button key={k} type="button" className="pd-key" onClick={() => onKey(k)}>
-                    {k}
-                  </button>
-                ))}
-              </div>
-              <div className="pd-side-acts">
-                <button
-                  type="button"
-                  className={`pd-act${padQty !== '1' ? ' is-qty' : ''}`}
-                  onClick={onQtyClick}
-                >
-                  <BtnIcon icon={Hash} />
-                  <span>Qty{padQty !== '1' ? ` ${padQty}` : ''}</span>
-                </button>
-                <button type="button" className="pd-act">
-                  <BtnIcon icon={CircleOff} /> <span>No Sale</span>
-                </button>
-                <button
-                  type="button"
-                  className={`pd-act is-amber${Number(padQty) < 0 ? ' is-qty' : ''}`}
-                  onClick={onReturnClick}
-                  disabled={returnBusy}
-                >
-                  <BtnIcon icon={RotateCcw} /> <span>Return</span>
-                </button>
-                <button
-                  type="button"
-                  className="pd-act is-danger"
-                  onClick={onItemCancelClick}
-                  disabled={cancelBusy}
-                >
-                  <BtnIcon icon={MinusCircle} /> <span>Item Cancel</span>
-                </button>
-                <button type="button" className="pd-act is-blue">
-                  <BtnIcon icon={Receipt} /> <span>Receipts</span>
-                </button>
-                <button type="button" className="pd-act" onClick={() => requestAdmin('area-change')}>
-                  <BtnIcon icon={MapPinned} /> <span>Area Change</span>
-                </button>
+                    {moreActionsOpen ? (
+                      <div className="pd-more-menu">
+                        <button type="button" className="pd-more-item" onClick={onOrderListClick}>
+                          <BtnIcon icon={ClipboardList} /> <span>Order List</span>
+                        </button>
+                        <button type="button" className="pd-more-item" onClick={onDiscountClick}>
+                          <BtnIcon icon={Percent} /> <span>Discount</span>
+                        </button>
+                        <button type="button" className="pd-more-item">
+                          <BtnIcon icon={Printer} /> <span>Print Bill</span>
+                        </button>
+                        <button type="button" className="pd-more-item">
+                          <BtnIcon icon={FileText} /> <span>Dummy Bill</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="pd-more-item is-danger"
+                          onClick={onBillCancelClick}
+                          disabled={cancelBusy}
+                        >
+                          <BtnIcon icon={Ban} /> <span>Cancel Bill</span>
+                        </button>
+                        <button type="button" className="pd-more-item" onClick={onQtyClick}>
+                          <BtnIcon icon={Hash} />
+                          <span>Qty{padQty !== '1' ? ` ${padQty}` : ''}</span>
+                        </button>
+                        <button type="button" className="pd-more-item">
+                          <BtnIcon icon={CircleOff} /> <span>No Sale</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="pd-more-item"
+                          onClick={onReturnClick}
+                          disabled={returnBusy}
+                        >
+                          <BtnIcon icon={RotateCcw} /> <span>Return</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="pd-more-item is-danger"
+                          onClick={onItemCancelClick}
+                          disabled={cancelBusy}
+                        >
+                          <BtnIcon icon={MinusCircle} /> <span>Item Cancel</span>
+                        </button>
+                        <button type="button" className="pd-more-item" onClick={openModifierForSelection}>
+                          <BtnIcon icon={StickyNote} /> <span>Kitchen Message</span>
+                        </button>
+                        <button type="button" className="pd-more-item" onClick={() => requestAdmin('area-change')}>
+                          <BtnIcon icon={MapPinned} /> <span>Area Change</span>
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -3808,12 +4143,36 @@ export default function PosMainPage() {
               type="button"
               className="pd-pay"
               onClick={() => void onSettlementClick()}
-              disabled={settleOpening || savingKot}
+              disabled={settleOpening || savingKot || lines.length === 0}
             >
               <BtnIcon icon={CreditCard} size={16} />
               PAY <em>AED {money(summary.total)}</em>
             </button>
+            </div>
+
+            {/* Corner strip — the 4 buttons used constantly mid-service,
+               pinned as a full-height column so they never hide behind "More". */}
+            <div className="pd-corner-actions">
+              <button type="button" className="pd-corner-btn" onClick={() => setAreaOpen(true)}>
+                <BtnIcon icon={MapPinned} />
+                <span>Area Change</span>
+              </button>
+              <button type="button" className="pd-corner-btn">
+                <BtnIcon icon={Receipt} />
+                <span>Receipt</span>
+              </button>
+              <button type="button" className="pd-corner-btn" onClick={onKotJoinClick}>
+                <BtnIcon icon={Merge} />
+                <span>KOT Join</span>
+              </button>
+              <button type="button" className="pd-corner-btn">
+                <BtnIcon icon={Printer} />
+                <span>KOT Print</span>
+              </button>
+            </div>
           </div>
+        </div>
+        </div>
         </section>
       </div>
 
@@ -3885,30 +4244,53 @@ export default function PosMainPage() {
         </div>
       ) : null}
 
+      {notesHint ? (
+        <div className="pd-toast">
+          <Toast message={notesHint} kind={notesKind} />
+        </div>
+      ) : null}
+
       {rowMenu ? (
         <div
-          className="pd-row-menu"
+          className="pd-radial-menu"
           style={{ left: rowMenu.x, top: rowMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            type="button"
-            onClick={() => openModifierForm(rowMenu.key)}
-          >
-            Add Modifier
-          </button>
-          <button
-            type="button"
-            onClick={() => openQtyChange(rowMenu.key)}
-          >
-            Change Qty
-          </button>
-          <button
-            type="button"
-            onClick={() => openPriceChange(rowMenu.key, true)}
-          >
-            Price Change
-          </button>
+          <div className="pd-radial-backdrop" aria-hidden />
+          <div className="pd-radial-center" aria-hidden />
+          {(
+            [
+              { label: 'Line\nDiscount', icon: Percent, angle: -90, onClick: () => { setRowMenu(null); onDiscountClick() } },
+              { label: 'Change\nPrice', icon: Tag, angle: 0, onClick: () => openPriceChange(rowMenu.key, true) },
+              { label: 'Change\nQty', icon: SlidersHorizontal, angle: 90, onClick: () => openQtyChange(rowMenu.key) },
+              { label: 'Add\nModifier', icon: StickyNote, angle: 180, onClick: () => openModifierForm(rowMenu.key) },
+            ] as const
+          ).map(({ label, icon, angle, onClick }, i) => {
+            const radius = 74
+            const rad = (angle * Math.PI) / 180
+            const tx = Math.round(Math.cos(rad) * radius)
+            const ty = Math.round(Math.sin(rad) * radius)
+            return (
+              <button
+                key={label}
+                type="button"
+                className="pd-radial-btn"
+                style={
+                  {
+                    '--tx': `${tx}px`,
+                    '--ty': `${ty}px`,
+                    animationDelay: `${i * 0.09}s`,
+                  } as CSSProperties
+                }
+                onClick={onClick}
+              >
+                <BtnIcon icon={icon} />
+                {label.split('\n').map((ln) => (
+                  <span key={ln}>{ln}</span>
+                ))}
+              </button>
+            )
+          })}
         </div>
       ) : null}
 
@@ -4019,15 +4401,15 @@ export default function PosMainPage() {
             </div>
             <div className="pd-qty-body">
               <div className="pd-qty-fields">
-                <div className="pd-qty-row">
-                  <span>Current Qty</span>
-                  <strong>{qtyChangeLine.qty}</strong>
-                </div>
-                <div className="pd-qty-row">
-                  <span>New Qty</span>
+                <div className="pd-qty-picker-wrap">
+                  <span className="pd-qty-picker-label">New Qty</span>
+                  <QtyScrollPicker
+                    value={Math.max(1, Math.round(Number(qtyChangeNew) || qtyChangeLine.qty || 1))}
+                    onChange={(n) => setQtyChangeNew(String(n))}
+                  />
                   <input
                     ref={qtyChangeRef}
-                    className="pd-qty-input"
+                    className="pd-visually-hidden-input"
                     value={qtyChangeNew}
                     onChange={(e) => setQtyChangeNew(e.target.value.replace(/[^\d.]/g, '').slice(0, 8))}
                     onKeyDown={(e) => {
@@ -4035,18 +4417,17 @@ export default function PosMainPage() {
                       if (e.key === 'Escape') cancelQtyChange()
                     }}
                     inputMode="decimal"
-                    placeholder="Enter qty…"
+                    tabIndex={-1}
+                    aria-hidden="true"
                   />
+                </div>
+                <div className="pd-qty-row">
+                  <span>Current Qty</span>
+                  <strong>{qtyChangeLine.qty}</strong>
                 </div>
               </div>
               <div className="pd-qty-pad">
-                <div className="pd-qty-keys">
-                  {KEYS.map((k) => (
-                    <button key={k} type="button" className="pd-key" onClick={() => onQtyChangeKey(k)}>
-                      {k}
-                    </button>
-                  ))}
-                </div>
+                <NumberKeypad className="pd-qty-keys" onKey={onQtyChangeKey} />
                 <div className="pd-qty-actions">
                   <button type="button" className="pd-qty-done" onClick={applyQtyChange}>
                     Done
@@ -4814,22 +5195,17 @@ export default function PosMainPage() {
                   const occ = occupiedByTable.get(t.id) ?? []
                   const occupied = occ.length > 0
                   return (
-                    <button
+                    <TableCard
                       key={t.id}
-                      type="button"
-                      className={`pd-seat pd-seat-table is-live${occupied ? ' is-busy' : ' is-free'}`}
+                      label={t.name}
+                      seats={t.seats}
+                      status={occupied ? 'occupied' : 'free'}
+                      orderNo={occupied ? occ[0].kotNo : undefined}
+                      pax={occupied ? occ[0].pax : undefined}
                       onClick={() => void floorTableClick(t)}
-                    >
-                      <span className="pd-seat-name">{t.name}</span>
-                      {occupied ? (
-                        <span className="pd-fd-tags">
-                          {occ[0].kotNo ? <b className="pd-fd-kot">{occ[0].kotNo}</b> : null}
-                          <b className="pd-fd-pax">{occ[0].pax || 0} pax</b>
-                        </span>
-                      ) : (
-                        <small className="pd-seat-status">Free</small>
-                      )}
-                    </button>
+                      occupiedChairs={occ.filter((k) => k.chairNo > 0).map((k) => k.chairNo)}
+                      onChairSelect={(chair) => void dotChairClick(t, chair)}
+                    />
                   )
                 })}
                 {tablesInArea.length === 0 ? <p className="pd-cat-msg">No tables in this area</p> : null}
