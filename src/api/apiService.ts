@@ -110,6 +110,7 @@ class ApiService {
       staffID: SessionManager.staffID ?? '',
       roleId: SessionManager.roleId ?? '',
       roleName: SessionManager.roleName ?? '',
+      designation: SessionManager.designation ?? '',
       accessToken: SessionManager.accessToken ?? '',
       companyId: SessionManager.companyId ?? '',
     }
@@ -214,9 +215,72 @@ class ApiService {
     return this.fetchPosStaffList(deviceToken())
   }
 
+  /** AdminLoginFrm — ADMIN / CHIEF CASHIER username + password. */
+  async verifyAdmin(username: string, password: string): Promise<Row> {
+    return api.post<Row>('/pos/supervisor/verify', { username, password })
+  }
+
   /** Supervisor approval for protected actions (line delete, qty change). */
   async verifySupervisor(username: string, password: string): Promise<Row> {
-    return api.post<Row>('/pos/supervisor/verify', { username, password })
+    return this.verifyAdmin(username, password)
+  }
+
+  async cancelKot(
+    kotMasterId: string | number,
+    opts?: { username?: string; password?: string; counterNo?: number },
+  ): Promise<Row> {
+    const id = encodeURIComponent(String(kotMasterId).trim())
+    return api.post<Row>(`/pos/kot/${id}/cancel`, {
+      username: opts?.username,
+      password: opts?.password,
+      gvCounterNo: opts?.counterNo ?? getPosSession().counterNo,
+    })
+  }
+
+  async cancelKotItems(
+    kotMasterId: string | number,
+    kotChildIds: number[],
+    opts?: { username?: string; password?: string; counterNo?: number },
+  ): Promise<Row> {
+    const id = encodeURIComponent(String(kotMasterId).trim())
+    return api.post<Row>(`/pos/kot/${id}/items/cancel`, {
+      kotChildIds,
+      username: opts?.username,
+      password: opts?.password,
+      gvCounterNo: opts?.counterNo ?? getPosSession().counterNo,
+    })
+  }
+
+  /** ItemRemovefrm.btnDone_Click — change qty on a saved KOT line. */
+  async updateKotItemQty(
+    kotMasterId: string | number,
+    kotChildId: number,
+    qty: number,
+    opts?: { username?: string; password?: string; counterNo?: number },
+  ): Promise<Row> {
+    const id = encodeURIComponent(String(kotMasterId).trim())
+    return api.post<Row>(`/pos/kot/${id}/items/qty`, {
+      kotChildId,
+      qty,
+      username: opts?.username,
+      password: opts?.password,
+      gvCounterNo: opts?.counterNo ?? getPosSession().counterNo,
+    })
+  }
+
+  /** ItemRemovefrm.btnNoOfCust_Click */
+  async updateKotCovers(kotMasterId: string | number, covers: number): Promise<Row> {
+    const id = encodeURIComponent(String(kotMasterId).trim())
+    return api.post<Row>(`/pos/kot/${id}/covers`, { nofCustomer: covers })
+  }
+
+  /** TableFloorRuntimeFrmAreaChange.UpdateKotTable */
+  async changeKotTable(
+    kotMasterId: string | number,
+    payload: { tableId: number; areaId: number },
+  ): Promise<Row> {
+    const id = encodeURIComponent(String(kotMasterId).trim())
+    return api.post<Row>(`/pos/kot/${id}/change-table`, payload)
   }
 
   // ── Jobs / KOT (Kitchen Order Ticket) ──────────────────────────────────
@@ -243,15 +307,47 @@ class ApiService {
     dateFrom?: string
     dateTo?: string
     supplyType?: string
+    joinList?: boolean
+    kotExact?: boolean
   }): Promise<Row[]> {
     const res = await api.get<Row>(
       `/pos/kot/list${qs({
         areaId: opts?.areaId,
         search: opts?.search ?? opts?.jobNo,
         supplyType: opts?.supplyType,
+        joinList: opts?.joinList ? 1 : undefined,
+        kotExact: opts?.kotExact ? 1 : undefined,
       })}`,
     )
     return listOf(res, 'data')
+  }
+
+  /** KotJoinFrm.Join_Save_OldStyle */
+  async joinKots(payload: {
+    targetKotId: number
+    sourceKotIds: number[]
+    targetAreaId: number
+    targetTableId: number
+    finalPax: number
+  }): Promise<Row> {
+    return api.post<Row>('/pos/kot/join', payload)
+  }
+
+  /** KotSplitFrm.Split_Save_ToChair1_UsingKOTMasterClass */
+  async splitKot(payload: {
+    sourceKotId: number
+    targetAreaId: number
+    targetTableId: number
+    targetPax: number
+    items: Array<{
+      kotChildId: number
+      qty: number
+      subTotal: number
+      tax1Amount: number
+      lineTotal: number
+    }>
+  }): Promise<Row> {
+    return api.post<Row>('/pos/kot/split', payload)
   }
 
   async fetchKotDetails(kotMasterId: string): Promise<Row> {
@@ -267,6 +363,17 @@ class ApiService {
     return { success: res.ok !== false, ...res }
   }
 
+  /** btnReturn_Click → LoadSalesData(BillNO) for the current station/counter. */
+  async fetchSaleByBill(billNo: string | number): Promise<Row> {
+    const session = getPosSession()
+    return api.get<Row>(
+      `/pos/sales/by-bill/${encodeURIComponent(String(billNo).trim())}${qs({
+        stationId: session.stationId,
+        counterNo: session.counterNo,
+      })}`,
+    )
+  }
+
   // ── Sales viewer ───────────────────────────────────────────────────────
 
   async fetchSalesViewer(opts: {
@@ -276,13 +383,23 @@ class ApiService {
     search?: string
     customerId?: string
     counterNo?: number | string
+    billNo?: string | number
+    paymentMode?: string
+    areaId?: string | number
+    staffId?: string | number
   }): Promise<Row[]> {
+    const session = getPosSession()
     const res = await api.get<Row>(
       `/pos/sales/viewer${qs({
         dateFrom: opts.dateFrom,
         dateTo: opts.dateTo,
         customerId: opts.customerId,
         counterNo: opts.counterNo,
+        billNo: opts.billNo,
+        paymentMode: opts.paymentMode,
+        areaId: opts.areaId,
+        staffId: opts.staffId,
+        stationId: session.stationId,
       })}`,
     )
     const bills = listOf(res, 'bills')
@@ -298,8 +415,11 @@ class ApiService {
   }
 
   async fetchSalesViewerBill(salesId: string): Promise<Row> {
+    const session = getPosSession()
     const res = await api.get<Row>(
-      `/pos/sales/viewer/${encodeURIComponent(String(salesId).trim())}`,
+      `/pos/sales/viewer/${encodeURIComponent(String(salesId).trim())}${qs({
+        stationId: session.stationId,
+      })}`,
     )
     // `mapDeynoViewerBill` reads customer fields off the bill root, while the
     // server nests them under `customer`. Flatten rather than touch the shared
@@ -307,9 +427,9 @@ class ApiService {
     const customer = (res.customer as Row) ?? {}
     return {
       ...res,
-      customerId: customer.customerId ?? null,
-      customerCode: customer.customerCode ?? '',
-      customerName: customer.customerName ?? 'Walk-in',
+      customerId: customer.customerId ?? res.customerId ?? null,
+      customerCode: customer.customerCode ?? res.customerCode ?? '',
+      customerName: customer.customerName ?? res.customerName ?? 'Walk-in',
       address: customer.address ?? '',
       taxRegNo: customer.taxRegNo ?? '',
       mobileNo: customer.mobileNo ?? '',
@@ -403,9 +523,16 @@ class ApiService {
     counterNo?: number
     allStaff?: boolean
   }): Promise<Row> {
-    const counterNo = opts?.counterNo ?? getPosSession().counterNo
-    const res = await api.get<Row>(`/pos/counter/summary${qs({ counterNo })}`)
-    return { counterNo, ...res }
+    const session = getPosSession()
+    const counterNo = opts?.counterNo ?? session.counterNo
+    const res = await api.get<Row>(
+      `/pos/counter/summary${qs({
+        counterNo,
+        stationId: session.stationId,
+        allStaff: opts?.allStaff === false ? undefined : 1,
+      })}`,
+    )
+    return { counterNo, cashierName: 'ALL', ...res }
   }
 
   async closeCounter(opts: {
@@ -413,12 +540,17 @@ class ApiService {
     collectedCash: number
     counterNo?: number
     allStaff?: boolean
+    remarks?: string
   }): Promise<Row> {
-    const counterNo = opts.counterNo ?? getPosSession().counterNo
+    const session = getPosSession()
+    const counterNo = opts.counterNo ?? session.counterNo
     const res = await api.post<Row>('/pos/counter/close', {
       reportType: opts.reportType,
       collectedCash: opts.collectedCash,
       counterNo,
+      stationId: session.stationId,
+      allStaff: opts.allStaff === false ? false : true,
+      remarks: opts.remarks ?? '',
     })
     return { counterNo, billsClosed: res.billsClosed ?? res.billCount ?? 0, ...res }
   }
@@ -451,16 +583,59 @@ class ApiService {
     return listOf(res, 'areas')
   }
 
+  /** AreaMasterfrm.btnSave_Click */
+  async createArea(payload: Row): Promise<Row> {
+    return api.post<Row>('/areas', payload)
+  }
+
+  async updateArea(areaId: string | number, payload: Row): Promise<Row> {
+    return api.put<Row>(`/areas/${encodeURIComponent(String(areaId))}`, payload)
+  }
+
   async fetchTables(): Promise<RestaurantTable[]> {
     const res = await api.get<Row>('/tables')
     return listOf(res, 'tables').map((t) => ({
       id: String(t.tableId ?? t.TableID ?? ''),
       label: String(t.tableName ?? t.TableName ?? t.tableCode ?? ''),
+      tableNo: Number(t.tableNo ?? t.TableNo ?? 0) || 0,
       seats: Number(t.noOfChairs ?? t.seats ?? 0) || 0,
       areaId: Number(t.areaId ?? t.AreaID ?? 0) || 0,
       waiterId: Number(t.assignedWaiterId ?? t.WaiterID ?? t.waiterId ?? 0) || 0,
+      format: String(t.tableFormat ?? t.TableFormat ?? 'SQUARE').trim().toUpperCase() || 'SQUARE',
       status: 'available' as const,
     }))
+  }
+
+  async fetchTableMasterRows(): Promise<Row[]> {
+    const res = await api.get<Row>('/tables')
+    return listOf(res, 'tables')
+  }
+
+  /** TableMasterfrm.btnSave_Click */
+  async createTable(payload: Row): Promise<Row> {
+    return api.post<Row>('/tables', payload)
+  }
+
+  async updateTable(tableId: string | number, payload: Row): Promise<Row> {
+    return api.put<Row>(`/tables/${encodeURIComponent(String(tableId))}`, payload)
+  }
+
+  async nextTableNumber(): Promise<Row> {
+    return api.get<Row>('/tables/next-number')
+  }
+
+  async fetchWaiters(): Promise<Row[]> {
+    const res = await api.get<Row>('/tables/waiters')
+    return listOf(res, 'waiters')
+  }
+
+  /** TableFloorDesignerFrm load / save */
+  async fetchFloorDesign(areaId: string | number): Promise<Row> {
+    return api.get<Row>(`/floor-design/${encodeURIComponent(String(areaId))}`)
+  }
+
+  async saveFloorDesign(areaId: string | number, payload: Row): Promise<Row> {
+    return api.put<Row>(`/floor-design/${encodeURIComponent(String(areaId))}`, payload)
   }
 }
 
