@@ -188,6 +188,12 @@ class ApiService {
     return api.put<Row>(`/products/${encodeURIComponent(String(productId))}`, body)
   }
 
+  /** Unverified against a live server — mirrors deleteGroup's REST shape,
+   * since no product-delete caller existed anywhere in the app yet. */
+  async deleteProduct(productId: string | number): Promise<void> {
+    await api.delete(`/products/${encodeURIComponent(String(productId))}`)
+  }
+
   async fetchCustomers(opts?: { limit?: number; search?: string }): Promise<Row[]> {
     const res = await api.get<Row>(
       `/customers${qs({ limit: opts?.limit ?? 400, search: opts?.search })}`,

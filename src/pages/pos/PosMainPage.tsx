@@ -19,7 +19,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, ChevronDown, Hash, Home, LogOut, Search, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Zap, Banknote, Wallet, Smartphone, Globe, Gift, SplitSquareHorizontal, Ellipsis, QrCode, ArrowLeft, CircleCheck, Merge } from 'lucide-react'
+import { ChevronRight, ChevronDown, Hash, Home, LogOut, Search, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Smartphone, Globe, Gift, SplitSquareHorizontal, Ellipsis, QrCode, ArrowLeft, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, PanelLeftClose, PanelLeftOpen, Repeat, Package, SeparatorHorizontal } from 'lucide-react'
 import { SessionManager } from '../../utils/sessionManager'
 import { clearStaffSession } from '../../utils/pinLoginSession'
 import { getEnrollment } from '../../utils/deviceEnrollment'
@@ -30,6 +30,16 @@ import { Toast, type ToastKind } from '../../components/common/Toast'
 import './posMain.css'
 
 const NAV = ['New Sale', 'Edit', 'Transactions', 'Credit', 'Reports', 'Admin', 'Settings'] as const
+
+const NAV_ICON: Record<(typeof NAV)[number], ComponentType<{ size?: number; strokeWidth?: number }>> = {
+  'New Sale': Receipt,
+  Edit: Pencil,
+  Transactions: ArrowLeftRight,
+  Credit: CreditCard,
+  Reports: BarChart3,
+  Admin: ShieldCheck,
+  Settings: SettingsIcon,
+}
 const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const
 
 type SplitMethod = 'cash' | 'card' | 'qr'
@@ -168,7 +178,6 @@ const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> 
   ],
 }
 
-type StripLevel = 'group' | 'subgroup' | 'subsub'
 type Cat = { id: number; name: string; code: string }
 type SubCat = { id: number; name: string; groupId: number }
 type SubSubCat = { id: number; name: string; subGroupId: number }
@@ -184,6 +193,52 @@ type ProductTile = {
   taxAmount: number
   productType: string
 }
+/** "Add New Item" / edit-product modal draft — all number-ish fields stay
+ * as strings while editing so the input can be blank/partial mid-type. */
+type ProductForm = {
+  id: number
+  code: string
+  description: string
+  arabicDescription: string
+  groupId: number
+  groupName: string
+  subgroupId: number
+  subgroupName: string
+  kitchenLocation: string
+  kotPriority: string
+  unitCost: string
+  vatIn: string
+  unitPrice: string
+  vatOut: string
+  packQty: string
+  unit: string
+  qtyOnHand: string
+  productType: string
+  itemDescription: string
+}
+
+const BLANK_PRODUCT_FORM: ProductForm = {
+  id: 0,
+  code: '',
+  description: '',
+  arabicDescription: '',
+  groupId: 0,
+  groupName: '',
+  subgroupId: 0,
+  subgroupName: '',
+  kitchenLocation: '',
+  kotPriority: 'NORMAL',
+  unitCost: '',
+  vatIn: '5',
+  unitPrice: '',
+  vatOut: '5',
+  packQty: '1',
+  unit: 'PCS',
+  qtyOnHand: '',
+  productType: 'NORMAL',
+  itemDescription: '',
+}
+
 type TicketLine = {
   key: number
   productId: number
@@ -244,6 +299,10 @@ function money(n: number) {
 
 function round2(n: number) {
   return Math.round(n * 100) / 100
+}
+
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10)
 }
 
 function formatClock(d: Date) {
@@ -620,34 +679,55 @@ function QtyScrollPicker({
   )
 }
 
-/** Renders a nav dropdown's items, recursing into flyouts for entries that
- * carry `children` (which may themselves have further flyouts). */
-function NavMenuList({ entries, onPick }: { entries: readonly NavMenuEntry[]; onPick: (label: string) => void }) {
+/** Renders a nav item's submenu inline (accordion-style, indented under its
+ * parent) instead of a flyout — entries with `children` expand/collapse in
+ * place, tracked by a path string ("Reports/Reports A4/…") so each nesting
+ * level opens independently. */
+function NavMenuInline({
+  entries,
+  path,
+  depth,
+  expanded,
+  onToggle,
+  onPick,
+}: {
+  entries: readonly NavMenuEntry[]
+  path: string
+  depth: number
+  expanded: Set<string>
+  onToggle: (path: string) => void
+  onPick: (label: string) => void
+}) {
   return (
     <>
       {entries.map((entry) => {
-        if (typeof entry === 'string') {
-          return (
-            <button key={entry} type="button" className="pd-nav-menu-item" onClick={() => onPick(entry)}>
-              {entry}
-            </button>
-          )
-        }
-        if ('arrow' in entry) {
-          return (
-            <button key={entry.label} type="button" className="pd-nav-menu-item" onClick={() => onPick(entry.label)}>
-              <span>{entry.label}</span>
-              <ChevronRight size={13} className="pd-nav-menu-arrow" />
-            </button>
-          )
-        }
+        const label = typeof entry === 'string' ? entry : entry.label
+        const hasChildren = typeof entry !== 'string' && 'children' in entry
+        const itemPath = `${path}/${label}`
+        const isOpen = hasChildren && expanded.has(itemPath)
         return (
-          <div key={entry.label} className="pd-nav-menu-item pd-nav-menu-parent">
-            <span>{entry.label}</span>
-            <ChevronRight size={13} className="pd-nav-menu-arrow" />
-            <div className="pd-nav-submenu">
-              <NavMenuList entries={entry.children} onPick={onPick} />
-            </div>
+          <div key={itemPath} className="pd-subnav-item">
+            <button
+              type="button"
+              className={`pd-subnav-btn${isOpen ? ' is-open' : ''}`}
+              style={{ paddingLeft: 14 + depth * 14 }}
+              onClick={() => (hasChildren ? onToggle(itemPath) : onPick(label))}
+            >
+              <span>{label}</span>
+              {hasChildren ? (
+                <ChevronRight size={12} className="pd-subnav-arrow" />
+              ) : null}
+            </button>
+            {hasChildren && isOpen ? (
+              <NavMenuInline
+                entries={(entry as { children: readonly NavMenuEntry[] }).children}
+                path={itemPath}
+                depth={depth + 1}
+                expanded={expanded}
+                onToggle={onToggle}
+                onPick={onPick}
+              />
+            ) : null}
           </div>
         )
       })}
@@ -707,6 +787,8 @@ export default function PosMainPage() {
   const [notesHint, setNotesHint] = useState<string | null>(null)
   const [notesKind, setNotesKind] = useState<ToastKind>('error')
   const [openNavMenu, setOpenNavMenu] = useState<(typeof NAV)[number] | null>(null)
+  const [expandedSubPaths, setExpandedSubPaths] = useState<Set<string>>(() => new Set())
+  const [sideNavHidden, setSideNavHidden] = useState(true)
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; key: number } | null>(null)
   const [qtyChangeOpen, setQtyChangeOpen] = useState(false)
   const [qtyChangeKey, setQtyChangeKey] = useState<number | null>(null)
@@ -723,14 +805,19 @@ export default function PosMainPage() {
   const [movePicker, setMovePicker] = useState<{ key: number } | null>(null)
   const [moving, setMoving] = useState(false)
   const groupStripRef = useRef<HTMLDivElement | null>(null)
+  const gridWrapRef = useRef<HTMLDivElement | null>(null)
   const groupTouch = useRef({ active: false, pointerId: -1, startY: 0, lastY: 0, moved: false })
-  const [stripLevel, setStripLevel] = useState<StripLevel>('group')
   const [groupId, setGroupId] = useState<number | null>(null)
   const [subGroupId, setSubGroupId] = useState<number | null>(null)
   const [subSubGroupId, setSubSubGroupId] = useState<number | null>(null)
+  const [topMoveActive, setTopMoveActive] = useState(false)
+  const [topMoveProducts, setTopMoveProducts] = useState<ProductTile[]>([])
+  const [topMoveLoading, setTopMoveLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [lines, setLines] = useState<TicketLine[]>([])
   const [selectedLine, setSelectedLine] = useState<number | null>(null)
+  const [selectedKeys, setSelectedKeys] = useState<Set<number>>(() => new Set())
+  const [separatorAfterKeys, setSeparatorAfterKeys] = useState<Set<number>>(() => new Set())
   const [service, setService] = useState<ServiceKind>('DINE IN')
   const [entry, setEntry] = useState('')
   const [padQty, setPadQty] = useState('1')
@@ -765,18 +852,16 @@ export default function PosMainPage() {
   const [moreActionsOpen, setMoreActionsOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
 
-  // Split Payment — method → (optional tip) → amount entry, looping back to
-  // method selection until the bill is fully covered.
+  // Split Payment — method → amount entry (with an inline, optional tip
+  // toggle), looping back to method selection until the bill is covered.
   const [splitOpen, setSplitOpen] = useState(false)
-  const [splitStep, setSplitStep] = useState<'method' | 'tip' | 'entry' | 'done'>('method')
+  const [splitStep, setSplitStep] = useState<'method' | 'entry' | 'done'>('method')
   const [splitMethod, setSplitMethod] = useState<SplitMethod | null>(null)
   const [splitTip, setSplitTip] = useState<'none' | 'with' | null>(null)
   const [splitPaidInput, setSplitPaidInput] = useState('')
   const [splitTipInput, setSplitTipInput] = useState('')
   const [splitActiveField, setSplitActiveField] = useState<'paid' | 'tip'>('paid')
   const [splitPayments, setSplitPayments] = useState<SplitPayment[]>([])
-  // TODO: wire to a real "tips enabled" setting once one exists.
-  const splitTipEnabled = true
 
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentsDraft, setCommentsDraft] = useState('')
@@ -784,6 +869,29 @@ export default function PosMainPage() {
   const [customerSearch, setCustomerSearch] = useState('')
   const [customerRows, setCustomerRows] = useState<{ id: number; name: string; mobile: string }[]>([])
   const [customerState, setCustomerState] = useState<'idle' | 'loading'>('idle')
+
+  // Receipt lookup — "Receipt" quick action: find a credit customer, see
+  // their outstanding bills and recent payment history.
+  const [receiptOpen, setReceiptOpen] = useState(false)
+  const [receiptSearch, setReceiptSearch] = useState('')
+  const [receiptCustomers, setReceiptCustomers] = useState<{ id: number; code: string; name: string }[]>([])
+  const [receiptCustomersState, setReceiptCustomersState] = useState<'idle' | 'loading'>('idle')
+  const [receiptCustomerId, setReceiptCustomerId] = useState<number | null>(null)
+  const [receiptCustomerName, setReceiptCustomerName] = useState('')
+  const [receiptBills, setReceiptBills] = useState<{ date: string; billNo: string; amount: number; balance: number }[]>([])
+  const [receiptHistory, setReceiptHistory] = useState<{ date: string; type: string; amount: number }[]>([])
+  const [receiptDetailState, setReceiptDetailState] = useState<'idle' | 'loading' | 'error'>('idle')
+
+  // "Add New Item" — product master form, plus the group/subgroup picker
+  // it opens (the same picker serves both fields).
+  const [productOpen, setProductOpen] = useState(false)
+  const [productForm, setProductForm] = useState<ProductForm>(BLANK_PRODUCT_FORM)
+  const [productSaving, setProductSaving] = useState(false)
+  const [groupPickerFor, setGroupPickerFor] = useState<'group' | 'subgroup' | null>(null)
+  const [groupPickerSearch, setGroupPickerSearch] = useState('')
+  const [groupPickerRows, setGroupPickerRows] = useState<{ id: number; name: string; code: string }[]>([])
+  const [groupPickerState, setGroupPickerState] = useState<'idle' | 'loading'>('idle')
+
   const [isTablePopup, setIsTablePopup] = useState(0)
   const [isTablesBasedOnWaiter, setIsTablesBasedOnWaiter] = useState(0)
   const [tablePopupOpen, setTablePopupOpen] = useState(false)
@@ -806,10 +914,13 @@ export default function PosMainPage() {
     return () => window.clearTimeout(t)
   }, [notesHint])
 
+  // Keep the ticket list scrolled to the newest line — once it overflows its
+  // max-height (~6 rows), adding another item would otherwise leave it below
+  // the fold with no automatic scroll to reveal it.
   useEffect(() => {
-    const el = groupStripRef.current
-    if (el) el.scrollTop = 0
-  }, [stripLevel, groupId, subGroupId])
+    const el = gridWrapRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [lines.length])
 
   useEffect(() => {
     if (!qtyChangeOpen) return
@@ -841,13 +952,6 @@ export default function PosMainPage() {
   }, [rowMenu])
 
   useEffect(() => {
-    if (!openNavMenu) return
-    const close = () => setOpenNavMenu(null)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [openNavMenu])
-
-  useEffect(() => {
     if (!moreActionsOpen) return
     const close = () => setMoreActionsOpen(false)
     window.addEventListener('click', close)
@@ -874,7 +978,6 @@ export default function PosMainPage() {
         setAllSubGroups(mapSubGroups(subGroupRows).filter((s) => groupIds.has(s.groupId)))
         setAllSubSubGroups(mapSubSubGroups(subSubRows))
         setAllProducts(tiles)
-        setStripLevel('group')
         setGroupId(null)
         setSubGroupId(null)
         setSubSubGroupId(null)
@@ -951,33 +1054,30 @@ export default function PosMainPage() {
     [allSubSubGroups, subGroupId],
   )
 
-  const stripButtons = useMemo(() => {
-    if (stripLevel === 'subsub') return subSubs.map((s) => ({ id: s.id, name: s.name, kind: 'subsub' as const }))
-    if (stripLevel === 'subgroup') return groupSubs.map((s) => ({ id: s.id, name: s.name, kind: 'sub' as const }))
-    return groups.map((g) => ({ id: g.id, name: g.name, kind: 'group' as const }))
-  }, [stripLevel, subSubs, groupSubs, groups])
-
-  const activeStripId =
-    stripLevel === 'subsub' ? subSubGroupId : stripLevel === 'subgroup' ? subGroupId : groupId
-
   const crumb = useMemo(() => {
+    if (topMoveActive) return 'Top Move'
     const g = groups.find((x) => x.id === groupId)?.name
     const s = groupSubs.find((x) => x.id === subGroupId)?.name
     const ss = subSubs.find((x) => x.id === subSubGroupId)?.name
     return [g, s, ss].filter(Boolean).join(' > ')
-  }, [groups, groupSubs, subSubs, groupId, subGroupId, subSubGroupId])
+  }, [groups, groupSubs, subSubs, groupId, subGroupId, subSubGroupId, topMoveActive])
 
   const products = useMemo(() => {
     const q = query.trim().toLowerCase()
+    if (q) {
+      return allProducts.filter((p) =>
+        `${p.name} ${p.sub ?? ''} ${p.price}`.toLowerCase().includes(q),
+      )
+    }
+    if (topMoveActive) return topMoveProducts
     return allProducts.filter((p) => {
-      if (q) return `${p.name} ${p.sub ?? ''} ${p.price}`.toLowerCase().includes(q)
       if (groupId == null) return false
       if (p.groupId !== groupId) return false
       if (subGroupId != null && p.subgroupId !== subGroupId) return false
       if (subSubGroupId != null && p.subsubgroupId !== subSubGroupId) return false
       return true
     })
-  }, [allProducts, groupId, subGroupId, subSubGroupId, query])
+  }, [allProducts, groupId, subGroupId, subSubGroupId, query, topMoveActive, topMoveProducts])
 
   const summary = useMemo(() => computeSummary(lines), [lines])
 
@@ -1077,35 +1177,64 @@ export default function PosMainPage() {
     action()
   }
 
+  /** Selecting a group both loads its items and, if it has subgroups,
+   * expands them indented underneath it (inline accordion) — no more
+   * navigating to a separate subgroup "screen". */
   function onGroupClick(id: number) {
-    const subs = allSubGroups.filter((s) => s.groupId === id)
+    setTopMoveActive(false)
     setGroupId(id)
     setSubGroupId(null)
     setSubSubGroupId(null)
-    if (subs.length) {
-      setStripLevel('subgroup')
-    } else {
-      setStripLevel('group')
-    }
   }
 
   function onSubGroupClick(id: number) {
-    const next = allSubSubGroups.filter((s) => s.subGroupId === id)
+    setTopMoveActive(false)
     setSubGroupId(id)
     setSubSubGroupId(null)
-    if (next.length) setStripLevel('subsub')
-    else setStripLevel('subgroup')
   }
 
   function onSubSubClick(id: number) {
+    setTopMoveActive(false)
     setSubSubGroupId(id)
-    setStripLevel('subsub')
   }
 
-  function onBack() {
-    setStripLevel('group')
-    setSubGroupId(null)
-    setSubSubGroupId(null)
+  async function onTopMoveClick() {
+    if (topMoveActive) {
+      setTopMoveActive(false)
+      return
+    }
+    setTopMoveActive(true)
+    setQuery('')
+    setTopMoveLoading(true)
+    try {
+      const to = new Date()
+      const from = new Date(to)
+      from.setDate(from.getDate() - 30)
+      const rows = await apiService.fetchSalesReport('item-wise', {
+        dateFrom: isoDate(from),
+        dateTo: isoDate(to),
+      })
+      const qtyByProduct = new Map<number, number>()
+      for (const r of rows) {
+        const id = num(r.productId ?? r.ProductID ?? r.itemId ?? r.ItemID)
+        if (!id) continue
+        const qty = num(r.qty ?? r.quantity ?? r.Qty ?? r.totalQty ?? r.saleQty)
+        qtyByProduct.set(id, (qtyByProduct.get(id) ?? 0) + qty)
+      }
+      const byId = new Map(allProducts.map((p) => [p.id, p]))
+      const ranked = [...qtyByProduct.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([id]) => byId.get(id))
+        .filter((p): p is ProductTile => !!p)
+        .slice(0, 24)
+      setTopMoveProducts(ranked)
+      if (!ranked.length) toast('No top moving products found', 'info')
+    } catch {
+      toast('Could not load top moving products')
+      setTopMoveActive(false)
+    } finally {
+      setTopMoveLoading(false)
+    }
   }
 
   function onItemClick(p: ProductTile) {
@@ -1187,6 +1316,43 @@ export default function PosMainPage() {
     }
     setLines((prev) => prev.filter((l) => l.key !== key))
     setSelectedLine((prev) => (prev === key ? null : prev))
+  }
+
+  /** Tapping a row's # turns every row's # into a checkbox so several lines
+   * can be picked at once, then removed together with deleteSelectedLines. */
+  function toggleLineSelect(key: number) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function deleteSelectedLines() {
+    const blocked = lines.filter((l) => selectedKeys.has(l.key) && !l.kotPending).length
+    setLines((prev) => prev.filter((l) => !(selectedKeys.has(l.key) && l.kotPending)))
+    setSelectedKeys(new Set())
+    if (blocked) {
+      toast(`${blocked} item${blocked > 1 ? 's' : ''} already sent — use Item Cancel instead`)
+    }
+  }
+
+  /** "Add Line" button above the table — draws a divider after the
+   * currently selected row (or the last row, if none is selected) to mark
+   * a course/batch break. Clicking it again on the same row removes it. */
+  function toggleSeparatorAfterSelected() {
+    if (lines.length === 0) {
+      toast('Add an item first')
+      return
+    }
+    const key = selectedLine ?? lines[lines.length - 1].key
+    setSeparatorAfterKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   /** Opens the radial row menu centred on (x, y), clamped so its buttons never
@@ -1524,6 +1690,8 @@ export default function PosMainPage() {
     if (currentKotId <= 0) return
     setLines([])
     setSelectedLine(null)
+    setSelectedKeys(new Set())
+    setSeparatorAfterKeys(new Set())
     setCurrentKotId(0)
     setKotNo('')
     setKotPrefix('')
@@ -1609,6 +1777,11 @@ export default function PosMainPage() {
       return
     }
     applyArea(match, 0)
+    // applyArea infers the active tab from the area's own supplyType, which
+    // can disagree with pickAreaForService's more lenient name-based match
+    // (e.g. an area named "Takeaway" but tagged with a blank/other supply
+    // type) — set it explicitly so the TAKEAWAY tab actually highlights.
+    setService('TAKEAWAY')
     setRemarks('')
     hideTablePopup()
     resetOpenKotTicket()
@@ -1623,6 +1796,9 @@ export default function PosMainPage() {
       return
     }
     applyArea(match, 0)
+    // Same reasoning as takeAwayClick — don't rely solely on applyArea's
+    // supplyType-derived guess for which tab should be highlighted.
+    setService('DELIVERY')
     setRemarks('')
     hideTablePopup()
     resetOpenKotTicket()
@@ -1829,6 +2005,8 @@ export default function PosMainPage() {
   function clearData() {
     setLines([])
     setSelectedLine(null)
+    setSelectedKeys(new Set())
+    setSeparatorAfterKeys(new Set())
     setCurrentKotId(0)
     setKotNo('')
     setRemarks('')
@@ -1878,23 +2056,27 @@ export default function PosMainPage() {
     setSplitPaidInput('')
     setSplitTipInput('')
     setSplitActiveField('paid')
-    setSplitStep(splitTipEnabled ? 'tip' : 'entry')
-  }
-
-  function selectSplitTip(choice: 'none' | 'with') {
-    setSplitTip(choice)
-    setSplitActiveField(choice === 'with' ? 'tip' : 'paid')
     setSplitStep('entry')
   }
 
-  function splitBack() {
-    if (splitStep === 'tip') {
-      setSplitMethod(null)
-      setSplitStep('method')
-    } else if (splitStep === 'entry') {
+  /** "Add Tip" toggle on the amount-entry screen — expands/collapses the
+   * Tip Amount box inline instead of a separate step. */
+  function toggleSplitTip() {
+    if (splitTip === 'with') {
       setSplitTip(null)
-      setSplitStep(splitTipEnabled ? 'tip' : 'method')
-      if (!splitTipEnabled) setSplitMethod(null)
+      setSplitTipInput('')
+      setSplitActiveField('paid')
+    } else {
+      setSplitTip('with')
+      setSplitActiveField('tip')
+    }
+  }
+
+  function splitBack() {
+    if (splitStep === 'entry') {
+      setSplitMethod(null)
+      setSplitTip(null)
+      setSplitStep('method')
     }
   }
 
@@ -1992,6 +2174,8 @@ export default function PosMainPage() {
       setLines((prev) => [...prev, ...nextLines])
     } else {
       setLines(nextLines)
+      setSelectedKeys(new Set())
+      setSeparatorAfterKeys(new Set())
     }
     setSelectedLine(nextLines[nextLines.length - 1]?.key ?? null)
     setCurrentKotId(num(first.KotMasterID ?? first.kotMasterID))
@@ -2177,10 +2361,17 @@ export default function PosMainPage() {
 
   /** btnOrderList_Click — always load as NEW (no combine). */
   function onOrderListClick() {
+    openOrderListFor('ALL')
+  }
+
+  /** Double-clicking a service tab (TAKEAWAY) jumps straight to its filtered
+   * Order List instead of making the cashier open More > Order List and
+   * pick the filter chip by hand. */
+  function openOrderListFor(supply: 'ALL' | ServiceKind) {
     setOrderListSearch('')
-    setOrderListSupply('ALL')
+    setOrderListSupply(supply)
     setOrderListOpen(true)
-    void loadOrderList('ALL', '')
+    void loadOrderList(supply, '')
   }
 
   /** DisplayKOT — Order List and table load. AppendItems=0 replaces; =1 keeps NEW lines.
@@ -2222,63 +2413,287 @@ export default function PosMainPage() {
     }
   }
 
+  async function loadReceiptCustomers(search = receiptSearch) {
+    setReceiptCustomersState('loading')
+    try {
+      const rows = await apiService.fetchCreditSettlementCustomers({
+        search: search.trim() || undefined,
+        limit: 80,
+      })
+      setReceiptCustomers(
+        rows.map((c) => ({
+          id: num(c.customerId ?? c.CustomerID ?? c.id),
+          code: String(c.customerCode ?? c.CustomerCode ?? c.code ?? '').trim(),
+          name: String(c.customerName ?? c.CustomerName ?? c.name ?? '').trim(),
+        })).filter((c) => c.id > 0 && c.name),
+      )
+    } catch {
+      setReceiptCustomers([])
+    } finally {
+      setReceiptCustomersState('idle')
+    }
+  }
+
+  /** The outstanding-bills / history payload shapes aren't documented
+   * server-side, so pull the row list out from whichever wrapper key (or a
+   * bare array) the API actually returns. */
+  function rowsFrom(payload: unknown, keys: string[]): Record<string, unknown>[] {
+    if (Array.isArray(payload)) return payload as Record<string, unknown>[]
+    const obj = asRow(payload)
+    for (const k of keys) {
+      const v = obj[k]
+      if (Array.isArray(v)) return v as Record<string, unknown>[]
+    }
+    return []
+  }
+
+  async function selectReceiptCustomer(c: { id: number; name: string }) {
+    setReceiptCustomerId(c.id)
+    setReceiptCustomerName(c.name)
+    setReceiptDetailState('loading')
+    try {
+      const [billsRaw, historyRows] = await Promise.all([
+        apiService.fetchCustomerOutstandingBills(String(c.id)),
+        apiService.fetchCreditSettlementHistory({ customerId: String(c.id), limit: 20 }),
+      ])
+      setReceiptBills(
+        rowsFrom(billsRaw, ['bills', 'data', 'rows']).map((b) => ({
+          date: String(b.billDate ?? b.BillDate ?? b.date ?? '').trim(),
+          billNo: String(b.billNo ?? b.BillNo ?? b.billNoDisplay ?? '').trim(),
+          amount: num(b.billAmount ?? b.BillAmount ?? b.amount),
+          balance: num(b.billOsBalance ?? b.BillOsBalance ?? b.osBalance ?? b.balance),
+        })),
+      )
+      setReceiptHistory(
+        historyRows.map((h) => ({
+          date: String(h.transactionDate ?? h.TransactionDate ?? h.date ?? h.trnsDate ?? '').trim(),
+          type: String(h.transactionType ?? h.TransactionType ?? h.type ?? h.paymentMode ?? '').trim(),
+          amount: num(h.amount ?? h.Amount ?? h.transAmount),
+        })),
+      )
+      setReceiptDetailState('idle')
+    } catch {
+      setReceiptBills([])
+      setReceiptHistory([])
+      setReceiptDetailState('error')
+    }
+  }
+
+  async function reloadProducts() {
+    try {
+      const rows = await apiService.fetchProducts({ limit: 2000 })
+      const groupIds = new Set(groups.map((g) => g.id))
+      setAllProducts(mapProducts(rows).filter((p) => (groupIds.size ? groupIds.has(p.groupId) : true)))
+    } catch {
+      // Keep whatever was already loaded — the modal already told the user
+      // whether the save/delete itself succeeded.
+    }
+  }
+
+  function openNewProductModal() {
+    setProductForm(BLANK_PRODUCT_FORM)
+    setProductOpen(true)
+  }
+
+  /** "New Code" — no next-code endpoint exists yet, so this is a simple
+   * timestamp-based placeholder the user can still edit by hand. */
+  function generateNewProductCode() {
+    setProductForm((f) => ({ ...f, code: `ITM${Date.now().toString().slice(-8)}` }))
+  }
+
+  async function loadGroupPickerRows(kind: 'group' | 'subgroup', search: string) {
+    setGroupPickerState('loading')
+    try {
+      if (kind === 'group') {
+        const rows = await apiService.fetchGroups()
+        const q = search.trim().toLowerCase()
+        setGroupPickerRows(
+          rows
+            .map((g) => ({
+              id: num(g.groupId ?? g.GroupID),
+              name: String(g.groupDescription ?? g.GroupDescription ?? g.groupName ?? '').trim(),
+              code: String(g.groupCode ?? g.GroupCode ?? '').trim(),
+            }))
+            .filter((g) => g.id > 0 && g.name)
+            .filter((g) => !q || g.name.toLowerCase().includes(q) || g.code.toLowerCase().includes(q)),
+        )
+      } else {
+        const rows = await apiService.fetchSubGroups({ groupId: productForm.groupId || undefined })
+        const q = search.trim().toLowerCase()
+        setGroupPickerRows(
+          rows
+            .map((s) => ({
+              id: num(s.subGroupId ?? s.SubGroupID),
+              name: String(s.subGroupDescription ?? s.SubGroupDescription ?? '').trim(),
+              code: String(s.subGroupCode ?? s.SubGroupCode ?? '').trim(),
+            }))
+            .filter((s) => s.id > 0 && s.name)
+            .filter((s) => !q || s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)),
+        )
+      }
+    } catch {
+      setGroupPickerRows([])
+    } finally {
+      setGroupPickerState('idle')
+    }
+  }
+
+  function openGroupPicker(kind: 'group' | 'subgroup') {
+    if (kind === 'subgroup' && !productForm.groupId) {
+      toast('Pick a Group first')
+      return
+    }
+    setGroupPickerFor(kind)
+    setGroupPickerSearch('')
+    void loadGroupPickerRows(kind, '')
+  }
+
+  function pickGroupPickerRow(row: { id: number; name: string }) {
+    if (groupPickerFor === 'group') {
+      setProductForm((f) => ({ ...f, groupId: row.id, groupName: row.name, subgroupId: 0, subgroupName: '' }))
+    } else if (groupPickerFor === 'subgroup') {
+      setProductForm((f) => ({ ...f, subgroupId: row.id, subgroupName: row.name }))
+    }
+    setGroupPickerFor(null)
+  }
+
+  function withVat(base: string, vatPct: string): string {
+    const b = Number(base)
+    const v = Number(vatPct)
+    if (!Number.isFinite(b) || b <= 0) return '0.00'
+    return money(b * (1 + (Number.isFinite(v) ? v : 0) / 100))
+  }
+
+  async function saveProductForm() {
+    if (!productForm.description.trim()) {
+      toast('Enter a Description')
+      return
+    }
+    if (!productForm.groupId) {
+      toast('Pick a Group')
+      return
+    }
+    if (!(Number(productForm.unitPrice) > 0)) {
+      toast('Enter a Unit Price')
+      return
+    }
+    setProductSaving(true)
+    try {
+      const payload = {
+        productCode: productForm.code.trim() || undefined,
+        productName: productForm.description.trim(),
+        arabicName: productForm.arabicDescription.trim(),
+        groupId: productForm.groupId,
+        subgroupId: productForm.subgroupId || undefined,
+        kitchenLocation: productForm.kitchenLocation.trim(),
+        kotPriority: productForm.kotPriority,
+        unitCost: Number(productForm.unitCost) || 0,
+        tax1Rate: Number(productForm.vatIn) || 0,
+        unitPrice: Number(productForm.unitPrice) || 0,
+        outputTax1Rate: Number(productForm.vatOut) || 0,
+        packQty: Number(productForm.packQty) || 1,
+        unit: productForm.unit,
+        productType: productForm.productType,
+        description: productForm.itemDescription.trim(),
+      }
+      if (productForm.id > 0) {
+        await apiService.updateProduct(productForm.id, payload)
+      } else {
+        await apiService.createProduct(payload)
+      }
+      toast('Item saved', 'success')
+      setProductOpen(false)
+      void reloadProducts()
+    } catch {
+      toast('Could not save the item')
+    } finally {
+      setProductSaving(false)
+    }
+  }
+
+  function toggleSubPath(path: string) {
+    setExpandedSubPaths((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  /** One sidebar nav item — icon + label, expanding its submenu inline
+   * (indented underneath, accordion-style) rather than a flyout. */
+  function renderNavItem(item: (typeof NAV)[number]) {
+    const menu = NAV_MENUS[item]
+    const ItemIcon = NAV_ICON[item]
+    const isOpen = openNavMenu === item
+    const button = (
+      <button
+        type="button"
+        className={`pd-side-nav-btn${item === nav ? ' is-active' : ''}`}
+        onClick={() => {
+          if (menu) setOpenNavMenu((open) => (open === item ? null : item))
+          setNav(item)
+        }}
+      >
+        <ItemIcon size={18} strokeWidth={2} />
+        <span>{item}</span>
+        {menu ? <ChevronRight size={13} className={`pd-side-nav-arrow${isOpen ? ' is-open' : ''}`} /> : null}
+      </button>
+    )
+    if (!menu) {
+      return (
+        <div key={item} className="pd-side-nav-wrap">
+          {button}
+        </div>
+      )
+    }
+    return (
+      <div key={item} className="pd-side-nav-wrap">
+        {button}
+        {isOpen ? (
+          <div className="pd-subnav">
+            <NavMenuInline
+              entries={menu}
+              path={item}
+              depth={0}
+              expanded={expandedSubPaths}
+              onToggle={toggleSubPath}
+              onPick={(label) => {
+                toast(`${label} — coming soon`, 'info')
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   const emptyHint =
     query.trim()
       ? 'No matching items'
-      : groupId == null
-        ? 'Select a group'
-        : 'No items in this category'
+      : topMoveActive
+        ? topMoveLoading
+          ? 'Loading top moving items…'
+          : 'No top moving products found'
+        : groupId == null
+          ? 'Select a group'
+          : 'No items in this category'
 
   return (
     <div className="pos-main">
-      <header className="pd-header">
+      <header className="pd-header pd-header-slim">
         <div className="pd-logo">
           <img src="/logo-white.png" alt="Deyno" className="pd-logo-img" />
           <span>PRO</span>
         </div>
-        <nav className="pd-nav">
-          {NAV.map((item) => {
-            const menu = NAV_MENUS[item]
-            if (!menu) {
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  className={`pd-nav-btn${item === nav ? ' is-active' : ''}`}
-                  onClick={() => setNav(item)}
-                >
-                  {item}
-                </button>
-              )
-            }
-            return (
-              <div key={item} className="pd-nav-menu-wrap">
-                <button
-                  type="button"
-                  className={`pd-nav-btn${item === nav ? ' is-active' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setNav(item)
-                    setOpenNavMenu((open) => (open === item ? null : item))
-                  }}
-                >
-                  {item}
-                </button>
-                {openNavMenu === item ? (
-                  <div className="pd-nav-menu" onClick={(e) => e.stopPropagation()}>
-                    <NavMenuList
-                      entries={menu}
-                      onPick={(label) => {
-                        setOpenNavMenu(null)
-                        toast(`${label} — coming soon`, 'info')
-                      }}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            )
-          })}
-        </nav>
+        <button
+          type="button"
+          className="pd-nav-toggle"
+          title={sideNavHidden ? 'Show menu' : 'Hide menu'}
+          onClick={() => setSideNavHidden((v) => !v)}
+        >
+          {sideNavHidden ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
         <div className="pd-header-right">
           <div className="pd-user">
             <strong>{waiter.toUpperCase()}</strong>
@@ -2297,6 +2712,16 @@ export default function PosMainPage() {
           </button>
         </div>
       </header>
+
+      <div className="pd-shell">
+        {sideNavHidden ? null : (
+          <>
+            <div className="pd-side-nav-backdrop" onClick={() => setSideNavHidden(true)} />
+            <nav className="pd-side-nav">
+              {NAV.map((item) => renderNavItem(item))}
+            </nav>
+          </>
+        )}
 
       <div className="pd-main">
         <section className="pd-panel">
@@ -2341,11 +2766,39 @@ export default function PosMainPage() {
             </div>
           </div>
 
-          <div className="pd-grid-wrap">
+          {selectedKeys.size > 0 ? (
+            <div className="pd-select-bar">
+              <span>{selectedKeys.size} selected</span>
+              <button type="button" className="pd-select-bar-cancel" onClick={() => setSelectedKeys(new Set())}>
+                Cancel
+              </button>
+              <button type="button" className="pd-select-bar-delete" onClick={deleteSelectedLines}>
+                <Trash2 size={13} /> Delete
+              </button>
+            </div>
+          ) : null}
+
+          <div className="pd-grid-wrap" ref={gridWrapRef}>
             <table className="pd-grid">
               <thead>
                 <tr>
-                  <th className="col-no">#</th>
+                  <th className="col-no">
+                    {selectedKeys.size > 0 ? (
+                      <input
+                        type="checkbox"
+                        className="pd-row-check"
+                        aria-label="Select all"
+                        checked={lines.length > 0 && lines.every((l) => selectedKeys.has(l.key))}
+                        onChange={() =>
+                          setSelectedKeys((prev) =>
+                            prev.size === lines.length ? new Set() : new Set(lines.map((l) => l.key)),
+                          )
+                        }
+                      />
+                    ) : (
+                      '#'
+                    )}
+                  </th>
                   <th className="col-item">Item</th>
                   <th className="col-qty num">Qty</th>
                   <th className="col-money num">Price</th>
@@ -2358,10 +2811,15 @@ export default function PosMainPage() {
               <tbody>
                 {lines.length === 0 ? (
                   <tr className="pd-empty-row">
-                    <td colSpan={8}>Tap an item to add it to the ticket</td>
+                    <td colSpan={8}>
+                      <div className="pd-empty-state">
+                        <img src="/logo-dark.png" alt="" className="pd-empty-logo" />
+                      </div>
+                    </td>
                   </tr>
                 ) : (
-                  lines.map((line, i) => (
+                  lines.flatMap((line, i) => {
+                    const row = (
                     <tr
                       key={line.key}
                       className={selectedLine === line.key ? 'is-selected' : undefined}
@@ -2376,7 +2834,26 @@ export default function PosMainPage() {
                         openRowMenuAt(e.clientX, e.clientY, line.key)
                       }}
                     >
-                      <td className="col-no">{i + 1}</td>
+                      <td
+                        className="col-no"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleLineSelect(line.key)
+                        }}
+                      >
+                        {selectedKeys.size > 0 ? (
+                          <input
+                            type="checkbox"
+                            className="pd-row-check"
+                            aria-label={`Select row ${i + 1}`}
+                            checked={selectedKeys.has(line.key)}
+                            onChange={() => toggleLineSelect(line.key)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          i + 1
+                        )}
+                      </td>
                       <td className="col-item">
                         <span className="pd-item-name">{line.item}</span>
                         {line.modifiers ? (
@@ -2411,11 +2888,34 @@ export default function PosMainPage() {
                         </button>
                       </td>
                     </tr>
-                  ))
+                    )
+                    if (!separatorAfterKeys.has(line.key)) return [row]
+                    return [
+                      row,
+                      <tr key={`sep-${line.key}`} className="pd-line-sep" aria-hidden="true">
+                        <td colSpan={8}>
+                          <hr />
+                        </td>
+                      </tr>,
+                    ]
+                  })
                 )}
               </tbody>
             </table>
           </div>
+
+          {lines.length > 0 ? (
+            <div className="pd-line-bar">
+              <button
+                type="button"
+                className="pd-line-add"
+                onClick={toggleSeparatorAfterSelected}
+                title="Draw a line after the selected row"
+              >
+                <SeparatorHorizontal size={13} /> Add Line
+              </button>
+            </div>
+          ) : null}
 
           <div className="pd-foot">
             <div className="pd-summary">
@@ -2471,6 +2971,10 @@ export default function PosMainPage() {
                   type="button"
                   className={`pd-service-btn${service === s.id ? ' is-active' : ''}`}
                   onClick={() => onServiceClick(s.id)}
+                  onDoubleClick={() => {
+                    if (s.id === 'TAKEAWAY') openOrderListFor('TAKEAWAY')
+                  }}
+                  title={s.id === 'TAKEAWAY' ? 'Double-click for the Takeaway list' : undefined}
                 >
                   <BtnIcon icon={s.icon} />
                   <span className="pd-service-label">{s.id}</span>
@@ -2529,6 +3033,15 @@ export default function PosMainPage() {
 
         <div className="pd-catalogue-body">
         <aside className="pd-cat-col">
+          <button
+            type="button"
+            className={`pd-cat pd-top-move${topMoveActive ? ' is-active' : ''}`}
+            onClick={onTopMoveClick}
+            disabled={topMoveLoading}
+          >
+            <Star size={13} strokeWidth={2} />
+            <span className="pd-cat-label">{topMoveLoading ? 'Loading…' : 'Top Move'}</span>
+          </button>
           <div
             ref={groupStripRef}
             className="pd-cats"
@@ -2537,38 +3050,63 @@ export default function PosMainPage() {
             onPointerUp={onGroupStripPointerUp}
             onPointerCancel={onGroupStripPointerUp}
           >
-            {stripButtons.map((c) => {
-              const CatIcon = categoryIcon(c.name)
+            {groups.map((g) => {
+              const GroupIcon = categoryIcon(g.name)
+              const isGroupOn = groupId === g.id
               return (
-                <button
-                  key={`${c.kind}-${c.id}`}
-                  type="button"
-                  className={`pd-cat${c.kind !== 'group' ? ' is-sub' : ''}${activeStripId === c.id ? ' is-active' : ''}`}
-                  onClick={() =>
-                    onStripTap(() => {
-                      if (c.kind === 'group') onGroupClick(c.id)
-                      else if (c.kind === 'sub') onSubGroupClick(c.id)
-                      else onSubSubClick(c.id)
-                    })
-                  }
-                >
-                  <CatIcon size={13} strokeWidth={2} />
-                  <span className="pd-cat-label">{c.name.toLowerCase()}</span>
-                </button>
+                <div key={g.id} className="pd-cat-branch">
+                  <button
+                    type="button"
+                    className={`pd-cat${isGroupOn ? ' is-active' : ''}`}
+                    onClick={() => onStripTap(() => onGroupClick(g.id))}
+                  >
+                    <GroupIcon size={13} strokeWidth={2} />
+                    <span className="pd-cat-label">{g.name.toLowerCase()}</span>
+                  </button>
+                  {/* Subgroups expand indented under their group instead of
+                     replacing the list with a new "screen". */}
+                  {isGroupOn && groupSubs.length ? (
+                    <div className="pd-subcat-list">
+                      {groupSubs.map((s) => {
+                        const SubIcon = categoryIcon(s.name)
+                        const isSubOn = subGroupId === s.id
+                        return (
+                          <div key={s.id} className="pd-cat-branch">
+                            <button
+                              type="button"
+                              className={`pd-cat is-sub${isSubOn ? ' is-active' : ''}`}
+                              onClick={() => onStripTap(() => onSubGroupClick(s.id))}
+                            >
+                              <SubIcon size={12} strokeWidth={2} />
+                              <span className="pd-cat-label">{s.name.toLowerCase()}</span>
+                            </button>
+                            {isSubOn && subSubs.length ? (
+                              <div className="pd-subcat-list pd-subsubcat-list">
+                                {subSubs.map((ss) => {
+                                  const SubSubIcon = categoryIcon(ss.name)
+                                  return (
+                                    <button
+                                      key={ss.id}
+                                      type="button"
+                                      className={`pd-cat is-sub${subSubGroupId === ss.id ? ' is-active' : ''}`}
+                                      onClick={() => onStripTap(() => onSubSubClick(ss.id))}
+                                    >
+                                      <SubSubIcon size={11} strokeWidth={2} />
+                                      <span className="pd-cat-label">{ss.name.toLowerCase()}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </div>
               )
             })}
           </div>
-          {stripLevel !== 'group' ? (
-            <button type="button" className="pd-cat pd-back" onClick={onBack}>
-              <ChevronLeft size={14} />
-              <span className="pd-cat-label">Back</span>
-            </button>
-          ) : (
-            <button type="button" className="pd-cat pd-top-move">
-              <Star size={13} strokeWidth={2} />
-              <span className="pd-cat-label">Top Move</span>
-            </button>
-          )}
         </aside>
 
         <div className="pd-right">
@@ -2692,12 +3230,10 @@ export default function PosMainPage() {
               <>
               {products.map((p) => (
                   <button key={p.id} type="button" className="pd-product" onClick={() => onItemClick(p)}>
-                    <span className="pd-product-name">
-                      {p.name.toLowerCase()}
-                      {p.sub && p.sub !== p.name ? (
-                        <span className="pd-product-sub">{p.sub.toLowerCase()}</span>
-                      ) : null}
-                    </span>
+                    <span className="pd-product-name">{p.name.toLowerCase()}</span>
+                    {p.sub && p.sub !== p.name ? (
+                      <span className="pd-product-sub">{p.sub.toLowerCase()}</span>
+                    ) : null}
                     <span className="pd-product-foot">
                       <span className="pd-product-price">AED {money(p.price)}</span>
                     </span>
@@ -2706,7 +3242,7 @@ export default function PosMainPage() {
               <button
                 type="button"
                 className="pd-product pd-product-add"
-                onClick={() => toast('Add New Item — coming soon')}
+                onClick={openNewProductModal}
               >
                 <span className="pd-product-add-icon" aria-hidden>
                   <Plus size={18} strokeWidth={2.4} />
@@ -2725,7 +3261,7 @@ export default function PosMainPage() {
                 <div className="pd-entry">
                   <span>{entry || '0'}</span>
                   <button type="button" className="pd-entry-qty" onClick={onQtyClick}>
-                    QTY {padQty}
+                    QTY{padQty !== '1' ? ` ${padQty}` : ''}
                   </button>
                 </div>
                 <NumberKeypad onKey={onKey} />
@@ -2733,31 +3269,40 @@ export default function PosMainPage() {
 
               <div className="pd-group-btns">
                 <div className="pd-quick-actions">
-                  <button
-                    type="button"
-                    className="pd-act"
-                    onClick={() => void onSaveKot()}
-                    disabled={savingKot}
-                  >
-                    <BtnIcon icon={Save} /> <span>{savingKot ? 'Saving…' : 'Save KOT'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="pd-act"
-                    onClick={() => void onSaveKot()}
-                    disabled={savingKot}
-                  >
-                    <BtnIcon icon={Zap} /> <span>Quick KOT</span>
+                  <button type="button" className="pd-act" onClick={() => setAreaOpen(true)}>
+                    <BtnIcon icon={MapPinned} /> <span>Area Change</span>
                   </button>
                   <button
                     type="button"
                     className="pd-act"
                     onClick={() => {
-                      setCommentsDraft(remarks)
-                      setCommentsOpen(true)
+                      setReceiptOpen(true)
+                      void loadReceiptCustomers('')
                     }}
                   >
-                    <BtnIcon icon={MessageSquare} /> <span>Comments</span>
+                    <BtnIcon icon={Receipt} /> <span>Receipt</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="pd-act"
+                    onClick={() => toast('KOT Join — coming soon', 'info')}
+                  >
+                    <BtnIcon icon={Merge} /> <span>KOT Join</span>
+                  </button>
+                  <button type="button" className="pd-act">
+                    <BtnIcon icon={FileText} /> <span>Dummy Bill</span>
+                  </button>
+                  <button type="button" className="pd-act">
+                    <BtnIcon icon={CircleOff} /> <span>No Sale</span>
+                  </button>
+                  <button type="button" className="pd-act">
+                    <BtnIcon icon={Package} /> <span>Delivery</span>
+                  </button>
+                  <button type="button" className="pd-act" onClick={onOrderListClick}>
+                    <BtnIcon icon={ClipboardList} /> <span>Order List</span>
+                  </button>
+                  <button type="button" className="pd-act">
+                    <BtnIcon icon={RotateCcw} /> <span>Return</span>
                   </button>
 
                   <div className="pd-more-wrap">
@@ -2777,11 +3322,8 @@ export default function PosMainPage() {
                       // menu background) should bubble to the window listener
                       // below and close the menu, same as an outside click.
                       <div className="pd-more-menu">
-                        <button type="button" className="pd-more-item" onClick={onOrderListClick}>
-                          <BtnIcon icon={ClipboardList} /> <span>Order List</span>
-                        </button>
                         <button type="button" className="pd-more-item">
-                          <BtnIcon icon={Percent} /> <span>Discount</span>
+                          <BtnIcon icon={Repeat} /> <span>KOT Reprint</span>
                         </button>
                         <button type="button" className="pd-more-item">
                           <BtnIcon icon={Printer} /> <span>Print Bill</span>
@@ -2789,18 +3331,17 @@ export default function PosMainPage() {
                         <button type="button" className="pd-more-item">
                           <BtnIcon icon={FileText} /> <span>Dummy Bill</span>
                         </button>
-                        <button type="button" className="pd-more-item is-danger">
-                          <BtnIcon icon={Ban} /> <span>Cancel Bill</span>
+                        <button type="button" className="pd-more-item">
+                          <BtnIcon icon={ShoppingBag} /> <span>Takeaway List</span>
                         </button>
-                        <button type="button" className="pd-more-item" onClick={onQtyClick}>
-                          <BtnIcon icon={Hash} />
-                          <span>Qty{padQty !== '1' ? ` ${padQty}` : ''}</span>
+                        <button type="button" className="pd-more-item">
+                          <BtnIcon icon={ClipboardList} /> <span>Delivery List</span>
+                        </button>
+                        <button type="button" className="pd-more-item">
+                          <BtnIcon icon={Package} /> <span>Delivery</span>
                         </button>
                         <button type="button" className="pd-more-item">
                           <BtnIcon icon={CircleOff} /> <span>No Sale</span>
-                        </button>
-                        <button type="button" className="pd-more-item">
-                          <BtnIcon icon={RotateCcw} /> <span>Return</span>
                         </button>
                         <button type="button" className="pd-more-item is-danger">
                           <BtnIcon icon={MinusCircle} /> <span>Item Cancel</span>
@@ -2826,27 +3367,38 @@ export default function PosMainPage() {
             {/* Corner strip — the 4 buttons used constantly mid-service,
                pinned as a full-height column so they never hide behind "More". */}
             <div className="pd-corner-actions">
-              <button type="button" className="pd-corner-btn" onClick={() => setAreaOpen(true)}>
-                <BtnIcon icon={MapPinned} />
-                <span>Area Change</span>
+              <button
+                type="button"
+                className="pd-corner-btn"
+                onClick={() => void onSaveKot()}
+                disabled={savingKot}
+              >
+                <BtnIcon icon={Save} />
+                <span>{savingKot ? 'Saving…' : 'Save KOT'}</span>
+              </button>
+              <button
+                type="button"
+                className="pd-corner-btn"
+                onClick={() => void onSaveKot()}
+                disabled={savingKot}
+              >
+                <BtnIcon icon={Banknote} />
+                <span>Quick Cash</span>
               </button>
               <button type="button" className="pd-corner-btn">
-                <BtnIcon icon={Receipt} />
-                <span>Receipt</span>
+                <BtnIcon icon={Percent} />
+                <span>Discount</span>
               </button>
-              <button type="button" className="pd-corner-btn" onClick={() => toast('KOT Join — coming soon', 'info')}>
-                <BtnIcon icon={Merge} />
-                <span>KOT Join</span>
-              </button>
-              <button type="button" className="pd-corner-btn">
-                <BtnIcon icon={Printer} />
-                <span>KOT Print</span>
+              <button type="button" className="pd-corner-btn is-danger">
+                <BtnIcon icon={Ban} />
+                <span>Cancel Bill</span>
               </button>
             </div>
           </div>
         </div>
         </div>
         </section>
+      </div>
       </div>
 
       <footer className="pd-status">
@@ -3226,7 +3778,7 @@ export default function PosMainPage() {
             if (e.target === e.currentTarget) setPayOpen(false)
           }}
         >
-          <div className="pd-ol-dialog pd-ol-narrow" role="dialog" aria-modal="true">
+          <div className="pd-ol-dialog pd-pay-dialog" role="dialog" aria-modal="true">
             <div className="pd-mod-header">
               <div className="pd-mod-header-left">
                 <div className="pd-mod-header-icon">
@@ -3280,7 +3832,7 @@ export default function PosMainPage() {
           <div className="pd-ol-dialog pd-ol-narrow pd-split-dialog" role="dialog" aria-modal="true">
             <div className="pd-mod-header">
               <div className="pd-mod-header-left">
-                {splitStep === 'tip' || splitStep === 'entry' ? (
+                {splitStep === 'entry' ? (
                   <button type="button" className="pd-mod-back" onClick={splitBack} aria-label="Back">
                     <ArrowLeft size={16} />
                   </button>
@@ -3293,7 +3845,6 @@ export default function PosMainPage() {
                   <p className="pd-mod-kicker">Split Payment</p>
                   <h2 className="pd-mod-item-name">
                     {splitStep === 'method' && 'Select Payment Method'}
-                    {splitStep === 'tip' && 'Add a Tip?'}
                     {splitStep === 'entry' && 'Enter Amount'}
                     {splitStep === 'done' && 'Payment Complete'}
                   </h2>
@@ -3340,25 +3891,27 @@ export default function PosMainPage() {
                 </div>
               ) : null}
 
-              {splitStep === 'tip' ? (
-                <div className="pd-split-tip">
-                  <p className="pd-split-tip-q">Would you like to add a tip?</p>
-                  <div className="pd-split-tip-grid">
-                    <button type="button" className="pd-split-tip-btn" onClick={() => selectSplitTip('none')}>
-                      Without Tip
-                    </button>
-                    <button type="button" className="pd-split-tip-btn is-brand" onClick={() => selectSplitTip('with')}>
-                      With Tip
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-
               {splitStep === 'entry' && splitMethod ? (
                 <div className="pd-split-entry">
-                  <div className="pd-split-method-pill">
-                    <BtnIcon icon={SPLIT_METHODS.find((m) => m.id === splitMethod)?.icon ?? Banknote} />
-                    <span>{SPLIT_METHODS.find((m) => m.id === splitMethod)?.label}</span>
+                  <div className="pd-split-toprow">
+                    <button
+                      type="button"
+                      className="pd-split-full-btn"
+                      onClick={() => {
+                        setSplitPaidInput(splitRemainingAmount().toFixed(2))
+                        setSplitActiveField('paid')
+                      }}
+                    >
+                      Pay Full Remaining (AED {money(splitRemainingAmount())})
+                    </button>
+                    <button
+                      type="button"
+                      className={`pd-split-tip-add${splitTip === 'with' ? ' is-on' : ''}`}
+                      onClick={toggleSplitTip}
+                    >
+                      {splitTip === 'with' ? <X size={14} /> : <Plus size={14} />}
+                      {splitTip === 'with' ? 'Remove Tip' : 'Add Tip'}
+                    </button>
                   </div>
 
                   <button
@@ -3370,17 +3923,6 @@ export default function PosMainPage() {
                     <span className="pd-split-amount-val">
                       <em>AED</em> {splitPaidInput || '0.00'}
                     </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="pd-split-full-btn"
-                    onClick={() => {
-                      setSplitPaidInput(splitRemainingAmount().toFixed(2))
-                      setSplitActiveField('paid')
-                    }}
-                  >
-                    Pay Full Remaining (AED {money(splitRemainingAmount())})
                   </button>
 
                   {splitTip === 'with' ? (
@@ -3711,6 +4253,433 @@ export default function PosMainPage() {
                   >
                     <strong>{c.name}</strong>
                     <span>{c.mobile || '—'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {receiptOpen ? (
+        <div
+          className="pd-mod-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setReceiptOpen(false)
+          }}
+        >
+          <div className="pd-ol-dialog pd-ol-wide pd-receipt-dialog" role="dialog" aria-modal="true">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <Receipt size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">Customer Lookup</p>
+                  <h2 className="pd-mod-item-name">{receiptCustomerName || 'Select a customer'}</h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={() => setReceiptOpen(false)} aria-label="Close">
+                <X size={13} />
+              </button>
+            </div>
+            <div className="pd-receipt-body">
+              <div className="pd-receipt-list-col">
+                <label className="pd-search">
+                  <Search size={14} color="var(--text-3)" />
+                  <input
+                    value={receiptSearch}
+                    onChange={(e) => setReceiptSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void loadReceiptCustomers(e.currentTarget.value)
+                    }}
+                    placeholder="Search customer / code"
+                  />
+                  {receiptSearch ? (
+                    <button
+                      type="button"
+                      className="pd-search-clear"
+                      aria-label="Clear search"
+                      onClick={() => {
+                        setReceiptSearch('')
+                        void loadReceiptCustomers('')
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : null}
+                </label>
+                <div className="pd-ol-list">
+                  {receiptCustomersState === 'loading' ? <p className="pd-cat-msg">Loading…</p> : null}
+                  {receiptCustomersState === 'idle' && receiptCustomers.length === 0 ? (
+                    <p className="pd-cat-msg">No customers found</p>
+                  ) : null}
+                  {receiptCustomers.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`pd-ol-row${receiptCustomerId === c.id ? ' is-on' : ''}`}
+                      onClick={() => void selectReceiptCustomer(c)}
+                    >
+                      <strong>{c.name}</strong>
+                      <span>{c.code || '—'}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pd-receipt-detail-col">
+                {!receiptCustomerId ? (
+                  <p className="pd-cat-msg">Select a customer to see their bills and payments</p>
+                ) : (
+                  <>
+                    <section className="pd-receipt-section">
+                      <h3>Outstanding Bills</h3>
+                      {receiptDetailState === 'loading' ? <p className="pd-cat-msg">Loading…</p> : null}
+                      {receiptDetailState === 'error' ? (
+                        <p className="pd-cat-msg">Could not load bills</p>
+                      ) : null}
+                      {receiptDetailState === 'idle' && receiptBills.length === 0 ? (
+                        <p className="pd-cat-msg">No outstanding bills</p>
+                      ) : null}
+                      {receiptBills.length ? (
+                        <div className="pd-receipt-rows">
+                          {receiptBills.map((b, i) => (
+                            <div key={i} className="pd-receipt-row">
+                              <span className="pd-receipt-row-main">
+                                <strong>{b.billNo || '—'}</strong>
+                                <small>{b.date || '—'}</small>
+                              </span>
+                              <span className="pd-receipt-row-amt">
+                                AED {money(b.amount)}
+                                <small>Bal {money(b.balance)}</small>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+
+                    <section className="pd-receipt-section">
+                      <h3>Recent Transactions</h3>
+                      {receiptDetailState === 'idle' && receiptHistory.length === 0 ? (
+                        <p className="pd-cat-msg">No transactions yet</p>
+                      ) : null}
+                      {receiptHistory.length ? (
+                        <div className="pd-receipt-rows">
+                          {receiptHistory.map((h, i) => (
+                            <div key={i} className="pd-receipt-row">
+                              <span className="pd-receipt-row-main">
+                                <strong>{h.type || 'Payment'}</strong>
+                                <small>{h.date || '—'}</small>
+                              </span>
+                              <span className="pd-receipt-row-amt">AED {money(h.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+
+                    <div className="pd-receipt-actions">
+                      <button
+                        type="button"
+                        className="pd-mod-foot-btn"
+                        onClick={() => toast('Print Outstanding — coming soon', 'info')}
+                      >
+                        Print Outstanding
+                      </button>
+                      <button
+                        type="button"
+                        className="pd-mod-foot-btn is-ok"
+                        onClick={() => toast('Receipt Summary — coming soon', 'info')}
+                      >
+                        Receipt Summary
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {productOpen ? (
+        <div
+          className="pd-mod-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setProductOpen(false)
+          }}
+        >
+          <div className="pd-ol-dialog pd-product-dialog" role="dialog" aria-modal="true">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <Package size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">Product Master</p>
+                  <h2 className="pd-mod-item-name">{productForm.id > 0 ? 'Edit Item' : 'New Item'}</h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={() => setProductOpen(false)} aria-label="Close">
+                <X size={13} />
+              </button>
+            </div>
+
+            <div className="pd-product-body">
+              <div className="pd-form-row">
+                <label>Item Code</label>
+                <div className="pd-form-code">
+                  <input
+                    value={productForm.code}
+                    onChange={(e) => setProductForm((f) => ({ ...f, code: e.target.value }))}
+                    placeholder="Auto or enter manually"
+                  />
+                  <button type="button" className="pd-form-code-btn" onClick={generateNewProductCode}>
+                    New Code
+                  </button>
+                </div>
+              </div>
+
+              <div className="pd-form-row">
+                <label>Description</label>
+                <input
+                  value={productForm.description}
+                  onChange={(e) => setProductForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Item name"
+                />
+              </div>
+
+              <div className="pd-form-row">
+                <label>Arabic Description</label>
+                <input
+                  dir="rtl"
+                  value={productForm.arabicDescription}
+                  onChange={(e) => setProductForm((f) => ({ ...f, arabicDescription: e.target.value }))}
+                />
+              </div>
+
+              <div className="pd-form-grid-2">
+                <div className="pd-form-row">
+                  <label>Group</label>
+                  <button type="button" className="pd-form-picker" onClick={() => openGroupPicker('group')}>
+                    <span>{productForm.groupName || 'Select group'}</span>
+                    <Search size={13} />
+                  </button>
+                </div>
+                <div className="pd-form-row">
+                  <label>SubGroup</label>
+                  <button type="button" className="pd-form-picker" onClick={() => openGroupPicker('subgroup')}>
+                    <span>{productForm.subgroupName || 'Select subgroup'}</span>
+                    <Search size={13} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="pd-form-grid-2">
+                <div className="pd-form-row">
+                  <label>Kitchen Location</label>
+                  <input
+                    value={productForm.kitchenLocation}
+                    onChange={(e) => setProductForm((f) => ({ ...f, kitchenLocation: e.target.value }))}
+                  />
+                </div>
+                <div className="pd-form-row">
+                  <label>KOT Priority</label>
+                  <select
+                    value={productForm.kotPriority}
+                    onChange={(e) => setProductForm((f) => ({ ...f, kotPriority: e.target.value }))}
+                  >
+                    <option value="NORMAL">NORMAL</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="LOW">LOW</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pd-form-grid-2">
+                <div className="pd-form-row">
+                  <label>Unit Cost</label>
+                  <input
+                    inputMode="decimal"
+                    value={productForm.unitCost}
+                    onChange={(e) =>
+                      setProductForm((f) => ({ ...f, unitCost: e.target.value.replace(/[^\d.]/g, '') }))
+                    }
+                  />
+                </div>
+                <div className="pd-form-row">
+                  <label>VAT (IN) %</label>
+                  <div className="pd-form-vat-pair">
+                    <input
+                      inputMode="decimal"
+                      value={productForm.vatIn}
+                      onChange={(e) =>
+                        setProductForm((f) => ({ ...f, vatIn: e.target.value.replace(/[^\d.]/g, '') }))
+                      }
+                    />
+                    <span className="pd-form-computed">AED {withVat(productForm.unitCost, productForm.vatIn)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pd-form-grid-2">
+                <div className="pd-form-row">
+                  <label>Unit Price</label>
+                  <input
+                    inputMode="decimal"
+                    value={productForm.unitPrice}
+                    onChange={(e) =>
+                      setProductForm((f) => ({ ...f, unitPrice: e.target.value.replace(/[^\d.]/g, '') }))
+                    }
+                  />
+                </div>
+                <div className="pd-form-row">
+                  <label>VAT (OUT) %</label>
+                  <div className="pd-form-vat-pair">
+                    <input
+                      inputMode="decimal"
+                      value={productForm.vatOut}
+                      onChange={(e) =>
+                        setProductForm((f) => ({ ...f, vatOut: e.target.value.replace(/[^\d.]/g, '') }))
+                      }
+                    />
+                    <span className="pd-form-computed">
+                      AED {withVat(productForm.unitPrice, productForm.vatOut)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pd-form-grid-3">
+                <div className="pd-form-row">
+                  <label>Pack Qty</label>
+                  <input
+                    inputMode="numeric"
+                    value={productForm.packQty}
+                    onChange={(e) =>
+                      setProductForm((f) => ({ ...f, packQty: e.target.value.replace(/[^\d]/g, '') }))
+                    }
+                  />
+                </div>
+                <div className="pd-form-row">
+                  <label>Unit</label>
+                  <select
+                    value={productForm.unit}
+                    onChange={(e) => setProductForm((f) => ({ ...f, unit: e.target.value }))}
+                  >
+                    <option value="PCS">PCS</option>
+                    <option value="KG">KG</option>
+                    <option value="LTR">LTR</option>
+                    <option value="BOX">BOX</option>
+                  </select>
+                </div>
+                <div className="pd-form-row">
+                  <label>Qty On Hand</label>
+                  <input value={productForm.qtyOnHand} readOnly placeholder="—" />
+                </div>
+              </div>
+
+              <div className="pd-form-row">
+                <label>Product Type</label>
+                <select
+                  value={productForm.productType}
+                  onChange={(e) => setProductForm((f) => ({ ...f, productType: e.target.value }))}
+                >
+                  <option value="NORMAL">NORMAL</option>
+                  <option value="COMBO">COMBO</option>
+                </select>
+              </div>
+
+              <div className="pd-form-row">
+                <label>Item Description</label>
+                <textarea
+                  rows={3}
+                  value={productForm.itemDescription}
+                  onChange={(e) => setProductForm((f) => ({ ...f, itemDescription: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="pd-product-modal-foot">
+              <button type="button" className="pd-mod-foot-btn" onClick={() => setProductOpen(false)}>
+                Close
+              </button>
+              <button
+                type="button"
+                className="pd-mod-foot-btn is-ok"
+                disabled={productSaving}
+                onClick={() => void saveProductForm()}
+              >
+                {productSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {groupPickerFor ? (
+        <div
+          className="pd-mod-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setGroupPickerFor(null)
+          }}
+        >
+          <div className="pd-ol-dialog pd-ol-narrow" role="dialog" aria-modal="true">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <Search size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">Search</p>
+                  <h2 className="pd-mod-item-name">
+                    {groupPickerFor === 'group' ? 'Select Group' : 'Select SubGroup'}
+                  </h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={() => setGroupPickerFor(null)} aria-label="Close">
+                <X size={13} />
+              </button>
+            </div>
+            <div className="pd-ol-body">
+              <label className="pd-search">
+                <Search size={14} color="var(--text-3)" />
+                <input
+                  value={groupPickerSearch}
+                  onChange={(e) => setGroupPickerSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && groupPickerFor) void loadGroupPickerRows(groupPickerFor, e.currentTarget.value)
+                  }}
+                  placeholder="Search description / code"
+                />
+                {groupPickerSearch ? (
+                  <button
+                    type="button"
+                    className="pd-search-clear"
+                    aria-label="Clear search"
+                    onClick={() => {
+                      setGroupPickerSearch('')
+                      if (groupPickerFor) void loadGroupPickerRows(groupPickerFor, '')
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                ) : null}
+              </label>
+              <div className="pd-ol-list">
+                {groupPickerState === 'loading' ? <p className="pd-cat-msg">Loading…</p> : null}
+                {groupPickerState === 'idle' && groupPickerRows.length === 0 ? (
+                  <p className="pd-cat-msg">No matches</p>
+                ) : null}
+                {groupPickerRows.map((row) => (
+                  <button key={row.id} type="button" className="pd-ol-row" onClick={() => pickGroupPickerRow(row)}>
+                    <strong>{row.name}</strong>
+                    <span>{row.code || '—'}</span>
                   </button>
                 ))}
               </div>

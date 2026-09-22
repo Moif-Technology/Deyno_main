@@ -17,6 +17,10 @@
   --pd-warn: var(--amber);
   --pd-gap: 8px;
   --pd-pad: 8px;
+  /* Darker start than the base --brand for more depth on gradient buttons
+     and the header, without fading the end toward a pale/washed tone. */
+  --pd-grad-start: color-mix(in srgb, var(--brand) 82%, black);
+  --pd-grad-end: var(--brand-2);
 
   width: 100vw;
   height: 100vh;
@@ -45,7 +49,7 @@
 .pd-header {
   flex: 0 0 var(--header-h);
   height: var(--header-h);
-  background: linear-gradient(145deg, var(--brand) 0%, var(--brand-2) 100%);
+  background: linear-gradient(145deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   color: #fff;
   display: flex;
   align-items: center;
@@ -79,111 +83,197 @@
   padding: 1px 5px;
 }
 
-.pd-nav {
+/* Header carries only the logo + user/logout now — nav moved to the side
+   rail below, so it can shrink a bit for a more compact, modern look. */
+.pd-header-slim {
+  height: 46px;
+  flex-basis: 46px;
+}
+
+/* Sidebar hide/show — lives in the header so it's reachable even when the
+   rail itself is gone, and reads distinctly from the plain round --pd-power
+   button (rounded-square chip, faint fill, own hover tint). */
+.pd-nav-toggle {
+  width: 34px;
+  height: 30px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+}
+
+.pd-nav-toggle:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.pd-nav-toggle:active {
+  transform: scale(0.94);
+}
+
+/* ── Side nav — an overlay, not part of the layout. It floats above every
+   section (fixed + high z-index) with a blurred backdrop behind it, so
+   opening it never resizes or pushes pd-main. */
+.pd-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.pd-side-nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(20, 16, 20, 0.22);
+  animation: fadeIn 0.18s ease;
+}
+
+.pd-side-nav {
+  position: fixed;
+  top: 10px;
+  bottom: 10px;
+  left: 10px;
+  z-index: 95;
+  width: 168px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 4px;
+  padding: 10px 8px;
+  border-radius: var(--r-lg);
+  /* Glass effect — translucent, blurred fill over whatever is behind it. */
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  animation: pdSideNavIn 0.2s cubic-bezier(.22, .68, 0, 1.2);
+}
+
+@keyframes pdSideNavIn {
+  from { opacity: 0; transform: translateX(-14px) scale(0.97); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.pd-side-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.pd-side-nav-wrap {
+  position: relative;
+}
+
+.pd-side-nav-btn {
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  color: var(--pd-text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  line-height: 1.15;
+  text-align: left;
+  white-space: normal;
+  transition: background 0.12s, color 0.12s;
+}
+
+.pd-side-nav-btn span {
   flex: 1;
   min-width: 0;
 }
 
-.pd-nav-btn {
-  height: 32px;
-  padding: 0 12px;
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 13px;
-  font-weight: 400;
-  border-radius: var(--r-sm);
-  border-bottom: 2px solid transparent;
-  transition: background 0.12s, color 0.12s;
+.pd-side-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--pd-text);
 }
 
-.pd-nav-btn.is-active {
+.pd-side-nav-btn.is-active {
+  background: var(--brand);
   color: #fff;
-  font-weight: 500;
-  background: rgba(255, 255, 255, 0.14);
-  border-bottom-color: #fff;
+  font-weight: 700;
 }
 
-.pd-nav-menu-wrap {
-  position: relative;
+.pd-side-nav-arrow {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
 }
 
-.pd-nav-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 70;
-  min-width: 210px;
-  padding: 4px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-lg);
+.pd-side-nav-arrow.is-open {
+  transform: rotate(90deg);
+}
+
+/* ── Inline submenu — expands under its parent (accordion), indented by
+   depth, instead of a flyout box. */
+.pd-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 4px;
+}
+
+.pd-subnav-item {
   display: flex;
   flex-direction: column;
 }
 
-.pd-nav-menu-item {
-  position: relative;
+.pd-subnav-btn {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  padding: 5px 10px;
-  border-radius: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 10px;
   background: transparent;
-  color: var(--text-1);
-  font-size: 13px;
+  color: var(--pd-text-2);
+  font-size: 11px;
   font-weight: 600;
   text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
+  white-space: normal;
+  transition: background 0.12s, color 0.12s;
 }
 
-.pd-nav-menu-item:hover {
-  background: #d5e6fb;
-}
-
-.pd-nav-menu-arrow {
-  flex-shrink: 0;
-  color: var(--text-3);
-}
-
-.pd-nav-menu-parent {
-  padding: 0;
-}
-
-.pd-nav-menu-parent > span {
+.pd-subnav-btn span {
   flex: 1;
-  padding: 5px 10px;
+  min-width: 0;
 }
 
-.pd-nav-menu-parent > svg {
-  margin-right: 8px;
+.pd-subnav-btn:hover {
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--pd-text);
 }
 
-.pd-nav-submenu {
-  position: absolute;
-  left: 100%;
-  top: -4px;
-  min-width: 170px;
-  padding: 4px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-lg);
-  display: none;
-  flex-direction: column;
+.pd-subnav-btn.is-open {
+  color: var(--pd-text);
+  font-weight: 700;
 }
 
-.pd-nav-menu-parent:hover {
-  background: #d5e6fb;
+.pd-subnav-arrow {
+  flex-shrink: 0;
+  color: var(--pd-text-3, var(--pd-text-2));
+  transition: transform 0.15s ease;
 }
 
-.pd-nav-menu-parent:hover .pd-nav-submenu {
-  display: flex;
+.pd-subnav-btn.is-open .pd-subnav-arrow {
+  transform: rotate(90deg);
 }
 
 .pd-header-right {
@@ -219,18 +309,19 @@
   justify-content: center;
   color: #fff;
   border-radius: var(--r-sm);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  background: transparent;
   transition: background 0.12s;
 }
 
 .pd-power:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(0, 0, 0, 0.15);
 }
 
 /* ── Workspace ──────────────────────────────────────────── */
 .pd-main {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 35fr) minmax(0, 65fr);
@@ -318,6 +409,7 @@
 }
 
 .pd-grid-wrap {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   max-height: 384px;
@@ -390,11 +482,101 @@
   font-weight: 600;
 }
 
-.pd-grid .col-no { width: 30px; color: var(--pd-text-2); font-weight: 700; }
+.pd-grid .col-no { width: 30px; color: var(--pd-text-2); font-weight: 700; cursor: pointer; }
 .pd-grid .col-item { width: auto; white-space: normal; height: auto; overflow: hidden; }
 .pd-grid .col-qty { width: 56px; }
 .pd-grid .col-money { width: 68px; }
 .pd-grid .col-menu { width: 32px; padding: 0 2px; text-align: center; }
+
+.pd-row-check {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+/* Selection toolbar — appears above the ticket table once any row's # has
+   been tapped into a checkbox. */
+.pd-select-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border-radius: var(--r-sm);
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-border);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pd-select-bar-cancel {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--pd-border);
+  background: #fff;
+  color: var(--pd-text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pd-select-bar-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--red-border);
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* "Add Line" — a fixed bar between the (scrollable) table and the
+   Items/Qty/Total summary footer, so it stays visible without scrolling
+   the ticket no matter how many rows it has. Draws/removes a divider
+   after the selected row (see .pd-line-sep further up in tbody). */
+.pd-line-bar {
+  flex: 0 0 auto;
+  display: flex;
+  margin-top: 6px;
+}
+
+.pd-line-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  border-radius: var(--r-sm);
+  border: 1.5px dashed var(--pd-border);
+  background: transparent;
+  color: var(--pd-text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pd-line-add:hover {
+  background: var(--brand-bg);
+  border-color: var(--brand-border);
+  border-style: solid;
+  color: var(--brand);
+}
+
+.pd-grid tbody tr.pd-line-sep td {
+  padding: 2px 10px;
+  height: auto;
+}
+
+.pd-line-sep hr {
+  border: none;
+  border-top: 1.5px dashed var(--brand-border);
+  margin: 4px 0;
+}
 
 .pd-item-name,
 .pd-item-mod {
@@ -451,10 +633,31 @@
 .pd-grid tbody tr.pd-empty-row td {
   text-align: center;
   color: var(--text-3);
-  padding: 28px 8px;
+  padding: 0;
   font-size: 13px;
   font-weight: 600;
   border-radius: var(--r-lg);
+}
+
+/* Absolutely positioned over the whole scroll area (not just this table
+   row) so the logo centers in the full panel regardless of row height. */
+.pd-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.pd-empty-logo {
+  width: min(160px, 40%);
+  height: auto;
+  opacity: 0.1;
+  pointer-events: none;
+  user-select: none;
 }
 
 .pd-foot {
@@ -567,7 +770,7 @@
 }
 
 .pd-chip.is-primary {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   border-color: transparent;
   color: #fff;
   box-shadow: 0 4px 14px rgba(107, 0, 0, 0.22);
@@ -611,7 +814,7 @@
 }
 
 .pd-service-btn.is-active {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   border-color: transparent;
   color: #fff;
   box-shadow: 0 4px 14px rgba(107, 0, 0, 0.22);
@@ -886,7 +1089,7 @@
 }
 
 .pd-seat.is-on {
-  box-shadow: 0 0 0 2px #007aff, 0 8px 20px rgba(0, 122, 255, 0.18);
+  box-shadow: 0 0 0 2px var(--brand), 0 8px 20px var(--brand-glow);
 }
 
 .pd-seat-name {
@@ -923,14 +1126,17 @@
   border-radius: 16px;
 }
 
+/* Modernized to the app's flat brand/amber tokens instead of the old
+   washed-out ad-hoc gradients, so takeaway/delivery tiles read consistently
+   with the rest of the UI (product tiles, chips, category buttons, etc). */
 .pd-seat-order .pd-seat-glyph {
-  color: #400000;
-  background: linear-gradient(180deg, #fff 0%, #f3e9e9 100%);
+  color: var(--brand);
+  background: var(--brand-bg);
 }
 
 .pd-seat-order.is-delivery .pd-seat-glyph {
-  color: #b45309;
-  background: linear-gradient(180deg, #fff8e7 0%, #fde9c4 100%);
+  color: var(--amber);
+  background: var(--amber-bg);
 }
 
 .pd-tbl-pax {
@@ -1154,8 +1360,8 @@
   align-items: center;
   gap: 8px;
   border-radius: 14px;
-  border: 1.5px solid var(--pd-border);
-  background: var(--pd-surface);
+  border: 1px solid var(--brand-tint);
+  background: linear-gradient(180deg, #fff 0%, var(--brand-bg) 100%);
   color: var(--pd-text);
   font-size: 11px;
   font-weight: 700;
@@ -1173,8 +1379,8 @@
 }
 
 .pd-cat:hover {
-  background: var(--surface-2);
-  border-color: var(--border-2);
+  background: var(--brand-bg);
+  border-color: var(--brand-border);
 }
 
 .pd-cat.is-active:hover {
@@ -1203,7 +1409,6 @@
 .pd-cat.pd-top-move {
   flex-shrink: 0;
   height: 48px;
-  margin-top: 6px;
   background: var(--brand-bg);
   border-color: var(--brand-border);
   color: var(--brand);
@@ -1217,13 +1422,24 @@
   border-color: var(--brand-border);
 }
 
-.pd-cat.pd-back {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 40px;
-  background: var(--pd-surface);
+/* Each group's row plus its (optional) inline-expanded subgroup list. */
+.pd-cat-branch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pd-subcat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+  padding-left: 14px;
+  border-left: 2px solid var(--brand-tint);
+}
+
+.pd-subsubcat-list {
+  padding-left: 12px;
 }
 
 .pd-products {
@@ -1237,17 +1453,22 @@
 }
 
 .pd-product {
+  /* One vh-based formula for every screen instead of fixed per-breakpoint
+     pixel values — scales down on short viewports, up on tall ones. The
+     floor is tall enough to actually fit 2 real lines of the name plus the
+     price row (see .pd-product-name) — a shorter floor was clipping the
+     2nd line before the line-clamp's own ellipsis ever got a chance. */
   position: relative;
-  min-height: 76px;
-  padding: 8px 10px;
-  border-radius: 16px;
+  min-height: clamp(46px, 6.2vh, 62px);
+  padding: clamp(4px, 0.7vh, 7px) clamp(5px, 0.8vh, 8px);
+  border-radius: 6px;
   border: 1.5px solid var(--brand-tint);
   background: var(--pd-surface);
   text-align: left;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 4px;
+  gap: 3px;
   box-shadow: var(--shadow-xs);
   transition: background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.1s;
 }
@@ -1263,32 +1484,45 @@
 }
 
 .pd-product-name {
-  font-size: 14px;
+  /* Back to a real 2-line clamp — .pd-product's min-height now reserves
+     enough room for 2 full lines + the price row, so long names wrap to a
+     clean 2nd line (or "…" if even that overflows) instead of being cut
+     off mid-word by a container that was too short to hold them. */
+  font-size: clamp(9px, 1.1vh, 12px);
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.25;
   color: var(--pd-text);
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.3px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* Explicit 2-line height in em, tied to this element's own font-size —
+     without it, browsers can under-report a line-clamped box's natural
+     height inside a CSS Grid item, so the grid row gets sized too short
+     and the real 2nd line spills out past the card's visible border. */
+  min-height: calc(1.25em * 2);
+  flex-shrink: 0;
 }
 
 .pd-product-sub {
   display: block;
-  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(7.5px, 0.9vh, 9.5px);
   font-weight: 700;
   color: var(--brand);
   font-family: var(--font-sans);
   text-transform: uppercase;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 
 .pd-product-price {
-  font-size: 14px;
+  font-size: clamp(9px, 1.1vh, 12px);
   font-weight: 800;
   color: var(--brand);
   font-family: var(--font-sans);
@@ -1374,10 +1608,12 @@
   height: 100%;
 }
 
-/* Quick action grid — Save KOT / Quick KOT / Comments share row 1; More
-   gets its own row 2 underneath, spanning the full width. */
+/* Quick action grid — see the 3x3 layout note below. */
 .pd-quick-actions {
   display: grid;
+  /* 9 items exactly fill a clean 3x3 grid: row 1 is Area Change, Receipt,
+     KOT Join; row 2 is Dummy Bill, No Sale, Delivery; row 3 is Order List,
+     Return, More. Keep this count in sync with the buttons rendered here. */
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-rows: 1fr;
   flex: 1;
@@ -1392,7 +1628,6 @@
 
 .pd-more-wrap {
   position: relative;
-  grid-column: 1 / -1;
   display: flex;
   align-items: stretch;
 }
@@ -1418,10 +1653,13 @@
   width: max-content;
   max-width: min(360px, 80vw);
   padding: 8px;
-  border: 1px solid var(--pd-border);
+  border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: var(--r-lg);
-  background: var(--surface-2);
-  box-shadow: var(--shadow-md);
+  /* Glass effect, matching the side nav's floating panel treatment. */
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: var(--shadow-lg);
   animation: toastPopUp 0.16s cubic-bezier(.22, .68, 0, 1.2);
 }
 
@@ -1507,33 +1745,45 @@
   border: 1.5px solid var(--pd-border);
   background: #fff;
   color: var(--pd-text-2);
-  font-size: 9px;
+  font-size: clamp(11px, 1.6vh, 15px);
   font-weight: 800;
   line-height: 1.15;
   text-align: center;
-  box-shadow: var(--shadow-xs);
-  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.1s;
+  box-shadow: var(--shadow-md);
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.1s, box-shadow 0.12s;
 }
 
 .pd-corner-btn .pd-btn-ic {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
+  width: clamp(32px, 4.4vh, 48px);
+  height: clamp(32px, 4.4vh, 48px);
+  border-radius: 11px;
 }
 
 .pd-corner-btn .pd-btn-ic svg {
-  width: 12px;
-  height: 12px;
+  width: clamp(19px, 2.6vh, 28px);
+  height: clamp(19px, 2.6vh, 28px);
 }
 
 .pd-corner-btn:hover {
   background: var(--brand-bg);
   border-color: var(--brand-border);
   color: var(--brand);
+  box-shadow: var(--shadow-lg);
 }
 
 .pd-corner-btn:active {
   transform: scale(0.96);
+  box-shadow: var(--shadow-xs);
+}
+
+.pd-corner-btn.is-danger {
+  color: var(--red);
+  background: var(--red-bg);
+  border-color: var(--red-border);
+}
+
+.pd-corner-btn.is-danger:hover {
+  background: #fee2e2;
 }
 
 .pd-act {
@@ -1547,13 +1797,15 @@
   border: 1.5px solid var(--pd-border);
   background: #fff;
   color: var(--pd-text);
-  font-size: 10px;
+  /* Still a touch smaller than .pd-corner-btn's text (Save KOT/Quick
+     KOT/Discount) so those keep reading as the more important actions. */
+  font-size: clamp(10px, 1.4vh, 13px);
   font-weight: 800;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 8px;
   text-align: center;
   line-height: 1.15;
   box-shadow: var(--shadow-xs);
@@ -1561,14 +1813,14 @@
 }
 
 .pd-group-btns .pd-btn-ic {
-  width: 26px;
-  height: 26px;
+  width: clamp(18px, 2.4vh, 26px);
+  height: clamp(18px, 2.4vh, 26px);
   border-radius: 8px;
 }
 
 .pd-group-btns .pd-btn-ic svg {
-  width: 16px;
-  height: 16px;
+  width: clamp(11px, 1.4vh, 15px);
+  height: clamp(11px, 1.4vh, 15px);
 }
 
 /* Save KOT / Quick KOT / Comments / More — square boxes instead of the
@@ -1644,7 +1896,7 @@
 
 .pd-keypad-wrap {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 8px;
   align-items: stretch;
 }
@@ -1659,16 +1911,18 @@
 .pd-keys {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
+  gap: 7px;
 }
 
 .pd-key {
-  height: clamp(36px, 5vh, 44px);
-  max-height: 44px;
+  /* One formula for every screen size/height instead of separate fixed
+     pixel values per breakpoint (which were silently fighting each other
+     depending on which media query happened to match last). */
+  height: clamp(34px, 5.8vh, 62px);
   border-radius: 14px;
   border: 1px solid rgba(0, 0, 0, 0.14);
   background: var(--pd-surface);
-  font-size: 17px;
+  font-size: clamp(14px, 2vh, 22px);
   font-weight: 800;
   font-family: var(--font-sans);
   color: var(--text-1);
@@ -1693,12 +1947,11 @@
 /* PAY sits in the left half of the bottom row; the corner-action stack
    fills the right half, divided by a vertical rule. */
 .pd-pay {
-  height: 48px;
-  max-height: 56px;
+  height: clamp(34px, 4.6vh, 44px);
   border-radius: var(--r-lg);
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   color: #fff;
-  font-size: 16px;
+  font-size: clamp(13px, 1.7vh, 16px);
   font-weight: 800;
   letter-spacing: 0.6px;
   display: flex;
@@ -1717,35 +1970,41 @@
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+  font-size: clamp(12px, 1.5vh, 15px);
 }
 
 .pd-entry {
-  height: 28px;
-  border-radius: var(--r-sm);
+  height: clamp(34px, 4.6vh, 48px);
+  border-radius: var(--r-md);
   border: 1.5px solid var(--pd-border);
   background: var(--surface-2);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
+  gap: 6px;
+  padding: 0 6px 0 12px;
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
-  font-size: 14px;
+  font-size: clamp(15px, 2vh, 21px);
   font-weight: 700;
   color: var(--pd-text-2);
 }
 
 .pd-entry-qty {
+  flex-shrink: 0;
+  height: clamp(26px, 3.6vh, 38px);
+  display: inline-flex;
+  align-items: center;
   font-family: inherit;
   font-size: inherit;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   color: #fff;
   border: 1.5px solid var(--brand);
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
-  padding: 2px 9px;
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
+  padding: 0 12px;
   line-height: 1.3;
-  border-radius: 999px;
+  border-radius: var(--r-md);
   box-shadow: 0 2px 5px rgba(107, 0, 0, 0.28);
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.08s;
@@ -1780,6 +2039,7 @@
    tighten them instead of letting the header/cell text get ellipsis-clipped. */
 @media (max-width: 1280px) {
   .pd-grid-wrap { max-height: 324px; }
+  .pd-product-foot { gap: 4px; }
   .pd-cat-col { flex-basis: 104px; width: 104px; padding: 8px 5px; gap: 5px; }
   .pd-cat { padding: 5px 6px; gap: 5px; min-height: 38px; font-size: 10px; border-radius: 12px; }
   .pd-cat-label { font-size: 10px; }
@@ -1814,9 +2074,17 @@
   .pd-meta-btn { height: 22px; padding: 0 6px 0 3px; gap: 3px; font-size: 9px; }
   .pd-pill-icon { width: 14px; height: 14px; }
   .pd-pill-chevron { display: none; }
-  .pd-group-btns .pd-act { font-size: 7px; gap: 3px; padding: 4px 2px; }
-  .pd-group-btns .pd-btn-ic { width: 20px; height: 20px; }
-  .pd-group-btns .pd-btn-ic svg { width: 13px; height: 13px; }
+  /* Keypad/action-button *sizes* (height, font, icon) are now handled by
+     vh-based clamp() on the base rules above — they scale on their own at
+     every width and height. Only column layout (genuinely width-driven)
+     stays here. */
+  .pd-actions { gap: 10px; }
+  .pd-keypad-wrap { grid-template-columns: 270px minmax(0, 1fr); gap: 10px; }
+  .pd-keypad-left { gap: 8px; }
+  .pd-keys { gap: 6px; }
+  .pd-group-btns { padding: 8px; gap: 6px; }
+  .pd-quick-actions { gap: 6px; }
+  .pd-corner-actions { flex-basis: 130px; gap: 6px; padding-left: 10px; }
 }
 
 /* 1024×768 and similar narrow tills — the 1280px tightening above still
@@ -1840,6 +2108,9 @@
     border-left: none;
   }
 
+  .pd-side-nav { flex-basis: 132px; width: 132px; padding: 8px 6px; gap: 3px; }
+  .pd-side-nav-btn { font-size: 10.5px; min-height: 38px; padding: 6px 8px; gap: 8px; }
+
   .pd-service { gap: 3px; }
   .pd-service-btn { padding: 0 3px; gap: 2px; font-size: 8.5px; }
   .pd-service-btn .pd-btn-ic { width: 16px; height: 16px; border-radius: 5px; }
@@ -1848,44 +2119,30 @@
   .pd-more-item { font-size: 10px; padding: 6px 8px; }
 
   /* 1024×768 tills — force a fixed 4-column product grid instead of
-     auto-fill, and shrink the cards so ~5 rows fit without scrolling. */
+     auto-fill (sizes now come from the base clamp() rules). */
   .pd-products { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
-  .pd-product-name { font-size: 9.5px; line-height: 1.35; -webkit-line-clamp: 2; }
-  .pd-product-sub { font-size: 7.5px; margin-top: 1px; }
-  .pd-product-price { font-size: 9.5px; }
   .pd-product-foot { gap: 3px; }
   .pd-product-add { gap: 3px; }
   .pd-product-add-icon { width: 14px; height: 14px; border-width: 1px; }
   .pd-product-add-icon svg { width: 10px; height: 10px; }
   .pd-product-add-label { font-size: 9.5px; }
 
-  /* Shrink the keypad + action-button block below the grid so the freed
-     height goes to the product grid instead (needed for 5 visible rows). */
+  /* Column layout only — sizes come from the base clamp() rules. */
   .pd-actions { gap: 5px; }
-  .pd-keypad-wrap { grid-template-columns: 128px minmax(0, 1fr); gap: 5px; }
+  .pd-keypad-wrap { grid-template-columns: 165px minmax(0, 1fr); gap: 5px; }
   .pd-keypad-left { gap: 5px; }
-  .pd-entry { height: 20px; font-size: 11px; padding: 0 6px; }
   .pd-keys { gap: 3px; }
-  .pd-key { height: clamp(24px, 3.4vh, 30px); font-size: 13px; border-radius: 9px; }
   .pd-group-btns { padding: 4px; gap: 4px; }
   .pd-quick-actions { gap: 3px; }
-  .pd-act { padding: 2px; gap: 1px; font-size: 6px; border-radius: 7px; }
-  .pd-group-btns .pd-btn-ic { width: 16px; height: 16px; border-radius: 5px; }
-  .pd-group-btns .pd-btn-ic svg { width: 10px; height: 10px; }
   .pd-more-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 70vw; }
   .pd-corner-actions { flex-basis: 110px; gap: 3px; padding-left: 6px; }
-  .pd-corner-btn { padding: 3px; font-size: 7px; border-radius: 10px; }
-  .pd-corner-btn .pd-btn-ic { width: 15px; height: 15px; }
-  .pd-corner-btn .pd-btn-ic svg { width: 9px; height: 9px; }
-  .pd-pay { font-size: 12px; gap: 6px; letter-spacing: 0.3px; }
-  .pd-pay em { font-size: 11px; }
 }
 
 @media (max-height: 800px) {
+  /* .pd-key/.pd-pay/.pd-product no longer need separate overrides here —
+     their base rules are vh-based clamp()s, so they already shrink
+     correctly on short viewports without a competing fixed-pixel rule. */
   .pd-header { flex-basis: 50px; height: 50px; }
-  .pd-product { min-height: 46px; padding: 4px 5px; gap: 1px; border-radius: 8px; }
-  .pd-key { height: clamp(24px, 3.4vh, 30px); }
-  .pd-pay { height: 44px; }
   .pd-chip, .pd-service-btn { height: 32px; }
 }
 
@@ -1896,7 +2153,8 @@
   .pd-act, .pd-chip, .pd-service-btn { max-width: 220px; }
 }
 
-.pd-act:disabled {
+.pd-act:disabled,
+.pd-corner-btn:disabled {
   opacity: 0.55;
   pointer-events: none;
 }
@@ -1907,13 +2165,32 @@
   pointer-events: none;
 }
 
+/* Own keyframes (not the shared `slideUp`) so translateX(-50%) stays baked
+   into every step — otherwise the animation's own transform overrides the
+   centering transform for its whole duration and the toast visibly jumps
+   sideways into place once it finishes. */
+@keyframes pdToastIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px) scale(0.92);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-4px) scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
 .pd-toast {
   position: fixed;
   bottom: 40px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 40;
-  animation: slideUp 0.2s cubic-bezier(.22, .68, 0, 1.2);
+  animation: pdToastIn 0.32s cubic-bezier(.22, .68, 0, 1.2);
 }
 
 /* ── Radial row menu — double-click / right-click / "⋮" on an order line ── */
@@ -2036,7 +2313,8 @@
 }
 
 .pd-mod-header {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
+  color: #fff;
   padding: 12px 16px;
   display: flex;
   align-items: center;
@@ -2160,7 +2438,7 @@
 }
 
 .pd-mod-foot-btn.is-ok {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   border-color: transparent;
   color: #fff;
   box-shadow: 0 4px 14px rgba(107, 0, 0, 0.22);
@@ -2177,7 +2455,7 @@
 }
 
 .pd-qty-dialog {
-  width: min(500px, 96vw);
+  width: min(560px, 96vw);
   max-height: 90vh;
   background: #fff;
   border-radius: 24px;
@@ -2335,7 +2613,7 @@
 }
 
 .pd-qty-pad {
-  width: 210px;
+  width: 260px;
   flex-shrink: 0;
   padding: 16px 14px;
   display: flex;
@@ -2365,7 +2643,7 @@
 
 .pd-qty-done {
   flex: 2;
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   border: none;
   color: #fff;
   box-shadow: 0 4px 12px rgba(107, 0, 0, 0.2);
@@ -2407,9 +2685,302 @@
   gap: 10px;
 }
 
+/* ── Receipt / customer lookup — search list on the left, selected
+   customer's bills + payment history on the right. ─────────────── */
+.pd-receipt-dialog {
+  max-height: min(620px, 90vh);
+}
+
+.pd-receipt-body {
+  display: flex;
+  gap: 14px;
+  padding: 12px 16px 16px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.pd-receipt-list-col {
+  flex: 0 0 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pd-receipt-list-col .pd-ol-list {
+  overflow-y: auto;
+}
+
+.pd-receipt-detail-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-right: 2px;
+}
+
+.pd-receipt-section h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--pd-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.pd-receipt-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pd-receipt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--pd-surface);
+}
+
+.pd-receipt-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pd-receipt-row-main strong {
+  font-size: 13px;
+  color: var(--pd-text);
+}
+
+.pd-receipt-row-main small {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.pd-receipt-row-amt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--pd-text);
+  white-space: nowrap;
+}
+
+.pd-receipt-row-amt small {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--red);
+}
+
+.pd-receipt-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.pd-receipt-actions .pd-mod-foot-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Product master ("Add New Item") ────────────────────────────── */
+.pd-product-dialog {
+  width: min(560px, 100%);
+  max-height: min(620px, 88vh);
+}
+
+.pd-product-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 18px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.pd-product-body::-webkit-scrollbar {
+  display: none;
+}
+
+.pd-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pd-form-row label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--pd-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.pd-form-row input,
+.pd-form-row select,
+.pd-form-row textarea {
+  height: 33px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pd-text);
+}
+
+.pd-form-row textarea {
+  height: auto;
+  min-height: 48px;
+  padding: 6px 10px;
+  resize: vertical;
+  font-weight: 500;
+}
+
+.pd-form-row input:focus,
+.pd-form-row select:focus,
+.pd-form-row textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.pd-form-row input[readonly] {
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+
+.pd-form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.pd-form-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 9px;
+}
+
+.pd-form-code {
+  display: flex;
+  gap: 8px;
+}
+
+.pd-form-code input {
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-form-code-btn {
+  flex-shrink: 0;
+  padding: 0 14px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--brand-border);
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pd-form-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  color: var(--pd-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.pd-form-picker span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pd-form-picker svg {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.pd-form-picker:hover {
+  border-color: var(--brand-border);
+  background: var(--brand-bg);
+}
+
+.pd-form-vat-pair {
+  display: flex;
+  gap: 8px;
+}
+
+.pd-form-vat-pair input {
+  width: 64px;
+  flex-shrink: 0;
+}
+
+.pd-form-computed {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pd-product-modal-foot {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.pd-product-modal-foot .pd-mod-foot-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-product-modal-foot .pd-mod-foot-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Wider than the default .pd-ol-narrow, and clearly wider than the
+   .pd-split-dialog it can open into — a spread-out grid of payment methods
+   needs more room than the focused, form-like split-payment flow. */
+.pd-pay-dialog {
+  width: min(560px, 100%);
+}
+
 .pd-pay-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -2454,7 +3025,7 @@
 
 /* ── Split Payment ──────────────────────────────────────── */
 .pd-split-dialog {
-  width: min(420px, 100%);
+  width: min(380px, 100%);
 }
 
 .pd-split-totals {
@@ -2571,50 +3142,6 @@
   background: var(--purple-bg);
 }
 
-/* Tip step */
-.pd-split-tip {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 8px 0 4px;
-}
-
-.pd-split-tip-q {
-  margin: 0;
-  text-align: center;
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--pd-text);
-}
-
-.pd-split-tip-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.pd-split-tip-btn {
-  padding: 22px 8px;
-  border-radius: 18px;
-  border: 1.5px solid var(--pd-border);
-  background: #fff;
-  color: var(--pd-text);
-  font-size: 15px;
-  font-weight: 800;
-  box-shadow: var(--shadow-xs);
-  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.1s;
-}
-
-.pd-split-tip-btn:active {
-  transform: scale(0.98);
-}
-
-.pd-split-tip-btn.is-brand {
-  border-color: var(--brand);
-  background: var(--brand-bg);
-  color: var(--brand);
-}
-
 /* Amount entry */
 .pd-split-entry {
   display: flex;
@@ -2622,18 +3149,43 @@
   gap: 10px;
 }
 
-.pd-split-method-pill {
+/* Top row — Pay Full Remaining and the Add/Remove Tip toggle sit opposite
+   each other, in the spot the payment-method pill used to occupy. */
+.pd-split-toprow {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  align-self: flex-start;
-  padding: 5px 12px 5px 6px;
+}
+
+.pd-split-tip-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 14px;
   border-radius: 999px;
-  background: var(--surface-2);
-  border: 1px solid var(--pd-border);
+  border: 1.5px dashed var(--amber-border);
+  background: transparent;
+  color: var(--amber);
   font-size: 12px;
   font-weight: 800;
-  color: var(--pd-text-2);
+  white-space: nowrap;
+}
+
+.pd-split-tip-add:hover {
+  background: var(--amber-bg);
+}
+
+.pd-split-tip-add.is-on {
+  border-style: solid;
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+.pd-split-tip-add.is-on:hover {
+  background: var(--red-bg);
 }
 
 .pd-split-amount-box {
@@ -2673,15 +3225,18 @@
 }
 
 .pd-split-full-btn {
-  align-self: flex-start;
-  padding: 5px 10px;
-  margin-top: -4px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
   border-radius: 999px;
   border: 1.5px dashed var(--pd-border);
   background: transparent;
   color: var(--pd-text-2);
   font-size: 10.5px;
   font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pd-split-full-btn:hover {
@@ -2722,7 +3277,7 @@
 .pd-split-paid-btn {
   height: 52px;
   border-radius: var(--r-lg);
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   color: #fff;
   font-size: 16px;
   font-weight: 800;
