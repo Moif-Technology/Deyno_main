@@ -2243,11 +2243,10 @@
   .pd-chip, .pd-service-btn { height: 32px; }
 }
 
-/* Wide tills: widen the keypad and corner columns so the 3x3 quick actions
-   don't stretch into very wide, flat buttons. */
+/* Wide tills: widen the keypad column so the action tiles don't stretch
+   into very wide, flat buttons. */
 @media (min-width: 1600px) {
   .pd-keypad-wrap { grid-template-columns: 360px minmax(0, 1fr); }
-  .pd-corner-actions { flex-basis: 190px; }
 }
 
 @media (min-width: 1800px) {
@@ -4685,15 +4684,142 @@
   gap: 8px;
 }
 
-.pd-actions .pd-group-btns > .pd-quick-actions {
+/* Action tiles — 3 columns x 3 rows filling the box:
+   [Save KOT ——][Discount] / [Cancel Bill][No Sale][Order List] /
+   [Dummy Bill][More][Quick Cash]. Icon top-left, arrow bottom-right. */
+.pd-tiles {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.pd-actions .pd-group-btns > .pd-corner-actions {
+.pd-tile {
+  position: relative;
+  min-width: 0;
   min-height: 0;
-  padding-left: 8px;
-  border-left: 1px solid var(--brand-tint);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(120, 8, 41, 0.1);
+  background: #fff;
+  color: var(--text-1);
+  text-align: left;
+  box-shadow: 0 1px 2px rgba(80, 0, 20, 0.06), 0 3px 8px rgba(80, 0, 20, 0.04);
+  transition: transform 0.12s, box-shadow 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.pd-tile.is-wide {
+  grid-column: span 2;
+}
+
+.pd-tile-ic {
+  flex-shrink: 0;
+  width: clamp(18px, 2.4vh, 26px);
+  height: clamp(18px, 2.4vh, 26px);
+  color: var(--brand);
+}
+
+.pd-tile-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  /* Keep clear of the arrow in the corner. */
+  padding-right: 20px;
+}
+
+.pd-tile-label {
+  font-size: clamp(11px, 1.45vh, 15px);
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.pd-tile small {
+  font-size: clamp(9px, 1.1vh, 11.5px);
+  font-weight: 600;
+  line-height: 1.2;
+  opacity: 0.8;
+}
+
+.pd-tile-arrow {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 16px;
+  height: 16px;
+  color: var(--brand);
+  transition: transform 0.15s;
+}
+
+.pd-tile:hover {
+  border-color: var(--brand-border);
+  box-shadow: 0 4px 14px rgba(80, 0, 20, 0.1);
+  transform: translateY(-1px);
+}
+
+.pd-tile:hover .pd-tile-arrow {
+  transform: translateX(2px);
+}
+
+.pd-tile:active {
+  transform: scale(0.98);
+}
+
+.pd-tile.is-active {
+  background: var(--brand-bg);
+  border-color: var(--brand-border);
+}
+
+.pd-tile:disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Save KOT and Quick Cash — solid burgundy. */
+.pd-tile.is-primary {
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(107, 0, 0, 0.24);
+}
+
+.pd-tile.is-primary .pd-tile-ic,
+.pd-tile.is-primary .pd-tile-arrow {
+  color: #fff;
+}
+
+/* Cancel Bill — soft red. */
+.pd-tile.is-danger {
+  background: #f6e4e8;
+  border-color: rgba(120, 8, 41, 0.14);
+}
+
+.pd-tile.is-danger .pd-tile-label {
+  color: var(--brand);
+}
+
+/* Short tills: tighter tiles, drop the sub-captions. */
+@media (max-height: 820px) {
+  .pd-tiles { gap: 5px; }
+  .pd-tile { padding: 6px 8px; gap: 2px; border-radius: 11px; }
+  .pd-tile small { display: none; }
+  .pd-tile-arrow { right: 6px; bottom: 6px; width: 13px; height: 13px; }
+}
+
+/* Narrow tills (1024 wide): slimmer gaps so labels keep one line. */
+@media (max-width: 1100px) {
+  .pd-tiles { gap: 4px; }
+  .pd-tile { padding: 6px 7px; }
+  .pd-tile-text { padding-right: 14px; }
 }
 
 .pd-actions .pd-corner-btn {

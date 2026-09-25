@@ -5521,135 +5521,138 @@ export default function PosMainPage() {
                 <NumberKeypad onKey={onKey} />
               </div>
 
+              {/* Action tiles — 3 columns x 3 rows, in priority order:
+                 Save KOT (wide) · Discount / Cancel Bill · No Sale · Order List /
+                 Dummy Bill · More · Quick Cash. Everything else lives in More. */}
               <div className="pd-group-btns">
-                <div className="pd-quick-actions">
-                  <button type="button" className="pd-act" onClick={() => setAreaOpen(true)}>
-                    <BtnIcon icon={MapPinned} /> <span>Area Change</span>
+                <div className="pd-tiles">
+                  <button
+                    type="button"
+                    className="pd-tile is-wide is-primary"
+                    onClick={() => void onSaveKot()}
+                    disabled={savingKot}
+                  >
+                    <Save className="pd-tile-ic" strokeWidth={2} />
+                    <span className="pd-tile-text">
+                      <span className="pd-tile-label">{savingKot ? 'Saving…' : 'Save KOT'}</span>
+                      <small>Create kitchen order</small>
+                    </span>
+                    <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
+                  </button>
+                  <button type="button" className="pd-tile">
+                    <Percent className="pd-tile-ic" strokeWidth={2} />
+                    <span className="pd-tile-text">
+                      <span className="pd-tile-label">Discount</span>
+                    </span>
+                    <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
+                  </button>
+                  <button type="button" className="pd-tile is-danger">
+                    <Ban className="pd-tile-ic" strokeWidth={2} />
+                    <span className="pd-tile-text">
+                      <span className="pd-tile-label">Cancel Bill</span>
+                    </span>
+                    <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
+                  </button>
+                  <button type="button" className="pd-tile">
+                    <CircleOff className="pd-tile-ic" strokeWidth={2} />
+                    <span className="pd-tile-text">
+                      <span className="pd-tile-label">No Sale</span>
+                    </span>
+                    <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
+                  </button>
+                  <button type="button" className="pd-tile" onClick={onOrderListClick}>
+                    <ClipboardList className="pd-tile-ic" strokeWidth={2} />
+                    <span className="pd-tile-text">
+                      <span className="pd-tile-label">Order List</span>
+                    </span>
+                    <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
+                  </button>
+                  <button type="button" className="pd-tile">
+                    <FileText className="pd-tile-ic" strokeWidth={2} />
+                    <span className="pd-tile-text">
+                      <span className="pd-tile-label">Dummy Bill</span>
+                    </span>
+                    <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
                   </button>
                   <button
                     type="button"
-                    className="pd-act"
-                    onClick={() => {
-                      setReceiptOpen(true)
-                      void loadReceiptCustomers('')
-                    }}
+                    className={`pd-tile${moreActionsOpen && !moreClosing ? ' is-active' : ''}`}
+                    onClick={() => (moreActionsOpen ? closeMoreActions() : openMoreActions())}
                   >
-                    <BtnIcon icon={Receipt} /> <span>Receipt</span>
+                    <MoreHorizontal className="pd-tile-ic" strokeWidth={2} />
+                    <span className="pd-tile-text">
+                      <span className="pd-tile-label">More</span>
+                    </span>
+                    <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
                   </button>
                   <button
                     type="button"
-                    className="pd-act"
-                    onClick={() => toast('KOT Join — coming soon', 'info')}
+                    className="pd-tile is-primary"
+                    onClick={() => void onSaveKot()}
+                    disabled={savingKot}
                   >
-                    <BtnIcon icon={Merge} /> <span>KOT Join</span>
+                    <Banknote className="pd-tile-ic" strokeWidth={2} />
+                    <span className="pd-tile-text">
+                      <span className="pd-tile-label">Quick Cash</span>
+                    </span>
+                    <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
                   </button>
-                  <button type="button" className="pd-act">
-                    <BtnIcon icon={FileText} /> <span>Dummy Bill</span>
-                  </button>
-                  <button type="button" className="pd-act">
-                    <BtnIcon icon={CircleOff} /> <span>No Sale</span>
-                  </button>
-                  <button type="button" className="pd-act">
-                    <BtnIcon icon={Package} /> <span>Delivery</span>
-                  </button>
-                  <button type="button" className="pd-act" onClick={onOrderListClick}>
-                    <BtnIcon icon={ClipboardList} /> <span>Order List</span>
-                  </button>
-                  <button type="button" className="pd-act">
-                    <BtnIcon icon={RotateCcw} /> <span>Return</span>
-                  </button>
-
-                  <div className="pd-more-wrap">
-                    <button
-                      type="button"
-                      className={`pd-act pd-more-btn${moreActionsOpen && !moreClosing ? ' is-active' : ''}`}
-                      onClick={() => (moreActionsOpen ? closeMoreActions() : openMoreActions())}
-                    >
-                      <BtnIcon icon={MoreHorizontal} /> <span>More</span>
-                    </button>
-
-                    {moreActionsOpen ? createPortal(
-                      // Centered modal. Any click inside — an item or the
-                      // backdrop — closes it with the zoom-out animation.
-                      <div
-                        className={`pd-more-overlay${moreClosing ? ' is-closing' : ''}`}
-                        role="presentation"
-                        onClick={closeMoreActions}
-                      >
-                      <div className="pd-more-menu" role="dialog" aria-modal="true" aria-label="More actions">
-                        <button type="button" className="pd-more-item">
-                          <BtnIcon icon={Repeat} /> <span>KOT Reprint</span>
-                        </button>
-                        <button type="button" className="pd-more-item">
-                          <BtnIcon icon={Printer} /> <span>Print Bill</span>
-                        </button>
-                        <button type="button" className="pd-more-item">
-                          <BtnIcon icon={FileText} /> <span>Dummy Bill</span>
-                        </button>
-                        <button type="button" className="pd-more-item">
-                          <BtnIcon icon={ShoppingBag} /> <span>Takeaway List</span>
-                        </button>
-                        <button type="button" className="pd-more-item">
-                          <BtnIcon icon={ClipboardList} /> <span>Delivery List</span>
-                        </button>
-                        <button type="button" className="pd-more-item">
-                          <BtnIcon icon={Package} /> <span>Delivery</span>
-                        </button>
-                        <button type="button" className="pd-more-item">
-                          <BtnIcon icon={CircleOff} /> <span>No Sale</span>
-                        </button>
-                        <button type="button" className="pd-more-item is-danger">
-                          <BtnIcon icon={MinusCircle} /> <span>Item Cancel</span>
-                        </button>
-                      </div>
-                      </div>,
-                      document.body,
-                    ) : null}
-                  </div>
                 </div>
 
-            {/* Corner strip — the 4 buttons used constantly mid-service,
-               sharing the quick-actions box so they never hide behind "More". */}
-            <div className="pd-corner-actions">
-              <button
-                type="button"
-                className="pd-corner-btn is-primary"
-                onClick={() => void onSaveKot()}
-                disabled={savingKot}
-              >
-                <BtnIcon icon={Save} />
-                <span className="pd-corner-text">
-                  <span>{savingKot ? 'Saving…' : 'Save KOT'}</span>
-                  <small>Send to kitchen</small>
-                </span>
-              </button>
-              <button type="button" className="pd-corner-btn">
-                <BtnIcon icon={Percent} />
-                <span className="pd-corner-text">
-                  <span>Discount</span>
-                  <small>Bill or item</small>
-                </span>
-              </button>
-              <button type="button" className="pd-corner-btn is-danger">
-                <BtnIcon icon={Ban} />
-                <span className="pd-corner-text">
-                  <span>Cancel Bill</span>
-                  <small>Void this order</small>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="pd-corner-btn"
-                onClick={() => void onSaveKot()}
-                disabled={savingKot}
-              >
-                <BtnIcon icon={Banknote} />
-                <span className="pd-corner-text">
-                  <span>Quick Cash</span>
-                  <small>Settle in cash</small>
-                </span>
-              </button>
-            </div>
+                {moreActionsOpen ? createPortal(
+                  // Centered modal. Any click inside — an item or the
+                  // backdrop — closes it with the zoom-out animation.
+                  <div
+                    className={`pd-more-overlay${moreClosing ? ' is-closing' : ''}`}
+                    role="presentation"
+                    onClick={closeMoreActions}
+                  >
+                  <div className="pd-more-menu" role="dialog" aria-modal="true" aria-label="More actions">
+                    <button type="button" className="pd-more-item" onClick={() => setAreaOpen(true)}>
+                      <BtnIcon icon={MapPinned} /> <span>Area Change</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="pd-more-item"
+                      onClick={() => {
+                        setReceiptOpen(true)
+                        void loadReceiptCustomers('')
+                      }}
+                    >
+                      <BtnIcon icon={Receipt} /> <span>Receipt</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="pd-more-item"
+                      onClick={() => toast('KOT Join — coming soon', 'info')}
+                    >
+                      <BtnIcon icon={Merge} /> <span>KOT Join</span>
+                    </button>
+                    <button type="button" className="pd-more-item">
+                      <BtnIcon icon={RotateCcw} /> <span>Return</span>
+                    </button>
+                    <button type="button" className="pd-more-item">
+                      <BtnIcon icon={Package} /> <span>Delivery</span>
+                    </button>
+                    <button type="button" className="pd-more-item">
+                      <BtnIcon icon={Repeat} /> <span>KOT Reprint</span>
+                    </button>
+                    <button type="button" className="pd-more-item">
+                      <BtnIcon icon={Printer} /> <span>Print Bill</span>
+                    </button>
+                    <button type="button" className="pd-more-item">
+                      <BtnIcon icon={ShoppingBag} /> <span>Takeaway List</span>
+                    </button>
+                    <button type="button" className="pd-more-item">
+                      <BtnIcon icon={ClipboardList} /> <span>Delivery List</span>
+                    </button>
+                    <button type="button" className="pd-more-item is-danger">
+                      <BtnIcon icon={MinusCircle} /> <span>Item Cancel</span>
+                    </button>
+                  </div>
+                  </div>,
+                  document.body,
+                ) : null}
               </div>
             </div>
 
