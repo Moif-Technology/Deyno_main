@@ -2187,7 +2187,7 @@
 /* PAY sits in the left half of the bottom row; the corner-action stack
    fills the right half, divided by a vertical rule. */
 .pd-pay {
-  height: clamp(32px, 4.2vh, 42px);
+  height: clamp(40px, 5vh, 50px);
   border-radius: var(--r-lg);
   background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   color: #fff;
@@ -5034,7 +5034,7 @@
   .pd-key { min-height: clamp(28px, 3.9vh, 40px); }
   .pd-entry { height: 28px; }
   .pd-entry-qty { height: 22px; }
-  .pd-pay { height: 32px; }
+  .pd-pay { height: 40px; }
   .pd-group-btns { padding: 5px; gap: 4px; }
   .pd-quick-actions { gap: 4px; }
   .pd-group-btns .pd-act { gap: 3px; padding: 3px 2px; }
