@@ -913,14 +913,6 @@ function formatKotClock(iso: string) {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(h12)}:${pad(d.getMinutes())} ${ampm}`
 }
 
-function orderListSupplySymbol(supply: string) {
-  const u = String(supply || '').replace(/_/g, ' ').toUpperCase()
-  if (u === 'DINE IN' || u === 'DINEIN') return '🍽️'
-  if (u === 'DELIVERY') return '🚚'
-  if (u === 'PARCEL' || u === 'TAKEAWAY' || u === 'TAKE AWAY') return '📦'
-  return '📍'
-}
-
 function orderListSupplyLabel(supply: string) {
   const u = String(supply || '').replace(/_/g, ' ').toUpperCase()
   if (u === 'TAKEAWAY' || u === 'TAKE AWAY') return 'PARCEL'
@@ -12327,135 +12319,168 @@ export default function PosMainPage() {
       ) : null}
 
       {orderListOpen ? (
-        <div className="pd-mod-overlay pd-ol-overlay" role="presentation">
-          <div className="pd-ol-dialog pd-ol-screen pd-kj-screen pd-ol-glass" role="dialog" aria-modal="true">
-            <aside className="pd-kj-side">
-              <span className="pd-kj-heading">KOT No.</span>
-              <input
-                ref={orderListSearchRef}
-                className="pd-kj-search"
-                value={orderListSearch}
-                onChange={(e) => setOrderListSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void onOrderListKotSearch()
-                }}
-                aria-label="KOT number"
-              />
-              <button
-                type="button"
-                className={`pd-kj-btn${orderListSupply === 'ALL' && orderListAreaId === 0 && !orderListSearch.trim() ? ' is-on' : ''}`}
-                onClick={() => onOrderListSupply('ALL')}
-              >
-                All Order
+        <div
+          className="pd-mod-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setOrderListOpen(false)
+          }}
+        >
+          <div className="pd-ol-dialog pd-ol-wide pd-olm" role="dialog" aria-modal="true" aria-labelledby="pd-olm-title">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <ClipboardList size={15} strokeWidth={2} />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">Orders</p>
+                  <h2 id="pd-olm-title" className="pd-mod-item-name">Order List</h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={() => setOrderListOpen(false)} aria-label="Close">
+                <X size={13} />
               </button>
-              <button
-                type="button"
-                className={`pd-kj-btn${orderListSupply === 'DINE IN' ? ' is-on' : ''}`}
-                onClick={() => onOrderListSupply('DINE IN')}
-              >
-                DineIn
-              </button>
-              <button
-                type="button"
-                className={`pd-kj-btn${orderListSupply === 'TAKEAWAY' ? ' is-on' : ''}`}
-                onClick={() => onOrderListSupply('TAKEAWAY')}
-              >
-                Take Away
-              </button>
-              <button
-                type="button"
-                className={`pd-kj-btn${orderListSupply === 'DELIVERY' ? ' is-on' : ''}`}
-                onClick={() => onOrderListSupply('DELIVERY')}
-              >
-                Delivery
-              </button>
-              <button type="button" className="pd-kj-btn pd-kj-selected" disabled>
-                {orderListSelected
-                  ? `${orderListSelected.kotNo} : ${orderListSelected.pax || 0}`
-                  : 'KOT'}
-              </button>
-              <span className="pd-kj-side-spacer" />
-              <button type="button" className="pd-kj-btn pd-kj-home" onClick={() => setOrderListOpen(false)}>
-                Home
-              </button>
-            </aside>
-            <div className="pd-kj-main">
+            </div>
+
+            <div className="pd-ol-body">
+              <div className="pd-olm-bar">
+                <span className="pd-olm-search">
+                  <Search size={14} />
+                  <input
+                    ref={orderListSearchRef}
+                    value={orderListSearch}
+                    onChange={(e) => setOrderListSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void onOrderListKotSearch()
+                    }}
+                    placeholder="KOT No. — press Enter"
+                    aria-label="KOT number"
+                  />
+                </span>
+                <div className="pd-booking-tabs pd-olm-tabs">
+                  {(
+                    [
+                      ['ALL', 'All Orders'],
+                      ['DINE IN', 'Dine In'],
+                      ['TAKEAWAY', 'Take Away'],
+                      ['DELIVERY', 'Delivery'],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`pd-booking-tab${
+                        id === 'ALL'
+                          ? orderListSupply === 'ALL' && orderListAreaId === 0 && !orderListSearch.trim()
+                            ? ' is-on'
+                            : ''
+                          : orderListSupply === id
+                            ? ' is-on'
+                            : ''
+                      }`}
+                      onClick={() => onOrderListSupply(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {areas.length ? (
-                <div className="pd-ol-indicate pd-kj-indicate" aria-label="Area colours">
-                  {areas.map((a) => {
-                    const color = orderListAreaColor(a.id, a.name)
-                    const on = orderListAreaId === a.id
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        className={`pd-ol-area${on ? ' is-on' : ''}`}
-                        style={{ background: color }}
-                        onClick={() => onOrderListArea(a.id)}
-                      >
-                        {a.name}
-                      </button>
-                    )
-                  })}
+                <div className="pd-olm-areas" aria-label="Filter by area">
+                  {areas.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={`pd-olm-area${orderListAreaId === a.id ? ' is-on' : ''}`}
+                      onClick={() => onOrderListArea(a.id)}
+                    >
+                      <span className="pd-olm-dot" style={{ background: orderListAreaColor(a.id, a.name) }} />
+                      {a.name}
+                    </button>
+                  ))}
                 </div>
               ) : null}
-              <div className="pd-kj-cards">
-                {orderListState === 'loading' ? <p className="pd-cat-msg">Loading orders…</p> : null}
-                {orderListState === 'error' ? <p className="pd-cat-msg">{orderListError}</p> : null}
+
+              <div className="pd-olm-cards">
+                {orderListState === 'loading' ? <p className="pd-olm-msg">Loading orders…</p> : null}
+                {orderListState === 'error' ? <p className="pd-olm-msg">{orderListError}</p> : null}
                 {orderListState === 'idle' && orderListRows.length === 0 ? (
-                  <p className="pd-cat-msg">No open KOTs</p>
+                  <p className="pd-olm-msg">No open KOTs</p>
                 ) : null}
                 {orderListRows.map((row) => {
                   const color = orderListAreaColor(row.areaId, row.areaName)
                   const picked = orderListSelectedId === row.kotMasterId
                   const chairTxt = row.chairNo > 0 ? String(row.chairNo) : ''
                   const tableLine =
-                    row.tableName.trim() && chairTxt
-                      ? `Table: ${row.tableName} - Chair: ${chairTxt}`
-                      : 'Table: N/A'
+                    row.tableName.trim() && chairTxt ? `${row.tableName} · Chair ${chairTxt}` : row.tableName.trim() || 'No table'
                   return (
                     <div
                       key={row.kotMasterId}
-                      className={`pd-ol-card pd-ol-list-card${picked ? ' is-on' : ''}`}
+                      className={`pd-olm-card${picked ? ' is-on' : ''}`}
                       style={{ '--ol-color': color } as CSSProperties}
                       onClick={() => selectOrderCard(row)}
                       onDoubleClick={() => void openOrderFromList(row)}
                     >
-                      <span className="pd-ol-card-area">
-                        {orderListSupplySymbol(row.supplyType)} {row.areaName || 'Unknown Area'}
+                      <div className="pd-olm-card-head">
+                        <span className="pd-olm-kot">{row.kotNo}</span>
+                        <span className="pd-olm-supply">{orderListSupplyLabel(row.supplyType)}</span>
+                      </div>
+                      <span className="pd-olm-area-name">{row.areaName || 'Unknown Area'}</span>
+                      <span className="pd-olm-line">
+                        <Clock size={12} strokeWidth={2.2} /> {formatKotClock(row.kotTime)}
                       </span>
-                      <span className="pd-ol-card-time">
-                        <Clock size={11} strokeWidth={2.4} /> {formatKotClock(row.kotTime)}
+                      <span className="pd-olm-line">
+                        <MapPinned size={12} strokeWidth={2.2} /> {tableLine}
                       </span>
-                      <span className={`pd-ol-card-table${row.tableName.trim() && chairTxt ? ' is-set' : ''}`}>
-                        {tableLine}
+                      <span className="pd-olm-line">
+                        <Users size={12} strokeWidth={2.2} /> {row.pax || 0} pax
+                        <span className="pd-olm-sep">·</span>
+                        <User size={12} strokeWidth={2.2} /> {row.waiterName || waiter}
                       </span>
-                      <span className="pd-ol-card-supply">Supply Type: {orderListSupplyLabel(row.supplyType)}</span>
-                      <span className="pd-ol-card-note">
-                        <Mail size={11} strokeWidth={2.4} /> {row.remarks}
-                      </span>
-                      <span className="pd-ol-card-pax">
-                        <Users size={11} strokeWidth={2.4} /> PAX: {row.pax || 0}
-                      </span>
-                      <span className="pd-ol-card-waiter">
-                        <User size={11} strokeWidth={2.4} /> {row.waiterName || waiter}
-                      </span>
-                      <span className="pd-ol-card-amt">Amount: {money(row.amount)}</span>
-                      <button
-                        type="button"
-                        className="pd-ol-card-kot-btn"
-                        disabled={loadingKot}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          void openOrderFromList(row)
-                        }}
-                      >
-                        ➔ KOT No: {row.kotNo}
-                      </button>
+                      {row.remarks ? (
+                        <span className="pd-olm-line pd-olm-note">
+                          <Mail size={12} strokeWidth={2.2} /> {row.remarks}
+                        </span>
+                      ) : null}
+                      <div className="pd-olm-card-foot">
+                        <strong>AED {money(row.amount)}</strong>
+                        <button
+                          type="button"
+                          className="pd-olm-open"
+                          disabled={loadingKot}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void openOrderFromList(row)
+                          }}
+                        >
+                          Open <ArrowRight size={12} strokeWidth={2.4} />
+                        </button>
+                      </div>
                     </div>
                   )
                 })}
               </div>
+            </div>
+
+            <div className="pd-mod-foot">
+              <span className="pd-mfg-count">
+                {orderListSelected
+                  ? `Selected: ${orderListSelected.kotNo} · ${orderListSelected.pax || 0} pax`
+                  : `${orderListRows.length} open KOT${orderListRows.length === 1 ? '' : 's'}`}
+              </span>
+              <span className="pd-mod-foot-spacer" />
+              <button type="button" className="pd-mod-foot-btn" onClick={() => setOrderListOpen(false)}>
+                Close
+              </button>
+              <button
+                type="button"
+                className="pd-mod-foot-btn is-ok"
+                disabled={!orderListSelected || loadingKot}
+                onClick={() => orderListSelected && void openOrderFromList(orderListSelected)}
+              >
+                Open KOT
+              </button>
             </div>
           </div>
         </div>
