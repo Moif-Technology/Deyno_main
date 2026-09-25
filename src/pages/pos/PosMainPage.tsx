@@ -7017,8 +7017,12 @@ export default function PosMainPage() {
           {tablePopupOpen ? (
             <div className="pd-table-popup">
               <div className="pd-table-popup-bar">
-                <strong>{currentArea?.name || 'Tables'}</strong>
-                <button type="button" className="pd-table-home" onClick={() => hideTablePopup()}>
+                <strong>
+                  {isTablePopup === 1 && tableName
+                    ? `Chairs · ${tableName}`
+                    : currentArea?.name || 'Tables'}
+                </strong>
+                <button type="button" className="pd-table-home" onClick={dismissTableSelectionUi}>
                   <Home size={14} /> Home
                 </button>
               </div>
@@ -7049,6 +7053,7 @@ export default function PosMainPage() {
                 </div>
               ) : (
                 <>
+                  {isTablePopup !== 1 ? (
                   <div className="pd-table-grid">
                     {tablesForArea.map((t) => {
                       const occ = occupiedByTable.get(t.id) ?? []
@@ -7070,7 +7075,8 @@ export default function PosMainPage() {
                     })}
                     {tablesForArea.length === 0 ? <p className="pd-cat-msg">No tables in this area</p> : null}
                   </div>
-                  {chairPromptOpen && tableId > 0 ? (
+                  ) : null}
+                  {chairPromptOpen && tableId > 0 && (occupiedByTable.get(tableId) ?? []).length > 0 ? (
                     <div className="pd-chair-grid">
                       {kotSelectOpen ? <p className="pd-ol-label">Select KOT chair</p> : null}
                       {Array.from({ length: Math.max(1, tablesForArea.find((t) => t.id === tableId)?.seats || 4) }, (_, i) => i + 1).map((n) => {
