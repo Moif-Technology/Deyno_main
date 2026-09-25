@@ -5559,6 +5559,28 @@ export default function PosMainPage() {
       setSideNavHidden(true)
       return
     }
+    // Edit screens + floor designer come from Sonu's dialogs (Swetha had
+    // no edit screens, and her Floor Design modal only saved an empty map).
+    if (label === 'Area Edit') {
+      setAreaMasterOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Table Edit') {
+      setTableMasterOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Product Edit') {
+      setProductListOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Floor Design') {
+      setFloorDesignOpen(true)
+      setSideNavHidden(true)
+      return
+    }
     if (label === 'Recipe Entry') {
       setRecipeProductId(null)
       setRecipeEntryOpen(true)
@@ -5582,7 +5604,7 @@ export default function PosMainPage() {
       return
     }
     if (label === 'Counter Close') {
-      setCounterCloseOpen(true)
+      requestAdmin('counter-close-all', true)
       setSideNavHidden(true)
       return
     }
@@ -5592,7 +5614,7 @@ export default function PosMainPage() {
       return
     }
     if (label === 'CounterClose -Admin') {
-      setCounterCloseOpen(true)
+      requestAdmin('counter-close-all', true)
       setSideNavHidden(true)
       return
     }
@@ -7298,7 +7320,7 @@ export default function PosMainPage() {
           {(
             [
               { label: 'Line\nDiscount', icon: Percent, angle: -90, onClick: () => openLineDiscount(rowMenu.key) },
-              { label: 'Change\nPrice', icon: Tag, angle: 0, onClick: () => openPriceChange(rowMenu.key) },
+              { label: 'Change\nPrice', icon: Tag, angle: 0, onClick: () => openPriceChange(rowMenu.key, true) },
               { label: 'Change\nQty', icon: SlidersHorizontal, angle: 90, onClick: () => openQtyChange(rowMenu.key) },
               { label: 'Move', icon: MapPinned, angle: 180, onClick: () => openMovePicker(rowMenu.key) },
             ] as const
@@ -7851,10 +7873,7 @@ export default function PosMainPage() {
                 <button
                   type="button"
                   className="pd-ol-filter"
-                  onClick={() => {
-                    setCustomerOpen(true)
-                    void loadCustomers()
-                  }}
+                  onClick={() => openCustomerSelect()}
                 >
                   <Users size={12} /> Customer
                 </button>
