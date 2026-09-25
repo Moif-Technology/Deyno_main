@@ -9838,14 +9838,23 @@
   width: min(820px, 100%);
 }
 
-/* Quick Cash — dusty rose from the same wine palette, so it reads as its
-   own action next to Save KOT's dark burgundy. */
+/* Quick Cash — simple flat mint tile (teal from the area buttons), quiet
+   but easy to tell apart from the burgundy tiles. */
 .pd-tile.is-primary.is-cash {
-  background: linear-gradient(135deg, #b76e84 0%, #d49aab 100%);
-  box-shadow: 0 6px 16px rgba(183, 110, 132, 0.3);
+  background: #e6f6f3;
+  border: 1.5px solid #9fd8cf;
+  box-shadow: 0 1px 2px rgba(15, 118, 110, 0.08);
+}
+
+.pd-tile.is-primary.is-cash,
+.pd-tile.is-primary.is-cash .pd-tile-label,
+.pd-tile.is-primary.is-cash .pd-tile-ic,
+.pd-tile.is-primary.is-cash .pd-tile-arrow {
+  color: #0f766e;
 }
 
 .pd-tile.is-primary.is-cash:hover {
-  border-color: transparent;
-  box-shadow: 0 8px 20px rgba(183, 110, 132, 0.38);
+  background: #d9f1ec;
+  border-color: #5fbfb1;
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.14);
 }
