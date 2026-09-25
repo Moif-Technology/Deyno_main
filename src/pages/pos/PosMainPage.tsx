@@ -55,6 +55,7 @@ import KotJoinDialog from './KotJoinDialog'
 import AreaMasterDialog from './AreaMasterDialog'
 import TableMasterDialog from './TableMasterDialog'
 import FloorDesignDialog from './FloorDesignDialog'
+import { GroupEditDialog, SubGroupEditDialog } from './GroupEditDialogs'
 import FloorRuntimeCanvas from './FloorRuntimeCanvas'
 import AreaChangeDialog from './AreaChangeDialog'
 
@@ -237,6 +238,8 @@ const ENTRY_DEFS: { key: EntryKey; label: string; icon: ComponentType<{ size?: n
   { key: 'stockAdjustList', label: 'Stock Adjust List', icon: ClipboardList },
   { key: 'productionEntry', label: 'Production Entry', icon: Package },
   { key: 'productionList', label: 'Production List', icon: ClipboardList },
+  { key: 'comboEdit', label: 'Combo Edit', icon: Pencil },
+  { key: 'messList', label: 'Mess List', icon: ClipboardList },
   { key: 'openingStock', label: 'Opening Stock Entry', icon: ShoppingBag },
   { key: 'stockReport', label: 'Stock report', icon: BarChart3 },
   { key: 'movementReport', label: 'Movement Report', icon: Truck },
@@ -453,6 +456,8 @@ type EntryKey =
   | 'stockAdjustment'
   | 'stockAdjustList'
   | 'productionList'
+  | 'comboEdit'
+  | 'messList'
   | 'productionEntry'
   | 'openingStock'
   | 'stockReport'
@@ -1356,6 +1361,8 @@ export default function PosMainPage() {
   const [areaMasterOpen, setAreaMasterOpen] = useState(false)
   const [tableMasterOpen, setTableMasterOpen] = useState(false)
   const [floorDesignOpen, setFloorDesignOpen] = useState(false)
+  const [groupEditOpen, setGroupEditOpen] = useState(false)
+  const [subGroupEditOpen, setSubGroupEditOpen] = useState(false)
   const reportsMenuRef = useRef<HTMLDivElement | null>(null)
   const entryMenuRef = useRef<HTMLDivElement | null>(null)
   const [groups, setGroups] = useState<Cat[]>([])
@@ -5573,6 +5580,16 @@ export default function PosMainPage() {
     }
     // Edit screens + floor designer come from Sonu's dialogs (Swetha had
     // no edit screens, and her Floor Design modal only saved an empty map).
+    if (label === 'Group Edit') {
+      setGroupEditOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'SubGroup Edit') {
+      setSubGroupEditOpen(true)
+      setSideNavHidden(true)
+      return
+    }
     if (label === 'Area Edit') {
       setAreaMasterOpen(true)
       setSideNavHidden(true)
@@ -8552,7 +8569,7 @@ export default function PosMainPage() {
                 ? 'pd-ol-wide'
                 : entryModal === 'damageEntry'
                   ? 'pd-ol-damage'
-                : entryModal === 'table' || entryModal === 'combo' || entryModal === 'messMaster' || entryModal === 'bookingList'
+                : entryModal === 'table' || entryModal === 'combo' || entryModal === 'messMaster' || entryModal === 'bookingList' || entryModal === 'comboEdit' || entryModal === 'messList'
                   ? 'pd-ol-table'
                   : (['area', 'onlineSource', 'advancePayment', 'booking'] as EntryKey[]).includes(entryModal)
                   ? 'pd-ol-narrow'
@@ -8571,7 +8588,11 @@ export default function PosMainPage() {
                 </div>
                 <div>
                   <p className="pd-mod-kicker">
-                    {entryModal === 'productionEntry' || entryModal === 'productionList' ? 'Manufacturing' : 'Creation'}
+                    {entryModal === 'productionEntry' || entryModal === 'productionList'
+                      ? 'Manufacturing'
+                      : entryModal === 'comboEdit' || entryModal === 'messList'
+                        ? 'Edit'
+                        : 'Creation'}
                   </p>
                   <h2 className="pd-mod-item-name">{ENTRY_META[entryModal].label}</h2>
                 </div>
@@ -9591,6 +9612,49 @@ export default function PosMainPage() {
                       </tbody>
                     </table>
                   </div>
+                </>
+              ) : null}
+
+              {entryModal === 'comboEdit' || entryModal === 'messList' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Search</label>
+                    <input
+                      value={ef('editListSearch')}
+                      onChange={(e) => setEf('editListSearch', e.target.value)}
+                      placeholder={entryModal === 'comboEdit' ? 'Combo name' : 'Mess name'}
+                    />
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        {entryModal === 'comboEdit' ? (
+                          <tr>
+                            <th>Combo Name</th>
+                            <th>Price</th>
+                            <th>Groups</th>
+                          </tr>
+                        ) : (
+                          <tr>
+                            <th>Mess Name</th>
+                            <th>No Of Time</th>
+                            <th>Amount</th>
+                          </tr>
+                        )}
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={3}>
+                            {entryModal === 'comboEdit' ? 'No saved combos yet' : 'No saved mess plans yet'}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="pd-mfg-count">
+                    {entryModal === 'comboEdit' ? 'Combos' : 'Mess plans'} aren't stored on the server yet, so there is
+                    nothing to edit. They'll show here once saving is connected.
+                  </p>
                 </>
               ) : null}
 
@@ -13202,6 +13266,14 @@ export default function PosMainPage() {
             void reloadFloorMasters()
           }}
         />
+      ) : null}
+
+      {groupEditOpen ? (
+        <GroupEditDialog onClose={() => setGroupEditOpen(false)} onSaved={() => void reloadGroups()} />
+      ) : null}
+
+      {subGroupEditOpen ? (
+        <SubGroupEditDialog onClose={() => setSubGroupEditOpen(false)} onSaved={() => void reloadGroups()} />
       ) : null}
 
       {floorDesignOpen ? (

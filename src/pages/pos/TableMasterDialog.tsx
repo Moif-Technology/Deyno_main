@@ -3,7 +3,7 @@
  * Left: New/Edit entry. Right: list. Click a row to load and Update.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { X } from 'lucide-react'
+import { LayoutGrid, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
 import { useArabicAutoFill } from '../../utils/useArabicAutoFill'
 import { ArabicInput } from '../../components/common/ArabicInput'
@@ -205,46 +205,53 @@ export default function TableMasterDialog({ areas, onClose, onSaved }: Props) {
   const comboAreas = task === 'Edit' ? allAreas : floorAreas
 
   return (
-    <div className="pd-mod-overlay" role="presentation">
-      <div className="pd-em-dialog pd-em-split" role="dialog" aria-modal="true">
-        <div className="pd-em-side" />
-        <div className="pd-em-body">
-          <div className="pd-mod-header">
-            <div className="pd-mod-header-left">
-              <div>
-                <p className="pd-mod-kicker">Masters</p>
-                <h2 className="pd-mod-item-name">Table Details Entry. . .</h2>
-              </div>
+    <div
+      className="pd-mod-overlay"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose()
+      }}
+    >
+      <div className="pd-ol-dialog pd-ol-wide pd-edm" role="dialog" aria-modal="true" aria-labelledby="pd-table-edit-title">
+        <div className="pd-mod-header">
+          <div className="pd-mod-header-left">
+            <div className="pd-mod-header-icon">
+              <LayoutGrid size={15} strokeWidth={2} />
             </div>
-            <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
-              <X size={13} />
-            </button>
+            <div>
+              <p className="pd-mod-kicker">Edit</p>
+              <h2 id="pd-table-edit-title" className="pd-mod-item-name">Table Edit</h2>
+            </div>
           </div>
-          <div className="pd-em-split-main">
-            <div className="pd-em-fields">
-              <label className="pd-em-row">
-                <span>Area Name</span>
-                <select
-                  className="pd-em-input"
-                  value={areaId || ''}
-                  onChange={(e) => setAreaId(Number(e.target.value) || 0)}
-                >
-                  {comboAreas.length === 0 ? <option value="">No Manual areas</option> : null}
-                  {comboAreas.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="pd-em-row">
-                <span>Table No</span>
-                <input className="pd-em-input" value={tableNo} readOnly />
-              </label>
-              <label className="pd-em-row">
-                <span>Table Name</span>
+          <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
+            <X size={13} />
+          </button>
+        </div>
+
+        <div className="pd-ol-body">
+          <div className="pd-edm-grid">
+            <div className="pd-edm-form">
+              <p className="pd-edm-mode">{task === 'Edit' ? 'Editing selected table' : 'New table'}</p>
+              <div className="pd-form-grid-2">
+                <div className="pd-form-row">
+                  <label>Area</label>
+                  <select value={areaId || ''} onChange={(e) => setAreaId(Number(e.target.value) || 0)}>
+                    {comboAreas.length === 0 ? <option value="">No Manual areas</option> : null}
+                    {comboAreas.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="pd-form-row">
+                  <label>Table No</label>
+                  <input value={tableNo} readOnly />
+                </div>
+              </div>
+              <div className="pd-form-row">
+                <label>Table Name</label>
                 <input
-                  className="pd-em-input"
                   value={tableName}
                   onChange={(e) => {
                     const v = e.target.value.slice(0, 50)
@@ -252,97 +259,89 @@ export default function TableMasterDialog({ areas, onClose, onSaved }: Props) {
                     autoFillTableArabic(v)
                   }}
                 />
-              </label>
-              <label className="pd-em-row">
-                <span>Table Name Arabic</span>
-                <ArabicInput
-                  className="pd-em-input pd-em-rtl"
-                  value={tableNameArabic}
-                  onValueChange={setTableNameArabic}
-                  source={tableName}
-                  maxLength={50}
-                />
-              </label>
-              <label className="pd-em-row">
-                <span>No. of Chairs</span>
-                <input
-                  className="pd-em-input"
-                  inputMode="numeric"
-                  value={noOfChairs}
-                  onChange={(e) => setNoOfChairs(e.target.value.replace(/[^\d]/g, '').slice(0, 4))}
-                />
-              </label>
-              <label className="pd-em-row">
-                <span>Waiter Name</span>
-                <select
-                  className="pd-em-input"
-                  value={waiterId || ''}
-                  onChange={(e) => setWaiterId(Number(e.target.value) || 0)}
-                >
-                  <option value=""> </option>
+              </div>
+              <div className="pd-form-row">
+                <label>Table Name Arabic</label>
+                <ArabicInput value={tableNameArabic} onValueChange={setTableNameArabic} source={tableName} maxLength={50} />
+              </div>
+              <div className="pd-form-grid-2">
+                <div className="pd-form-row">
+                  <label>No. of Chairs</label>
+                  <input
+                    inputMode="numeric"
+                    value={noOfChairs}
+                    onChange={(e) => setNoOfChairs(e.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+                  />
+                </div>
+                <div className="pd-form-row">
+                  <label>Table Shape</label>
+                  <select value={tableFormat} onChange={(e) => setTableFormat(e.target.value)}>
+                    {TABLE_FORMATS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="pd-form-row">
+                <label>Waiter Name</label>
+                <select value={waiterId || ''} onChange={(e) => setWaiterId(Number(e.target.value) || 0)}>
+                  <option value="">Select…</option>
                   {waiters.map((w) => (
                     <option key={w.staffId} value={w.staffId}>
                       {w.staffName}
                     </option>
                   ))}
                 </select>
-              </label>
-              <label className="pd-em-row">
-                <span>Table Shape</span>
-                <select
-                  className="pd-em-input"
-                  value={tableFormat}
-                  onChange={(e) => setTableFormat(e.target.value)}
-                >
-                  {TABLE_FORMATS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              </div>
             </div>
-            <div className="pd-em-list">
-              <p className="pd-em-list-title">Table List</p>
-              <div className="pd-em-list-scroll">
-                <table>
+
+            <div className="pd-edm-list">
+              <p className="pd-edm-list-title">Table List</p>
+              <div className="pd-grid-wrap">
+                <table className="pd-grid">
                   <thead>
                     <tr>
-                      <th>Table No.</th>
+                      <th>Table No</th>
                       <th>Table Name</th>
-                      <th>Area name</th>
+                      <th>Area</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row) => (
-                      <tr
-                        key={row.tableId}
-                        className={tableId === row.tableId && task === 'Edit' ? 'is-on' : ''}
-                        onClick={() => selectRow(row)}
-                      >
-                        <td>{row.tableNo}</td>
-                        <td>{row.tableName}</td>
-                        <td>{areaNameOf(row.areaId)}</td>
-                      </tr>
-                    ))}
                     {rows.length === 0 ? (
                       <tr>
                         <td colSpan={3}>No tables</td>
                       </tr>
-                    ) : null}
+                    ) : (
+                      rows.map((row) => (
+                        <tr
+                          key={row.tableId}
+                          className={tableId === row.tableId && task === 'Edit' ? 'is-selected' : undefined}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => selectRow(row)}
+                        >
+                          <td>{row.tableNo}</td>
+                          <td>{row.tableName}</td>
+                          <td>{areaNameOf(row.areaId)}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
-          <div className="pd-em-foot">
-            <button type="button" className="pd-em-btn is-new" onClick={() => void clearForm()} disabled={busy}>
-              New
-            </button>
-            <button type="button" className="pd-em-btn is-save" onClick={() => void onSave()} disabled={busy}>
-              {busy ? (task === 'Edit' ? 'Updating…' : 'Saving…') : task === 'Edit' ? 'Update' : 'Save'}
-            </button>
-          </div>
+        </div>
+
+        <div className="pd-mod-foot">
+          <span className="pd-mod-foot-spacer" />
+          <button type="button" className="pd-mod-foot-btn" onClick={() => void clearForm()} disabled={busy}>
+            New
+          </button>
+          <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void onSave()} disabled={busy}>
+            {busy ? (task === 'Edit' ? 'Updating…' : 'Saving…') : task === 'Edit' ? 'Update' : 'Save'}
+          </button>
         </div>
       </div>
       {hint ? <div className="pd-toast">{hint}</div> : null}

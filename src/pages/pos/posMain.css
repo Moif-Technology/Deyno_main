@@ -9688,3 +9688,147 @@
     justify-content: flex-end;
   }
 }
+
+/* ══ Edit menu screens (Area / Table / Group / SubGroup / Product Edit) ════
+   Same modal design as the Creation screens; form on the left, the saved
+   list on the right. Click a row to load it into the form. */
+.pd-edm .pd-ol-body {
+  gap: 12px;
+}
+
+.pd-edm-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 16px;
+  align-items: start;
+  min-height: 0;
+}
+
+.pd-edm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pd-edm-form .pd-form-row input,
+.pd-edm-form .pd-form-row select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pd-edm-mode {
+  margin: 0;
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pd-edm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pd-edm-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pd-edm-list-head select {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pd-edm-list-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.pd-edm .pd-grid-wrap {
+  min-height: 180px;
+  max-height: 360px;
+}
+
+.pd-edm .pd-grid td {
+  height: 42px;
+  font-size: 13px;
+}
+
+.pd-edm .pd-grid .num {
+  text-align: right;
+}
+
+.pd-edm .pd-mod-foot {
+  justify-content: flex-start;
+}
+
+.pd-edm .pd-mod-foot-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Product Entry / Edit form: 3 fields per row, full-width ones span it. */
+.pd-edm-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.pd-edm-fields .pd-form-row input,
+.pd-edm-fields .pd-form-row select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pd-edm-fields .pd-form-row input[readonly] {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.pd-edm-span {
+  grid-column: 1 / -1;
+}
+
+.pd-edm-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pd-edm-inline > input,
+.pd-edm-inline > select {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .pd-edm-grid { grid-template-columns: minmax(0, 1fr); }
+  .pd-edm-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* The shared footer hides a leading spacer (centred buttons); Edit screens
+   right-align their buttons, so keep it. */
+.pd-edm .pd-mod-foot > .pd-mod-foot-spacer:first-child {
+  display: block;
+}
