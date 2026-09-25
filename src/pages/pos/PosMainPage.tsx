@@ -7249,7 +7249,7 @@ export default function PosMainPage() {
                   </button>
                   <button
                     type="button"
-                    className="pd-tile is-primary"
+                    className="pd-tile is-primary is-cash"
                     onClick={() => void onSaveKot()}
                     disabled={savingKot}
                   >

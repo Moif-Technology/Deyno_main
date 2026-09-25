@@ -9837,3 +9837,15 @@
 .pd-ol-dialog.pd-edm {
   width: min(820px, 100%);
 }
+
+/* Quick Cash — lighter wine from the same palette, so it reads as its own
+   action next to Save KOT's dark burgundy. */
+.pd-tile.is-primary.is-cash {
+  background: linear-gradient(135deg, var(--brand-2) 0%, var(--brand-light) 100%);
+  box-shadow: 0 6px 16px rgba(147, 57, 83, 0.26);
+}
+
+.pd-tile.is-primary.is-cash:hover {
+  border-color: transparent;
+  box-shadow: 0 8px 20px rgba(147, 57, 83, 0.32);
+}
