@@ -9838,22 +9838,14 @@
   width: min(820px, 100%);
 }
 
-/* Quick Cash — outlined: white tile with a burgundy border and text, so it
-   reads as its own action next to Save KOT's solid burgundy. */
+/* Quick Cash — dusty rose from the same wine palette, so it reads as its
+   own action next to Save KOT's dark burgundy. */
 .pd-tile.is-primary.is-cash {
-  background: #fff;
-  border: 2px solid var(--brand);
-  color: var(--brand);
-  box-shadow: 0 3px 10px rgba(120, 8, 41, 0.1);
-}
-
-.pd-tile.is-primary.is-cash .pd-tile-ic,
-.pd-tile.is-primary.is-cash .pd-tile-arrow {
-  color: var(--brand);
+  background: linear-gradient(135deg, #b76e84 0%, #d49aab 100%);
+  box-shadow: 0 6px 16px rgba(183, 110, 132, 0.3);
 }
 
 .pd-tile.is-primary.is-cash:hover {
-  background: var(--brand-bg);
-  border-color: var(--brand);
-  box-shadow: 0 6px 16px rgba(120, 8, 41, 0.16);
+  border-color: transparent;
+  box-shadow: 0 8px 20px rgba(183, 110, 132, 0.38);
 }
