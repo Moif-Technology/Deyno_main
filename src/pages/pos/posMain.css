@@ -10041,7 +10041,7 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  padding: 10px 12px 10px 16px;
+  padding: 10px 12px;
   border-radius: 14px;
   border: 1.5px solid var(--pd-border);
   background: #fff;
@@ -10049,15 +10049,6 @@
   cursor: pointer;
   overflow: hidden;
   transition: border-color 0.12s, box-shadow 0.12s, transform 0.1s;
-}
-
-/* Area colour stripe down the left edge. */
-.pd-olm-card::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 5px;
-  background: var(--ol-color, var(--brand-border));
 }
 
 .pd-olm-card:hover {
