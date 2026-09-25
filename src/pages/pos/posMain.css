@@ -10324,8 +10324,8 @@
 
 /* ══ Customer Receipt modal — simple two-pane layout ══════════════════════ */
 .pd-ol-dialog.pd-rcm {
-  width: min(960px, 100%);
-  height: min(640px, calc(90vh / var(--ui-zoom, 1)));
+  width: min(800px, 100%);
+  height: min(540px, calc(90vh / var(--ui-zoom, 1)));
   max-height: none;
 }
 
@@ -10333,7 +10333,7 @@
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
 }
 
 .pd-rcm-side {
