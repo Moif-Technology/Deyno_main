@@ -891,7 +891,7 @@ function isChiefCashierOrAdmin() {
 }
 
 type AdminCreds = { username: string; password: string }
-type AdminNext = 'item-remove' | 'bill-confirm' | 'return' | 'item-qty' | 'counter-close-all' | 'price-change' | 'area-change' | 'discount'
+type AdminNext = 'item-remove' | 'bill-confirm' | 'return' | 'item-qty' | 'counter-close-all' | 'price-change' | 'area-change' | 'discount' | 'kot-join'
 type AlertKind = 'info' | 'success' | 'warning' | 'question'
 type AlertBox = { kind: AlertKind; title: string; message: string }
 
@@ -1469,6 +1469,12 @@ export default function PosMainPage() {
   const [orderListSupply, setOrderListSupply] = useState<'ALL' | ServiceKind>('ALL')
   const [orderListAreaId, setOrderListAreaId] = useState(0)
   const [orderListSelectedId, setOrderListSelectedId] = useState(0)
+  // Order List drag-to-join: drag one KOT card onto another to join it.
+  const [dragJoin, setDragJoin] = useState<{ sourceId: number; x: number; y: number; overId: number } | null>(null)
+  const dragJoinStart = useRef<{ id: number; x: number; y: number; pointerId: number } | null>(null)
+  const [dragJoinPlan, setDragJoinPlan] = useState<{ source: OrderRow; target: OrderRow; pax: string } | null>(null)
+  const [dragJoinConfirm, setDragJoinConfirm] = useState(false)
+  const [dragJoinBusy, setDragJoinBusy] = useState(false)
   const [areaOpen, setAreaOpen] = useState(false)
   const [areaChangeOpen, setAreaChangeOpen] = useState(false)
   const [moreActionsOpen, setMoreActionsOpen] = useState(false)
@@ -2759,6 +2765,7 @@ export default function PosMainPage() {
       else if (next === 'return') void runReturn()
       else if (next === 'item-qty') void runItemQtyChange(null)
       else if (next === 'counter-close-all') setCounterCloseOpen(true)
+      else if (next === 'kot-join') setDragJoinConfirm(true)
       else if (next === 'price-change') showPriceChangeDialog(priceChangeKey ?? selectedLine ?? -1)
       else if (next === 'area-change') setAreaChangeOpen(true)
       else if (next === 'discount') openDiscountDialog()
@@ -2939,6 +2946,7 @@ export default function PosMainPage() {
       else if (next === 'return') await runReturn()
       else if (next === 'item-qty') await runItemQtyChange(creds)
       else if (next === 'counter-close-all') setCounterCloseOpen(true)
+      else if (next === 'kot-join') setDragJoinConfirm(true)
       else if (next === 'price-change') showPriceChangeDialog(priceChangeKey ?? selectedLine ?? -1)
       else if (next === 'area-change') setAreaChangeOpen(true)
       else if (next === 'discount') openDiscountDialog()
@@ -4234,6 +4242,81 @@ export default function PosMainPage() {
   /** OrderListFrm.OrderPanel_Click — highlight only. */
   function selectOrderCard(row: OrderRow) {
     setOrderListSelectedId(row.kotMasterId)
+  }
+
+  /* ── Order List drag-to-join ───────────────────────────────────────────
+     Pointer events (not HTML5 drag) so it works on touch tills too. A press
+     only becomes a drag after moving 8px, so tap/double-tap still work. */
+  function orderCardUnder(clientX: number, clientY: number) {
+    const el = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-kot-id]')
+    return el ? Number(el.dataset.kotId) || 0 : 0
+  }
+
+  function onOrderCardPointerDown(e: React.PointerEvent<HTMLDivElement>, row: OrderRow) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    if ((e.target as HTMLElement).closest('button')) return
+    dragJoinStart.current = { id: row.kotMasterId, x: e.clientX, y: e.clientY, pointerId: e.pointerId }
+  }
+
+  function onOrderCardPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const start = dragJoinStart.current
+    if (!start || start.pointerId !== e.pointerId) return
+    if (!dragJoin) {
+      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < 8) return
+      e.currentTarget.setPointerCapture(e.pointerId)
+    }
+    const overId = orderCardUnder(e.clientX, e.clientY)
+    setDragJoin({ sourceId: start.id, x: e.clientX, y: e.clientY, overId: overId === start.id ? 0 : overId })
+  }
+
+  function onOrderCardPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    const start = dragJoinStart.current
+    dragJoinStart.current = null
+    const drag = dragJoin
+    setDragJoin(null)
+    if (!start || !drag) return
+    const targetId = orderCardUnder(e.clientX, e.clientY)
+    if (!targetId || targetId === start.id) return
+    const source = orderListRows.find((r) => r.kotMasterId === start.id)
+    const target = orderListRows.find((r) => r.kotMasterId === targetId)
+    if (!source || !target) return
+    setDragJoinPlan({ source, target, pax: String((source.pax || 0) + (target.pax || 0) || 1) })
+    requestAdmin('kot-join')
+  }
+
+  function cancelDragJoin() {
+    setDragJoinConfirm(false)
+    setDragJoinPlan(null)
+  }
+
+  async function runDragJoin() {
+    const plan = dragJoinPlan
+    if (!plan) return
+    const finalPax = Math.trunc(Number(plan.pax))
+    if (!Number.isFinite(finalPax) || finalPax <= 0) {
+      toast('Enter the number of guests')
+      return
+    }
+    setDragJoinBusy(true)
+    try {
+      const out = await apiService.joinKots({
+        targetKotId: plan.target.kotMasterId,
+        sourceKotIds: [plan.source.kotMasterId],
+        targetAreaId: plan.target.areaId,
+        targetTableId: plan.target.tableId,
+        finalPax,
+      })
+      toast(String(out.msg || `${plan.source.kotNo} joined into ${plan.target.kotNo}`), 'success')
+      onKotJoined(plan.target.kotMasterId, [plan.source.kotMasterId])
+      setOrderListSelectedId(plan.target.kotMasterId)
+      cancelDragJoin()
+      await loadOrderList(orderListSupply, orderListSearch, orderListAreaId)
+    } catch (err) {
+      const msg = errMessage(err, 'JOIN Failed')
+      toast(msg.startsWith('JOIN Failed') ? msg : `JOIN Failed: ${msg}`)
+    } finally {
+      setDragJoinBusy(false)
+    }
   }
 
   /** OrderListFrm.txtKOTNo_KeyDown Enter — unique exact match auto-loads. */
@@ -12318,6 +12401,74 @@ export default function PosMainPage() {
         </div>
       ) : null}
 
+      {dragJoinConfirm && dragJoinPlan ? (
+        <div className="pd-mod-overlay pd-olm-join-ol" role="presentation">
+          <div className="pd-ol-dialog pd-ol-narrow pd-olm-join" role="dialog" aria-modal="true" aria-labelledby="pd-olm-join-title">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <Merge size={15} strokeWidth={2} />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">KOT Join</p>
+                  <h2 id="pd-olm-join-title" className="pd-mod-item-name">
+                    Join {dragJoinPlan.source.kotNo} into {dragJoinPlan.target.kotNo}?
+                  </h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={cancelDragJoin} aria-label="Close" disabled={dragJoinBusy}>
+                <X size={13} />
+              </button>
+            </div>
+            <div className="pd-ol-body">
+              <div className="pd-olm-join-pair">
+                <div>
+                  <span>Move</span>
+                  <strong>{dragJoinPlan.source.kotNo}</strong>
+                  <small>
+                    {dragJoinPlan.source.areaName} · AED {money(dragJoinPlan.source.amount)}
+                  </small>
+                </div>
+                <ArrowRight size={18} strokeWidth={2.4} />
+                <div>
+                  <span>Into</span>
+                  <strong>{dragJoinPlan.target.kotNo}</strong>
+                  <small>
+                    {dragJoinPlan.target.areaName}
+                    {dragJoinPlan.target.tableName ? ` · ${dragJoinPlan.target.tableName}` : ''} · AED{' '}
+                    {money(dragJoinPlan.target.amount)}
+                  </small>
+                </div>
+              </div>
+              <div className="pd-form-row">
+                <label>Guests (pax) after join</label>
+                <input
+                  inputMode="numeric"
+                  value={dragJoinPlan.pax}
+                  onChange={(e) =>
+                    setDragJoinPlan((p) => (p ? { ...p, pax: e.target.value.replace(/[^\d]/g, '').slice(0, 4) } : p))
+                  }
+                  autoFocus
+                />
+              </div>
+              <p className="pd-mfg-count">
+                All items of {dragJoinPlan.source.kotNo} move to {dragJoinPlan.target.kotNo}, and{' '}
+                {dragJoinPlan.source.kotNo} is closed.
+              </p>
+            </div>
+            <div className="pd-mod-foot">
+              <span className="pd-mod-foot-spacer" />
+              <button type="button" className="pd-mod-foot-btn" onClick={cancelDragJoin} disabled={dragJoinBusy}>
+                Cancel
+              </button>
+              <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void runDragJoin()} disabled={dragJoinBusy}>
+                {dragJoinBusy ? 'Joining…' : 'Join KOT'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {orderListOpen ? (
         <div
           className="pd-mod-overlay"
@@ -12402,7 +12553,24 @@ export default function PosMainPage() {
                 </div>
               ) : null}
 
-              <div className="pd-olm-cards">
+              {orderListRows.length > 1 ? (
+                <p className="pd-olm-hint">
+                  <Merge size={13} strokeWidth={2.2} /> Drag one order onto another to join them
+                </p>
+              ) : null}
+
+              {dragJoin ? (
+                <div
+                  className="pd-olm-ghost"
+                  style={{ left: dragJoin.x / uiZoom(), top: dragJoin.y / uiZoom() }}
+                  aria-hidden
+                >
+                  <Merge size={13} strokeWidth={2.4} />
+                  KOT {orderListRows.find((r) => r.kotMasterId === dragJoin.sourceId)?.kotNo}
+                </div>
+              ) : null}
+
+              <div className={`pd-olm-cards${dragJoin ? ' is-dragging' : ''}`}>
                 {orderListState === 'loading' ? <p className="pd-olm-msg">Loading orders…</p> : null}
                 {orderListState === 'error' ? <p className="pd-olm-msg">{orderListError}</p> : null}
                 {orderListState === 'idle' && orderListRows.length === 0 ? (
@@ -12417,11 +12585,27 @@ export default function PosMainPage() {
                   return (
                     <div
                       key={row.kotMasterId}
-                      className={`pd-olm-card${picked ? ' is-on' : ''}`}
+                      data-kot-id={row.kotMasterId}
+                      className={`pd-olm-card${picked ? ' is-on' : ''}${
+                        dragJoin?.sourceId === row.kotMasterId ? ' is-dragging' : ''
+                      }${dragJoin?.overId === row.kotMasterId ? ' is-drop' : ''}`}
                       style={{ '--ol-color': color } as CSSProperties}
                       onClick={() => selectOrderCard(row)}
                       onDoubleClick={() => void openOrderFromList(row)}
+                      onPointerDown={(e) => onOrderCardPointerDown(e, row)}
+                      onPointerMove={onOrderCardPointerMove}
+                      onPointerUp={onOrderCardPointerUp}
+                      onPointerCancel={() => {
+                        dragJoinStart.current = null
+                        setDragJoin(null)
+                      }}
                     >
+                      {dragJoin?.overId === row.kotMasterId ? (
+                        <div className="pd-olm-dropzone">
+                          <Merge size={16} strokeWidth={2.2} />
+                          Drop to join here
+                        </div>
+                      ) : null}
                       <div className="pd-olm-card-head">
                         <span className="pd-olm-kot">{row.kotNo}</span>
                         <span className="pd-olm-supply">{orderListSupplyLabel(row.supplyType)}</span>

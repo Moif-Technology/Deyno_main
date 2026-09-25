@@ -10166,3 +10166,133 @@
   opacity: 0.5;
   pointer-events: none;
 }
+
+/* ── Order List: drag one KOT onto another to join ───────────────────── */
+.pd-olm-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.pd-olm-hint > svg {
+  color: var(--brand);
+}
+
+.pd-olm-card {
+  touch-action: none;
+  user-select: none;
+}
+
+.pd-olm-cards.is-dragging .pd-olm-card {
+  cursor: grabbing;
+}
+
+.pd-olm-card.is-dragging {
+  opacity: 0.45;
+  transform: scale(0.97);
+}
+
+/* The card under the pointer opens a dashed "drop here" space. */
+.pd-olm-card.is-drop {
+  border: 2px dashed var(--brand);
+  background: var(--brand-bg);
+  box-shadow: 0 0 0 4px var(--brand-glow);
+}
+
+.pd-olm-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-bottom: 4px;
+  border: 1.5px dashed var(--brand-border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pd-olm-ghost {
+  position: fixed;
+  z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(80, 0, 20, 0.3);
+  transform: translate(12px, 12px);
+  pointer-events: none;
+}
+
+.pd-olm-join-ol {
+  z-index: 140;
+}
+
+.pd-olm-join-pair {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.pd-olm-join-pair > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--pd-border);
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.pd-olm-join-pair > div:last-child {
+  border-color: var(--brand-border);
+  background: var(--brand-bg);
+}
+
+.pd-olm-join-pair span {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.pd-olm-join-pair strong {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--brand);
+}
+
+.pd-olm-join-pair small {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pd-olm-join-pair > svg {
+  color: var(--brand);
+}
+
+.pd-olm-join .pd-mod-foot {
+  justify-content: flex-start;
+}
+
+.pd-olm-join .pd-mod-foot > .pd-mod-foot-spacer:first-child {
+  display: block;
+}
