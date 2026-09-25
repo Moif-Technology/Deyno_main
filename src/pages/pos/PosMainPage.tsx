@@ -21,7 +21,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, ChevronDown, Hash, Home, LogOut, Search, StickyNote, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, ShieldCheck, UserPlus, CheckCircle2, AlertTriangle, Info, HelpCircle, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Zap, Merge } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, Hash, Home, LogOut, Search, StickyNote, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, ShieldCheck, UserPlus, CheckCircle2, AlertTriangle, Info, HelpCircle, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Zap, Merge, Clock, Mail, Trees } from 'lucide-react'
 import { SessionManager } from '../../utils/sessionManager'
 import { clearStaffSession } from '../../utils/pinLoginSession'
 import { getEnrollment } from '../../utils/deviceEnrollment'
@@ -32,6 +32,14 @@ import { Toast, type ToastKind } from '../../components/common/Toast'
 import './posMain.css'
 import SettlementScreen, { type SettlementBill, type SettlementDone } from './SettlementScreen'
 import SalesViewerDialog from './SalesViewerDialog'
+import InventoryReportDialog from './InventoryReportDialog'
+import MovementReportDialog from './MovementReportDialog'
+import StockEntryDialog, { type StockDocType } from './StockEntryDialog'
+import StockEntryListDialog from './StockEntryListDialog'
+import RecipeEntryDialog from './RecipeEntryDialog'
+import RecipeListDialog from './RecipeListDialog'
+import ProductEntryDialog from './ProductEntryDialog'
+import ProductListDialog from './ProductListDialog'
 import CounterCloseAllDialog from './CounterCloseAllDialog'
 import KotJoinDialog from './KotJoinDialog'
 import AreaMasterDialog from './AreaMasterDialog'
@@ -40,7 +48,7 @@ import FloorDesignDialog from './FloorDesignDialog'
 import FloorRuntimeCanvas from './FloorRuntimeCanvas'
 import AreaChangeDialog from './AreaChangeDialog'
 
-const NAV = ['New Sale', 'Edit', 'Transactions', 'Credit', 'Reports', 'Admin', 'Settings'] as const
+const NAV = ['New Sale', 'Edit', 'Manufacturing', 'Transactions', 'Credit', 'Reports', 'Admin', 'Settings'] as const
 const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const
 
 /** A nav dropdown item is either a plain leaf, a leaf that shows a chevron
@@ -58,7 +66,6 @@ const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> 
     'Product Entry',
     'Kitchen Message',
     'Combo',
-    'Recipe Entry',
     'Barcode Print Utility',
     'Notes Entry',
     'Online Source Entry',
@@ -75,13 +82,17 @@ const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> 
     'SubGroup Edit',
     'Product Edit',
     'Combo Edit',
-    'Recipe List',
     'Mess List',
+  ],
+  Manufacturing: [
+    'Recipe Entry',
+    'Recipe List',
+    'Production Entry',
+    'Production List',
   ],
   Transactions: [
     'Stock Adjustment',
     'Stock Adjust List',
-    { label: 'Production', children: ['Entry', 'List'] },
     'Opening Stock Entry',
     'Stock report',
     'Movement Report',
@@ -93,6 +104,8 @@ const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> 
     { label: 'Purchase', children: ['SupplierList', 'Purchase entry', 'Purchase List', 'Purchase Return', 'Purchase ReturnList'] },
     'Damage Entry',
     'Damage List',
+    'Additional Stock Entry',
+    'Additional Stock List',
     'Cash/Cash Out',
   ],
   Credit: [
@@ -170,6 +183,7 @@ type ProductTile = {
   taxAmount: number
   productType: string
   barcode: string
+  applyDiscount: boolean
 }
 type TicketLine = {
   key: number
@@ -191,6 +205,7 @@ type TicketLine = {
   barcode: string
   androidPrint: string
   kotDisplayStatus: string
+  applyDiscount: boolean
 }
 type ModifierPreset = { id: number; name: string; arabic: string }
 type AreaRow = {
@@ -294,23 +309,35 @@ function mapSubSubGroups(rows: Record<string, unknown>[]): SubSubCat[] {
   })).filter((g) => g.id > 0 && g.name && g.subGroupId > 0)
 }
 
+/** MainGroupMaster.ApplyDiscount — missing flag defaults to allowed when GroupID > 0. */
+function flagApplyDiscount(raw: unknown, groupId: number) {
+  if (raw == null || raw === '') return groupId > 0
+  if (typeof raw === 'boolean') return raw
+  const u = String(raw).trim().toUpperCase()
+  if (u === 'TRUE' || u === 'Y' || u === 'YES') return true
+  if (u === 'FALSE' || u === 'N' || u === 'NO') return false
+  return num(raw) !== 0
+}
+
 function mapProducts(rows: Record<string, unknown>[]): ProductTile[] {
   return rows.map((p) => {
     const inv = asRow(p.inventory)
     const name = String(p.productName ?? p.ProductName ?? p.shortName ?? '').trim()
     const shortName = String(p.shortName ?? p.ShortDescription ?? '').trim()
+    const groupId = num(p.groupId ?? p.GroupID)
     return {
       id: num(p.productId ?? p.ProductID),
       name,
       sub: shortName && shortName !== name ? shortName : undefined,
       price: num(inv.unitPrice ?? p.unitPrice ?? p.UnitPrice),
-      groupId: num(p.groupId ?? p.GroupID),
+      groupId,
       subgroupId: num(p.subgroupId ?? p.subGroupId ?? p.SubGroupID),
       subsubgroupId: num(p.subsubgroupId ?? p.subSubGroupId ?? p.SubSubGroupID),
       taxRate: num(inv.outputTax1Rate ?? p.tax1Rate ?? p.Tax1Rate),
       taxAmount: num(inv.outputTax1Amount ?? p.tax1Amount ?? p.Tax1Amount),
       productType: String(p.productType ?? p.ProductType ?? '').trim().toUpperCase(),
       barcode: String(p.barcode ?? p.BarCode ?? p.productCode ?? p.ProductCode ?? '').trim(),
+      applyDiscount: flagApplyDiscount(p.applyDiscount ?? p.ApplyDiscount, groupId),
     }
   }).filter((p) => p.id > 0 && p.name)
 }
@@ -389,6 +416,15 @@ function flpAreaTone(area: AreaRow) {
   return 'dine'
 }
 
+function areaSupplyIcon(area: AreaRow) {
+  const name = areaNameKey(area.name)
+  const supply = normalizeSupply(area.supplyType)
+  if (/OUT\s*DOOR|OUTDOOR|GARDEN|TERRACE|PATIO|ROOF/.test(name)) return Trees
+  if (supply === 'DELIVERY') return Truck
+  if (supply === 'TAKEAWAY') return ShoppingBag
+  return Utensils
+}
+
 /** OrderListFrm.colorsList — same area always maps to the same colour (by AreaID). */
 const AREA_PALETTE = [
   '#90EE90',
@@ -452,8 +488,15 @@ function mapOrderRows(rows: Record<string, unknown>[]): OrderRow[] {
 function kotDetailsRows(payload: unknown): Record<string, unknown>[] {
   if (Array.isArray(payload)) return payload.map(asRow)
   const root = asRow(payload)
-  const nested = asRow(root.kotDetails)
-  const raw = root.data ?? nested.data
+  const nestedRaw = root.kotDetails
+  const nested = Array.isArray(nestedRaw) ? nestedRaw : asRow(nestedRaw)
+  const raw = Array.isArray(root.data)
+    ? root.data
+    : Array.isArray(nestedRaw)
+      ? nestedRaw
+      : Array.isArray((nested as Record<string, unknown>).data)
+        ? (nested as Record<string, unknown>).data
+        : []
   const rows = Array.isArray(raw) ? raw.map(asRow) : []
   const seen = new Set<string>()
   return rows.filter((r) => {
@@ -537,14 +580,25 @@ function formatKotClock(iso: string) {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const h24 = d.getHours()
+  const h12 = h24 % 12 || 12
+  const ampm = h24 >= 12 ? 'PM' : 'AM'
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(h12)}:${pad(d.getMinutes())} ${ampm}`
+}
+
+function orderListSupplySymbol(supply: string) {
+  const u = String(supply || '').replace(/_/g, ' ').toUpperCase()
+  if (u === 'DINE IN' || u === 'DINEIN') return '🍽️'
+  if (u === 'DELIVERY') return '🚚'
+  if (u === 'PARCEL' || u === 'TAKEAWAY' || u === 'TAKE AWAY') return '📦'
+  return '📍'
+}
+
+function orderListSupplyLabel(supply: string) {
+  const u = String(supply || '').replace(/_/g, ' ').toUpperCase()
+  if (u === 'TAKEAWAY' || u === 'TAKE AWAY') return 'PARCEL'
+  return u || ''
 }
 
 function kotPrintStatus(raw: unknown) {
@@ -625,8 +679,10 @@ function calcKotTotals(lines: TicketLine[], billDiscount: number, tax1Pct: numbe
   }
 }
 
+/** IsItemDiscountAllowedForRow — GroupID > 0 and MainGroup ApplyDiscount <> 0. */
 function itemDiscountAllowed(line: TicketLine) {
-  return line.groupId > 0
+  if (line.groupId <= 0) return false
+  return line.applyDiscount !== false
 }
 
 function allowedItemDiscountCount(ticket: TicketLine[]) {
@@ -656,8 +712,8 @@ function currentItemDiscountPercent(ticket: TicketLine[]) {
 
 function taxRatesDiffer(ticket: TicketLine[]) {
   if (!ticket.length) return false
-  const first = ticket[0].taxRate
-  return ticket.some((l) => l.taxRate !== first)
+  const first = round2(ticket[0].taxRate)
+  return ticket.some((l) => round2(l.taxRate) !== first)
 }
 
 function clearAllItemDiscountRows(ticket: TicketLine[]): TicketLine[] {
@@ -942,6 +998,18 @@ export default function PosMainPage() {
   const [reportsMenuOpen, setReportsMenuOpen] = useState(false)
   const [, setReportViewersOpen] = useState(false)
   const [salesViewerOpen, setSalesViewerOpen] = useState(false)
+  const [stockReportOpen, setStockReportOpen] = useState(false)
+  const [movementReportOpen, setMovementReportOpen] = useState(false)
+  const [stockDocType, setStockDocType] = useState<StockDocType>('ADJ')
+  const [stockEntryOpen, setStockEntryOpen] = useState(false)
+  const [stockListOpen, setStockListOpen] = useState(false)
+  const [stockEntryId, setStockEntryId] = useState<number | null>(null)
+  const [recipeEntryOpen, setRecipeEntryOpen] = useState(false)
+  const [recipeListOpen, setRecipeListOpen] = useState(false)
+  const [recipeProductId, setRecipeProductId] = useState<number | null>(null)
+  const [productEntryOpen, setProductEntryOpen] = useState(false)
+  const [productListOpen, setProductListOpen] = useState(false)
+  const [editProductId, setEditProductId] = useState<number | null>(null)
   const [counterCloseOpen, setCounterCloseOpen] = useState(false)
   const [entryMenuOpen, setEntryMenuOpen] = useState(false)
   const [areaMasterOpen, setAreaMasterOpen] = useState(false)
@@ -982,6 +1050,7 @@ export default function PosMainPage() {
   const adminLoginRef = useRef<HTMLInputElement | null>(null)
   const adminPasswordRef = useRef<HTMLInputElement | null>(null)
   const customerSearchRef = useRef<HTMLInputElement | null>(null)
+  const orderListSearchRef = useRef<HTMLInputElement | null>(null)
   const customerMobileRef = useRef<HTMLInputElement | null>(null)
   const customerSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const groupStripRef = useRef<HTMLDivElement | null>(null)
@@ -1039,6 +1108,7 @@ export default function PosMainPage() {
   const [orderListSearch, setOrderListSearch] = useState('')
   const [orderListSupply, setOrderListSupply] = useState<'ALL' | ServiceKind>('ALL')
   const [orderListAreaId, setOrderListAreaId] = useState(0)
+  const [orderListSelectedId, setOrderListSelectedId] = useState(0)
   const [areaOpen, setAreaOpen] = useState(false)
   const [areaChangeOpen, setAreaChangeOpen] = useState(false)
   const [moreActionsOpen, setMoreActionsOpen] = useState(false)
@@ -1217,9 +1287,13 @@ export default function PosMainPage() {
     return () => window.removeEventListener('click', close)
   }, [moreActionsOpen])
 
+  const [catalogueNonce, setCatalogueNonce] = useState(0)
+  const catalogueReady = useRef(false)
+
   useEffect(() => {
     let alive = true
-    setCatalogueState('loading')
+    const first = !catalogueReady.current
+    if (first) setCatalogueState('loading')
     Promise.all([
       apiService.fetchGroups(),
       apiService.fetchProducts({ limit: 2000 }),
@@ -1237,11 +1311,16 @@ export default function PosMainPage() {
         setAllSubGroups(mapSubGroups(subGroupRows).filter((s) => groupIds.has(s.groupId)))
         setAllSubSubGroups(mapSubSubGroups(subSubRows))
         setAllProducts(tiles)
-        setStripLevel('group')
-        setGroupId(null)
-        setSubGroupId(null)
-        setSubSubGroupId(null)
-        setCatalogueState('ready')
+        if (first) {
+          setStripLevel('group')
+          setGroupId(null)
+          setSubGroupId(null)
+          setSubSubGroupId(null)
+          setCatalogueState('ready')
+          catalogueReady.current = true
+        } else {
+          setGroupId((cur) => (cur != null && cats.some((c) => c.id === cur) ? cur : null))
+        }
       })
       .catch((err) => {
         if (!alive) return
@@ -1251,7 +1330,7 @@ export default function PosMainPage() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [catalogueNonce])
 
   useEffect(() => {
     let alive = true
@@ -1423,6 +1502,7 @@ export default function PosMainPage() {
     return list
   }, [tablesInArea, isTablesBasedOnWaiter])
   const kotLabel = currentKotId > 0 ? `${kotPrefix}${kotNo}` || String(currentKotId) : 'NEW'
+  const orderListSelected = orderListRows.find((r) => r.kotMasterId === orderListSelectedId) ?? null
   const areaNeedsTable = currentArea != null && currentArea.tableCreationType === 0
   const occupiedByTable = useMemo(() => {
     const map = new Map<number, OccupiedKot[]>()
@@ -1637,6 +1717,7 @@ export default function PosMainPage() {
           barcode: p.barcode || '',
           androidPrint: 'PENDING',
           kotDisplayStatus: 'PENDING',
+          applyDiscount: p.applyDiscount,
           ...calcLine(price, qty, vatPerPc, p.taxRate, 0),
         },
       ])
@@ -2057,6 +2138,7 @@ export default function PosMainPage() {
         barcode: String(row.barcode ?? row.BarCode ?? tile?.barcode ?? ''),
         androidPrint: 'PENDING',
         kotDisplayStatus: 'PENDING',
+        applyDiscount: tile?.applyDiscount ?? flagApplyDiscount(row.applyDiscount ?? row.ApplyDiscount, num(row.groupId ?? row.GroupID) || tile?.groupId || 0),
       }
     })
     setLines((prev) => [...prev, ...nextLines])
@@ -2335,6 +2417,8 @@ export default function PosMainPage() {
         return n === 'DINE IN' || normalizeSupply(a.supplyType) === 'DINE IN'
       })
       if (dine) return dine
+      const byTables = match.find((a) => a.tableCreationType === 0) ?? areas.find((a) => a.tableCreationType === 0)
+      if (byTables) return byTables
     }
     return match[0] ?? null
   }
@@ -2425,13 +2509,15 @@ export default function PosMainPage() {
    * Runtime isTablePopup is origin of THIS pick only (1 = floor, 0 = grid) and is reset here.
    */
   async function areaClickToPopulationTable(area: AreaRow, deliveryList = false) {
+    setAreaId(area.id)
+    setKotPrefix(area.kotPrefix)
+    setService(normalizeSupply(area.supplyType))
     setIsTablePopup(0)
     setTableId(0)
     setTableName('')
     setChairNo(0)
     setKotNo('')
     setRemarks('')
-    setKotPrefix(area.kotPrefix)
     resetOpenKotTicket()
     setTablePopupOpen(false)
     setTableFloorOpen(false)
@@ -2442,6 +2528,7 @@ export default function PosMainPage() {
       const occ = await loadOccupied(area.id, deliveryList)
       if (area.tableCreationType === 0) {
         setTablePopupMode('tables')
+        // Company IsTablePopup: 1 = TableFloorRuntimeFrm, 0 = flpTable grid over items
         if (isTablePopupSetting === 1) setTableFloorOpen(true)
         else setTablePopupOpen(true)
       } else {
@@ -2509,20 +2596,7 @@ export default function PosMainPage() {
     }
     const dine = pickAreaForService('DINE IN')
     if (!dine) {
-      // No area is tagged as DINE IN in this setup — still open the table
-      // layout modal (empty) instead of silently failing with just a toast.
-      setService('DINE IN')
-      setAreaId(0)
-      setTableId(0)
-      setTableName('')
-      setChairNo(0)
-      setTablePopupOpen(false)
-      setChairPromptOpen(false)
-      setKotSelectOpen(false)
-      setCoversPrompt(null)
-      setTablePopupMode('tables')
-      setTableFloorOpen(true)
-      toast('No DINE IN area is configured yet — set one up in Admin.')
+      toast('DINE IN Area Not Found........')
       return
     }
     areaButtonClick(dine)
@@ -2603,11 +2677,14 @@ export default function PosMainPage() {
     setKotSelectOpen(false)
     const occ = occupiedByTable.get(table.id) ?? []
     const seats = Math.max(0, Math.trunc(table.seats))
-    const firstOccupied = occ.find((k) => k.chairNo > 0)?.chairNo ?? (occ[0]?.chairNo || 0)
+    const firstOccupied =
+      occ.find((k) => k.chairNo > 0)?.chairNo
+      ?? (occ[0] ? Math.max(1, occ[0].chairNo) : 0)
     const chairSlots = seats > 0 ? seats : Math.max(occ.length, 1)
     const freeChair = Array.from({ length: chairSlots }, (_, i) => i + 1).find((n) => !occ.some((k) => k.chairNo === n)) ?? 0
 
-    if (firstOccupied <= 0) {
+    // FirstAllocatedChair = 0 → vacant table: chair 1, hide popup (VB TableBtnClick)
+    if (occ.length === 0) {
       setChairNo(1)
       setChairPromptOpen(false)
       hideTablePopup()
@@ -2615,15 +2692,14 @@ export default function PosMainPage() {
       return
     }
 
-    // Existing order on this table: show chairs. Floor (IsTablePopup=1) shows chairs only,
-    // not the full table grid again. Grid mode keeps tables and adds chairs underneath.
+    // Occupied: floor origin shows chairs only; grid keeps tables + chairs
     if (fromFloor) {
       setTablePopupOpen(true)
       setTablePopupMode('tables')
     }
     setChairPromptOpen(true)
 
-    if (ticketHasItems && occ.length > 0) {
+    if (ticketHasItems) {
       const first = occ[0]
       const ok = await ask(`Do You Want To Add Selected Item With KOT ${first.kotNo}`)
       if (ok) {
@@ -2641,11 +2717,12 @@ export default function PosMainPage() {
       return
     }
 
+    // DisplayKOT edit mode — load the first occupied chair's KOT
     const chair = firstOccupied || 1
     setChairNo(chair)
-    setChairPromptOpen(true)
     const kot = occ.find((k) => k.chairNo === chair) ?? occ[0]
     if (kot) await takeOrder(kot.kotMasterId, false)
+    if (occ.length <= 1) hideTablePopup()
     clearQty()
   }
 
@@ -2669,12 +2746,10 @@ export default function PosMainPage() {
     setChairNo(chair)
     const occ = occupiedByTable.get(table.id) ?? []
     const kot = occ.find((k) => k.chairNo === chair)
-    let loadedKot = false
     if (ticketHasItems && kot) {
       const ok = await ask(`Do You Want To Add Selected Item With KOT ${kot.kotNo}`)
       if (ok) {
         await takeOrder(kot.kotMasterId, true)
-        loadedKot = true
       } else {
         setTableId(0)
         setTableName('')
@@ -2683,15 +2758,18 @@ export default function PosMainPage() {
       }
     } else if (kot) {
       await takeOrder(kot.kotMasterId, false)
-      loadedKot = true
     }
-    if (!loadedKot) hideTablePopup()
+    hideTablePopup()
     clearQty()
   }
 
   /** Tapping a chair dot directly on a table card — picks that table + chair
    * in one step instead of the table-then-chair two-screen flow. */
-  async function dotChairClick(table: TableRow, chair: number) {
+  async function dotChairClick(table: TableRow, chair: number, fromFloor = false) {
+    if (fromFloor) {
+      setIsTablePopup(1)
+      setTableFloorOpen(false)
+    }
     setTableId(table.id)
     setTableName(table.name)
     await chairBtnClick(chair, table)
@@ -2747,6 +2825,10 @@ export default function PosMainPage() {
 
   function toast(msg: string, kind?: ToastKind) {
     const inferred = inferAlertKind(msg)
+    if (!kind && (inferred === 'warning' || inferred === 'info')) {
+      void showAlert({ kind: inferred, title: inferAlertTitle(inferred), message: msg })
+      return
+    }
     const resolved: ToastKind =
       kind ??
       (inferred === 'success' ? 'success' : inferred === 'warning' ? 'alert' : inferred === 'info' ? 'info' : 'error')
@@ -2807,6 +2889,12 @@ export default function PosMainPage() {
         barcode: String(row.BarCode ?? row.Barcode ?? tile?.barcode ?? ''),
         androidPrint: kotPrintStatus(row.AndroidPrint ?? row.Androidprint ?? row.android_printed),
         kotDisplayStatus: String(row.KOTDisplayStatus ?? row.kotDisplayStatus ?? 'PENDING'),
+        applyDiscount:
+          tile?.applyDiscount
+          ?? flagApplyDiscount(
+            row.ApplyDiscount ?? row.applyDiscount,
+            num(row.GroupID ?? row.groupID ?? row.dgvGrpID) || tile?.groupId || 0,
+          ),
       }
     })
     if (append) {
@@ -2862,6 +2950,7 @@ export default function PosMainPage() {
         Tax1AmountC: line.tax,
         ItemDisc: line.disc,
         ItemDiscount: line.disc,
+        DiscPerc: line.discPerc,
         LineTotal: line.total,
         dgvGrpID: line.groupId,
         GroupID: line.groupId,
@@ -2949,7 +3038,6 @@ export default function PosMainPage() {
     const resolvedArea = pickAreaForService(service, areaId) ?? (areaId > 0 ? currentArea : null)
     if (!resolvedArea) {
       toast('Please Select An Area...........')
-      setAreaOpen(true)
       return null
     }
     const supply = normalizeSupply(resolvedArea.supplyType) || service
@@ -3064,7 +3152,7 @@ export default function PosMainPage() {
   }
 
   function openDiscountDialog() {
-    if (currentKotId <= 0 || lines.length === 0) {
+    if (currentKotId <= 0) {
       toast('Select A Bill......')
       return
     }
@@ -3080,7 +3168,9 @@ export default function PosMainPage() {
     const totals = calcKotTotals(lines, billDiscount, defaultTax1, 0)
     const oldDiscount = currentType === 2 ? allowedItemDiscountTotal(lines) : round2(Math.max(0, billDiscount))
     const subTotal = currentType === 2 ? round2(totals.lineSubtotal + oldDiscount) : totals.lineSubtotal
-    const mode: -1 | 0 | 2 = oldDiscount > 0 ? currentType : -1
+    const billAllowed = notAllowedItemDiscountCount(lines) <= 0
+    let mode: -1 | 0 | 2 = oldDiscount > 0 ? currentType : -1
+    if (mode === 0 && !billAllowed) mode = -1
     setDiscountBase(subTotal)
     setDiscountMode(mode)
     setDiscountAmount(oldDiscount > 0 || mode !== -1 ? money(oldDiscount) : '')
@@ -3193,6 +3283,10 @@ export default function PosMainPage() {
         toast(
           `Bill discount is not allowed because ${blocked} item(s) are marked as non-discountable in this bill. Please use item-wise discount.`,
         )
+        return
+      }
+      if (discountBase - (Number.isFinite(newDiscount) ? newDiscount : 0) < 0) {
+        toast('Discount Amount Not Acceptable.........')
         return
       }
     }
@@ -3317,34 +3411,88 @@ export default function PosMainPage() {
     if (areaForRefresh > 0) void loadOccupied(areaForRefresh)
   }
 
+  function orderListAreaColor(listAreaId: number, areaName: string) {
+    const i = areas.findIndex((a) => a.id === listAreaId)
+    if (i >= 0) return AREA_PALETTE[i % AREA_PALETTE.length]
+    return areaSwatch(listAreaId, areaName)
+  }
+
+  function orderListWaiterBlocked(row: OrderRow) {
+    const logged = getPosSession().staffId
+    return row.waiterId > 0 && logged > 0 && row.waiterId !== logged
+  }
+
+  /** OrderListFrm.DisplayOrderList — open KOTs, optional supply / area / exact KOT. */
   async function loadOrderList(
     supply: 'ALL' | ServiceKind = orderListSupply,
     search = orderListSearch,
     filterAreaId = orderListAreaId,
-  ) {
+    kotExact = false,
+  ): Promise<OrderRow[]> {
     setOrderListState('loading')
     setOrderListError(null)
     try {
-      const rows = await apiService.fetchOrderList({
+      const rows = mapOrderRows(await apiService.fetchOrderList({
         search: search.trim() || undefined,
         supplyType: supply === 'ALL' ? undefined : supply === 'TAKEAWAY' ? 'PARCEL' : supply,
         areaId: filterAreaId > 0 ? filterAreaId : undefined,
-      })
-      setOrderListRows(mapOrderRows(rows))
+        kotExact,
+      }))
+      setOrderListRows(rows)
+      setOrderListSelectedId((cur) => (rows.some((r) => r.kotMasterId === cur) ? cur : 0))
       setOrderListState('idle')
+      return rows
     } catch (err) {
       setOrderListError(errMessage(err, 'Could not load order list'))
       setOrderListState('error')
+      return []
     }
   }
 
-  /** btnOrderList_Click — always load as NEW (no combine). */
+  /** Mainfrm.btnOrderList_Click → OrderListFrm.ShowDialog */
   function onOrderListClick() {
+    hideTablePopup()
+    setMoreActionsOpen(false)
     setOrderListSearch('')
     setOrderListSupply('ALL')
     setOrderListAreaId(0)
+    setOrderListSelectedId(0)
     setOrderListOpen(true)
-    void loadOrderList('ALL', '', 0)
+    void loadOrderList('ALL', '', 0).then(() => {
+      window.setTimeout(() => orderListSearchRef.current?.focus(), 50)
+    })
+  }
+
+  /**
+   * OrderListFrm.kotNumberButton_Click / OrderPanel_DoubleClick then
+   * Mainfrm.btnOrderList_Click DisplayKOT(..., 0) — always load as NEW.
+   */
+  async function openOrderFromList(row: OrderRow, checkWaiter = true) {
+    if (checkWaiter && orderListWaiterBlocked(row)) {
+      toast('This table has an active KOT under another waiter.')
+      return
+    }
+    if (!row.kotMasterId) return
+    hideTablePopup()
+    await takeOrder(row.kotMasterId, false)
+  }
+
+  /** OrderListFrm.OrderPanel_Click — highlight only. */
+  function selectOrderCard(row: OrderRow) {
+    setOrderListSelectedId(row.kotMasterId)
+  }
+
+  /** OrderListFrm.txtKOTNo_KeyDown Enter — unique exact match auto-loads. */
+  async function onOrderListKotSearch() {
+    const q = orderListSearch.trim()
+    if (!q) {
+      await loadOrderList('ALL', '', 0)
+      return
+    }
+    setOrderListSupply('ALL')
+    setOrderListAreaId(0)
+    const rows = await loadOrderList('ALL', q, 0, true)
+    if (rows.length === 1) await openOrderFromList(rows[0], false)
   }
 
   /** Mainfrm.Button1_Click — KotJoinFrm.ShowDialog */
@@ -3392,23 +3540,27 @@ export default function PosMainPage() {
   }
 
   function onOrderListSupply(s: 'ALL' | ServiceKind) {
+    setOrderListSearch('')
     setOrderListSupply(s)
     setOrderListAreaId(0)
-    void loadOrderList(s, orderListSearch, 0)
+    void loadOrderList(s, '', 0)
   }
 
-  function onOrderListArea(areaId: number) {
-    const next = orderListAreaId === areaId ? 0 : areaId
-    setOrderListAreaId(next)
+  function onOrderListArea(clickedAreaId: number) {
+    setOrderListSearch('')
+    setOrderListAreaId(clickedAreaId)
     setOrderListSupply('ALL')
-    void loadOrderList('ALL', orderListSearch, next)
+    void loadOrderList('ALL', '', clickedAreaId)
   }
 
   /** DisplayKOT — Order List and table load. AppendItems=0 replaces; =1 keeps NEW lines.
    *  Returns the freshly-loaded lines so a caller mid-orchestration (e.g. moving a line
    *  to another KOT) can use them directly instead of racing the `lines` state update. */
   async function takeOrder(kotMasterId: number, append = false): Promise<TicketLine[] | null> {
-    if (kotMasterId <= 0 || loadingKot) return null
+    if (kotMasterId <= 0) return null
+    if (loadingKot) {
+      await new Promise((r) => window.setTimeout(r, 50))
+    }
     setLoadingKot(true)
     try {
       const details = await apiService.fetchKotDetails(String(kotMasterId))
@@ -3569,6 +3721,40 @@ export default function PosMainPage() {
                         else if (label === 'Table Entry' || label === 'Table Edit') setTableMasterOpen(true)
                         else if (label === 'Floor Design') setFloorDesignOpen(true)
                         else if (label === 'Sales Viewer') setSalesViewerOpen(true)
+                        else if (label === 'Stock report') setStockReportOpen(true)
+                        else if (label === 'Movement Report') setMovementReportOpen(true)
+                        else if (label === 'Stock Adjustment') {
+                          setStockDocType('ADJ')
+                          setStockEntryId(null)
+                          setStockEntryOpen(true)
+                        } else if (label === 'Stock Adjust List') {
+                          setStockDocType('ADJ')
+                          setStockListOpen(true)
+                        } else if (label === 'Damage Entry') {
+                          setStockDocType('DMG')
+                          setStockEntryId(null)
+                          setStockEntryOpen(true)
+                        } else if (label === 'Damage List') {
+                          setStockDocType('DMG')
+                          setStockListOpen(true)
+                        } else if (label === 'Additional Stock Entry') {
+                          setStockDocType('ASE')
+                          setStockEntryId(null)
+                          setStockEntryOpen(true)
+                        } else if (label === 'Additional Stock List') {
+                          setStockDocType('ASE')
+                          setStockListOpen(true)
+                        } else if (label === 'Product Entry') {
+                          setEditProductId(null)
+                          setProductEntryOpen(true)
+                        } else if (label === 'Product Edit') {
+                          setProductListOpen(true)
+                        } else if (label === 'Recipe Entry') {
+                          setRecipeProductId(null)
+                          setRecipeEntryOpen(true)
+                        } else if (label === 'Recipe List') {
+                          setRecipeListOpen(true)
+                        }
                         else if (label === 'Counter Close') requestAdmin('counter-close-all', true)
                         else toast(`${label} — coming soon`, 'info')
                       }}
@@ -3757,6 +3943,7 @@ export default function PosMainPage() {
               </span>
             </div>
 
+            <div className="pd-service-wrap">
             <div className="pd-service">
               {([
                 { id: 'DINE IN' as const, icon: Utensils },
@@ -3784,6 +3971,27 @@ export default function PosMainPage() {
                 <BtnIcon icon={Plus} /> <span className="pd-service-label">New KOT</span>
               </button>
             </div>
+            {flpAreas.length ? (
+              <div className="pd-flp-area" aria-label="Areas">
+                {flpAreas.map((a) => {
+                  const Icon = areaSupplyIcon(a)
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={`pd-area-btn is-${flpAreaTone(a)}${areaId === a.id ? ' is-on' : ''}`}
+                      onClick={() => areaButtonClick(a)}
+                    >
+                      <span className="pd-area-ic" aria-hidden>
+                        <Icon size={13} strokeWidth={2.3} />
+                      </span>
+                      <span className="pd-area-name">{a.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
+            </div>
           </div>
         </section>
 
@@ -3805,7 +4013,9 @@ export default function PosMainPage() {
                 setQuery(next)
                 if (next.trim()) dismissTableSelectionUi()
               }}
-              onFocus={() => dismissTableSelectionUi()}
+              onFocus={() => {
+                if (!tableFloorOpen) dismissTableSelectionUi()
+              }}
               placeholder="Search item / barcode"
             />
             {query ? (
@@ -3874,21 +4084,6 @@ export default function PosMainPage() {
         </aside>
 
         <div className="pd-right">
-          {flpAreas.length ? (
-            <div className="pd-flp-area">
-              {flpAreas.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`pd-area-btn is-${flpAreaTone(a)}${areaId === a.id ? ' is-on' : ''}`}
-                  onClick={() => areaButtonClick(a)}
-                >
-                  {a.name}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
           {tablePopupOpen ? (
             <div className="pd-table-popup">
               <div className="pd-table-popup-bar">
@@ -4153,7 +4348,7 @@ export default function PosMainPage() {
             {/* Corner strip — the 4 buttons used constantly mid-service,
                pinned as a full-height column so they never hide behind "More". */}
             <div className="pd-corner-actions">
-              <button type="button" className="pd-corner-btn" onClick={() => setAreaOpen(true)}>
+              <button type="button" className="pd-corner-btn" onClick={() => requestAdmin('area-change')}>
                 <BtnIcon icon={MapPinned} />
                 <span>Area Change</span>
               </button>
@@ -4591,6 +4786,7 @@ export default function PosMainPage() {
                   <button
                     type="button"
                     className={`pd-disc-mode${discountMode === 0 ? ' is-on' : ''}${!discBillAllowed ? ' is-blocked' : ''}`}
+                    disabled={!discBillAllowed}
                     onClick={() => selectDiscountMode(0)}
                   >
                     Discount On Bill
@@ -5204,7 +5400,10 @@ export default function PosMainPage() {
                       pax={occupied ? occ[0].pax : undefined}
                       onClick={() => void floorTableClick(t)}
                       occupiedChairs={occ.filter((k) => k.chairNo > 0).map((k) => k.chairNo)}
-                      onChairSelect={(chair) => void dotChairClick(t, chair)}
+                      onChairSelect={(chair) => {
+                        if (occ.length === 0) void floorTableClick(t)
+                        else void dotChairClick(t, chair, true)
+                      }}
                     />
                   )
                 })}
@@ -5547,45 +5746,63 @@ export default function PosMainPage() {
       ) : null}
 
       {orderListOpen ? (
-        <div
-          className="pd-mod-overlay pd-ol-overlay"
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setOrderListOpen(false)
-          }}
-        >
-          <div className="pd-ol-dialog pd-ol-screen" role="dialog" aria-modal="true">
-            <div className="pd-mod-header">
-              <div className="pd-mod-header-left">
-                <div className="pd-mod-header-icon">
-                  <ClipboardList size={15} color="#fff" />
-                </div>
-                <div>
-                  <p className="pd-mod-kicker">Saved KOTs</p>
-                  <h2 className="pd-mod-item-name">Order List</h2>
-                </div>
-              </div>
-              <button type="button" className="pd-mod-x" onClick={() => setOrderListOpen(false)} aria-label="Close">
-                <X size={13} />
+        <div className="pd-mod-overlay pd-ol-overlay" role="presentation">
+          <div className="pd-ol-dialog pd-ol-screen pd-kj-screen pd-ol-glass" role="dialog" aria-modal="true">
+            <aside className="pd-kj-side">
+              <span className="pd-kj-heading">KOT No.</span>
+              <input
+                ref={orderListSearchRef}
+                className="pd-kj-search"
+                value={orderListSearch}
+                onChange={(e) => setOrderListSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void onOrderListKotSearch()
+                }}
+                aria-label="KOT number"
+              />
+              <button
+                type="button"
+                className={`pd-kj-btn${orderListSupply === 'ALL' && orderListAreaId === 0 && !orderListSearch.trim() ? ' is-on' : ''}`}
+                onClick={() => onOrderListSupply('ALL')}
+              >
+                All Order
               </button>
-            </div>
-            <div className="pd-ol-body">
-              <div className="pd-ol-filters">
-                {(['ALL', 'DINE IN', 'TAKEAWAY', 'DELIVERY'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`pd-ol-filter${orderListSupply === s && orderListAreaId === 0 ? ' is-on' : ''}`}
-                    onClick={() => onOrderListSupply(s)}
-                  >
-                    {s === 'ALL' ? 'All Orders' : s}
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                className={`pd-kj-btn${orderListSupply === 'DINE IN' ? ' is-on' : ''}`}
+                onClick={() => onOrderListSupply('DINE IN')}
+              >
+                DineIn
+              </button>
+              <button
+                type="button"
+                className={`pd-kj-btn${orderListSupply === 'TAKEAWAY' ? ' is-on' : ''}`}
+                onClick={() => onOrderListSupply('TAKEAWAY')}
+              >
+                Take Away
+              </button>
+              <button
+                type="button"
+                className={`pd-kj-btn${orderListSupply === 'DELIVERY' ? ' is-on' : ''}`}
+                onClick={() => onOrderListSupply('DELIVERY')}
+              >
+                Delivery
+              </button>
+              <button type="button" className="pd-kj-btn pd-kj-selected" disabled>
+                {orderListSelected
+                  ? `${orderListSelected.kotNo} : ${orderListSelected.pax || 0}`
+                  : 'KOT'}
+              </button>
+              <span className="pd-kj-side-spacer" />
+              <button type="button" className="pd-kj-btn pd-kj-home" onClick={() => setOrderListOpen(false)}>
+                Home
+              </button>
+            </aside>
+            <div className="pd-kj-main">
               {areas.length ? (
-                <div className="pd-ol-indicate" aria-label="Area colours">
+                <div className="pd-ol-indicate pd-kj-indicate" aria-label="Area colours">
                   {areas.map((a) => {
-                    const color = areaSwatch(a.id, a.name)
+                    const color = orderListAreaColor(a.id, a.name)
                     const on = orderListAreaId === a.id
                     return (
                       <button
@@ -5601,61 +5818,60 @@ export default function PosMainPage() {
                   })}
                 </div>
               ) : null}
-              <label className="pd-search">
-                <Search size={14} color="var(--text-3)" />
-                <input
-                  value={orderListSearch}
-                  onChange={(e) => setOrderListSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void loadOrderList(orderListSupply, e.currentTarget.value, orderListAreaId)
-                  }}
-                  placeholder="KOT number"
-                />
-                {orderListSearch ? (
-                  <button
-                    type="button"
-                    className="pd-search-clear"
-                    aria-label="Clear search"
-                    onClick={() => {
-                      setOrderListSearch('')
-                      void loadOrderList(orderListSupply, '', orderListAreaId)
-                    }}
-                  >
-                    <X size={12} />
-                  </button>
-                ) : null}
-              </label>
-              <div className="pd-ol-cards">
+              <div className="pd-kj-cards">
                 {orderListState === 'loading' ? <p className="pd-cat-msg">Loading orders…</p> : null}
                 {orderListState === 'error' ? <p className="pd-cat-msg">{orderListError}</p> : null}
                 {orderListState === 'idle' && orderListRows.length === 0 ? (
                   <p className="pd-cat-msg">No open KOTs</p>
                 ) : null}
                 {orderListRows.map((row) => {
-                  const color = areaSwatch(row.areaId, row.areaName)
+                  const color = orderListAreaColor(row.areaId, row.areaName)
+                  const picked = orderListSelectedId === row.kotMasterId
+                  const chairTxt = row.chairNo > 0 ? String(row.chairNo) : ''
+                  const tableLine =
+                    row.tableName.trim() && chairTxt
+                      ? `Table: ${row.tableName} - Chair: ${chairTxt}`
+                      : 'Table: N/A'
                   return (
-                    <button
+                    <div
                       key={row.kotMasterId}
-                      type="button"
-                      className="pd-ol-card"
-                      style={{ background: color }}
-                      disabled={loadingKot}
-                      onClick={() => void takeOrder(row.kotMasterId, false)}
+                      className={`pd-ol-card pd-ol-list-card${picked ? ' is-on' : ''}`}
+                      style={{ '--ol-color': color } as CSSProperties}
+                      onClick={() => selectOrderCard(row)}
+                      onDoubleClick={() => void openOrderFromList(row)}
                     >
                       <span className="pd-ol-card-area">
-                        {row.supplyType} · {row.areaName || 'Area'}
+                        {orderListSupplySymbol(row.supplyType)} {row.areaName || 'Unknown Area'}
                       </span>
-                      <span className="pd-ol-card-time">{formatKotClock(row.kotTime)}</span>
-                      <span className="pd-ol-card-table">
-                        Table: {row.tableName || 'N/A'}
-                        {row.chairNo > 0 ? ` - Chair: ${row.chairNo}` : ''}
+                      <span className="pd-ol-card-time">
+                        <Clock size={11} strokeWidth={2.4} /> {formatKotClock(row.kotTime)}
                       </span>
-                      <span className="pd-ol-card-pax">PAX: {row.pax || 0}</span>
-                      <span className="pd-ol-card-waiter">{row.waiterName || waiter}</span>
-                      {row.remarks ? <span className="pd-ol-card-note">{row.remarks}</span> : null}
-                      <span className="pd-ol-card-amt">AED {money(row.amount)}</span>
-                      <span className="pd-ol-card-kot">KOT No: {row.kotNo}</span>
-                    </button>
+                      <span className={`pd-ol-card-table${row.tableName.trim() && chairTxt ? ' is-set' : ''}`}>
+                        {tableLine}
+                      </span>
+                      <span className="pd-ol-card-supply">Supply Type: {orderListSupplyLabel(row.supplyType)}</span>
+                      <span className="pd-ol-card-note">
+                        <Mail size={11} strokeWidth={2.4} /> {row.remarks}
+                      </span>
+                      <span className="pd-ol-card-pax">
+                        <Users size={11} strokeWidth={2.4} /> PAX: {row.pax || 0}
+                      </span>
+                      <span className="pd-ol-card-waiter">
+                        <User size={11} strokeWidth={2.4} /> {row.waiterName || waiter}
+                      </span>
+                      <span className="pd-ol-card-amt">Amount: {money(row.amount)}</span>
+                      <button
+                        type="button"
+                        className="pd-ol-card-kot-btn"
+                        disabled={loadingKot}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void openOrderFromList(row)
+                        }}
+                      >
+                        ➔ KOT No: {row.kotNo}
+                      </button>
+                    </div>
                   )
                 })}
               </div>
@@ -5677,6 +5893,110 @@ export default function PosMainPage() {
         <SalesViewerDialog
           areas={areas.map((a) => ({ id: a.id, name: a.name }))}
           onClose={() => setSalesViewerOpen(false)}
+        />
+      ) : null}
+
+      {stockReportOpen ? (
+        <InventoryReportDialog onClose={() => setStockReportOpen(false)} />
+      ) : null}
+
+      {movementReportOpen ? (
+        <MovementReportDialog onClose={() => setMovementReportOpen(false)} />
+      ) : null}
+
+      {stockListOpen ? (
+        <StockEntryListDialog
+          docType={stockDocType}
+          onClose={() => setStockListOpen(false)}
+          onNew={() => {
+            setStockEntryId(null)
+            setStockListOpen(false)
+            setStockEntryOpen(true)
+          }}
+          onSelect={(id) => {
+            setStockEntryId(id)
+            setStockListOpen(false)
+            setStockEntryOpen(true)
+          }}
+        />
+      ) : null}
+
+      {productListOpen ? (
+        <ProductListDialog
+          onClose={() => setProductListOpen(false)}
+          onEdit={(id) => {
+            setEditProductId(id)
+            setProductListOpen(false)
+            setProductEntryOpen(true)
+          }}
+        />
+      ) : null}
+
+      {productEntryOpen ? (
+        <ProductEntryDialog
+          key={editProductId ?? 'new'}
+          productId={editProductId}
+          taxRate={defaultTax1}
+          onMenuChanged={() => setCatalogueNonce((n) => n + 1)}
+          onClose={() => {
+            setProductEntryOpen(false)
+            if (editProductId) setProductListOpen(true)
+            setEditProductId(null)
+          }}
+          onSaved={() => {
+            const wasEdit = editProductId != null
+            setProductEntryOpen(false)
+            setEditProductId(null)
+            if (wasEdit) setProductListOpen(true)
+            toast(wasEdit ? 'Product updated' : 'Product saved', 'success')
+          }}
+        />
+      ) : null}
+
+      {recipeListOpen ? (
+        <RecipeListDialog
+          onClose={() => setRecipeListOpen(false)}
+          onNew={() => {
+            setRecipeProductId(null)
+            setRecipeListOpen(false)
+            setRecipeEntryOpen(true)
+          }}
+          onSelect={(id) => {
+            setRecipeProductId(id)
+            setRecipeListOpen(false)
+            setRecipeEntryOpen(true)
+          }}
+        />
+      ) : null}
+
+      {recipeEntryOpen ? (
+        <RecipeEntryDialog
+          key={recipeProductId ?? 'new'}
+          finishedProductId={recipeProductId}
+          onClose={() => {
+            setRecipeEntryOpen(false)
+            setRecipeProductId(null)
+          }}
+          onOpenList={() => {
+            setRecipeEntryOpen(false)
+            setRecipeListOpen(true)
+          }}
+        />
+      ) : null}
+
+      {stockEntryOpen ? (
+        <StockEntryDialog
+          key={`${stockDocType}-${stockEntryId ?? 'new'}`}
+          docType={stockDocType}
+          entryId={stockEntryId}
+          onClose={() => {
+            setStockEntryOpen(false)
+            setStockEntryId(null)
+          }}
+          onOpenList={() => {
+            setStockEntryOpen(false)
+            setStockListOpen(true)
+          }}
         />
       ) : null}
 
