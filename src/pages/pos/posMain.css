@@ -6700,25 +6700,19 @@
   background: var(--brand-bg);
 }
 
+/* Same white keys as the main-screen keypad (.pd-key base style). */
 .pd-admin-keys {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin: 4px 0 2px;
+  gap: 8px;
+  margin: 6px 0 2px;
 }
 
 .pd-admin-keys .pd-key {
-  height: 46px;
-  max-height: 46px;
-  background: #5a0000;
-  border-color: #5a0000;
-  color: #fff;
-}
-
-.pd-admin-keys .pd-key:hover:not(:disabled) {
-  background: #7a1010;
-  border-color: #7a1010;
-  color: #fff;
+  height: 50px;
+  max-height: 50px;
+  min-height: 0;
+  font-size: 20px;
 }
 
 .pd-admin-err {
@@ -6729,8 +6723,21 @@
   text-align: center;
 }
 
+/* Login / Close as two full-width buttons under the keypad. */
 .pd-admin-foot {
-  padding: 0;
+  padding: 8px 0 0;
+  background: none;
+  border-top: none;
+  gap: 8px;
+}
+
+.pd-admin-foot .pd-mod-foot-spacer {
+  display: none !important;
+}
+
+.pd-admin-foot .pd-mod-foot-btn {
+  flex: 1 1 0;
+  height: 44px;
 }
 
 .pd-confirm-msg {
