@@ -9537,3 +9537,154 @@
   }
 }
 
+
+/* ══ Manufacturing (Recipe Entry / Recipe List) ════════════════════════════
+   Sonu's recipe dialogs rendered in Swetha's modal design (.pd-ol-dialog +
+   .pd-mod-header / .pd-ol-body / .pd-mod-foot). Only layout helpers here. */
+.pd-mfg .pd-ol-body {
+  gap: 12px;
+}
+
+.pd-mfg-search {
+  position: relative;
+}
+
+.pd-mfg-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.pd-mfg-search-box > svg {
+  position: absolute;
+  left: 11px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.pd-mfg-search-box > input {
+  width: 100%;
+  padding-left: 32px;
+}
+
+/* Suggestion list drops under whichever search field opened it. */
+.pd-mfg .pd-mfg-hits {
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+}
+
+.pd-mfg-section {
+  margin: 2px 0 -4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.pd-mfg-line {
+  display: grid;
+  grid-template-columns: 1.1fr 1.7fr 0.8fr 0.7fr 0.7fr 0.7fr 0.8fr auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid var(--pd-border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.pd-mfg-line .pd-form-row input,
+.pd-mfg-line .pd-form-row select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pd-mfg-line .pd-form-row input[readonly] {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.pd-mfg-line-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.pd-mfg-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 33px;
+  padding: 0 14px;
+  border-radius: var(--r-sm);
+  border: none;
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pd-mfg-add:disabled {
+  opacity: 0.55;
+}
+
+.pd-mfg .pd-grid .num {
+  text-align: right;
+}
+
+.pd-mfg .pd-grid-wrap {
+  min-height: 160px;
+}
+
+.pd-mfg-msg,
+.pd-mfg-ok {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pd-mfg-msg {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.pd-mfg-ok {
+  background: #e8f6ee;
+  color: #1e7a45;
+}
+
+.pd-mfg-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.pd-mfg-count strong {
+  color: var(--brand);
+  font-weight: 800;
+}
+
+.pd-mfg .pd-mod-foot-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* The shared footer centres its buttons; these footers carry a total on the
+   left, so lay them out left-to-right. */
+.pd-mfg .pd-mod-foot {
+  justify-content: flex-start;
+}
+
+@media (max-width: 1100px) {
+  .pd-mfg-line {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .pd-mfg-line-btns {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}

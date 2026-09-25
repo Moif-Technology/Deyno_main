@@ -3,7 +3,7 @@
  * GM/ML are stored as KG/LT. Line cost uses the ingredient average cost.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Plus, Search, Trash2, X } from 'lucide-react'
+import { ChefHat, Plus, Search, Trash2, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
 
 type ProductHit = {
@@ -384,183 +384,200 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
 
   return (
     <div
-      className="pd-mod-overlay pd-inv-overlay"
+      className="pd-mod-overlay"
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget && !busy) onClose()
       }}
     >
-      <div className="pd-inv pd-stk is-report" role="dialog" aria-modal="true" aria-labelledby="pd-recipe-title">
-        <header className="pd-inv-head">
-          <div className="pd-inv-head-left">
+      <div className="pd-ol-dialog pd-ol-wide pd-mfg" role="dialog" aria-modal="true" aria-labelledby="pd-recipe-title">
+        <div className="pd-mod-header">
+          <div className="pd-mod-header-left">
+            <div className="pd-mod-header-icon">
+              <ChefHat size={15} strokeWidth={2} />
+            </div>
             <div>
               <p className="pd-mod-kicker">Manufacturing</p>
-              <h2 id="pd-recipe-title">Recipe Entry</h2>
+              <h2 id="pd-recipe-title" className="pd-mod-item-name">Recipe Entry</h2>
             </div>
           </div>
           <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close" disabled={busy}>
             <X size={13} />
           </button>
-        </header>
+        </div>
 
-        <div className="pd-stk-entry">
-          <label className="pd-stk-remarks">
-            <span>Finished product</span>
-            <span className="pd-inv-search">
-              <Search size={13} />
+        <div className="pd-ol-body">
+          <div className="pd-form-grid-2">
+            <div className="pd-form-row pd-mfg-search">
+              <label>Finished Product</label>
+              <span className="pd-mfg-search-box">
+                <Search size={14} />
+                <input
+                  value={finishedQuery}
+                  onChange={(e) => void onFinishedChange(e.target.value)}
+                  onKeyDown={(e) => onHitKey(e, (p) => void chooseFinished(p))}
+                  placeholder="Search finished product"
+                  autoComplete="off"
+                />
+              </span>
+              {hitOpen === 'finished' && hits.length > 0 ? renderHits() : null}
+            </div>
+            <div className="pd-form-row">
+              <label>Remarks</label>
+              <input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+            </div>
+          </div>
+
+          <p className="pd-mfg-section">Raw Materials</p>
+          <div className="pd-mfg-line">
+            <div className="pd-form-row">
+              <label>Barcode</label>
               <input
-                value={finishedQuery}
-                onChange={(e) => void onFinishedChange(e.target.value)}
-                onKeyDown={(e) => onHitKey(e, (p) => void chooseFinished(p))}
-                placeholder="Not a raw material"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (onHitKey(e, applyIngredient)) return
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    void lookupIngredient('barcode')
+                  }
+                }}
                 autoComplete="off"
               />
-            </span>
-          </label>
-          <label>
-            <span>Barcode</span>
-            <input
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              onKeyDown={(e) => {
-                if (onHitKey(e, applyIngredient)) return
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void lookupIngredient('barcode')
-                }
-              }}
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            <span>Item name</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (onHitKey(e, applyIngredient)) return
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void lookupIngredient('name')
-                }
-              }}
-              autoComplete="off"
-            />
-          </label>
-          <label>
-            <span>Pack</span>
-            <input value={packet} readOnly />
-          </label>
-          <label>
-            <span>Pack qty</span>
-            <input value={packQty} readOnly />
-          </label>
-          <label>
-            <span>Cost</span>
-            <input value={cost} readOnly />
-          </label>
-          <label>
-            <span>Qty</span>
-            <input
-              value={qty}
-              onChange={(e) => setQty(e.target.value.replace(/[^\d.]/g, ''))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') addLine()
-              }}
-            />
-          </label>
-          <label>
-            <span>Unit</span>
-            <select value={unit} onChange={(e) => setUnit(e.target.value as (typeof UNITS)[number])}>
-              {UNITS.map((u) => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
-          </label>
-          <button type="button" className="pd-inv-go pd-stk-add" onClick={addLine} disabled={busy}>
-            <Plus size={14} />
-            Add
-          </button>
-          <button type="button" className="pd-inv-ghost" onClick={() => void openRawPicker()} disabled={busy}>
-            Raw
-          </button>
-          {hitOpen && hits.length > 0 ? (
-            <div className="pd-stk-hits" role="listbox" aria-label="Items">
-              {hits.map((h, i) => (
-                <button
-                  key={h.productId}
-                  type="button"
-                  role="option"
-                  aria-selected={i === hitIndex}
-                  className={i === hitIndex ? 'is-active' : undefined}
-                  onMouseEnter={() => setHitIndex(i)}
-                  onClick={() => (hitOpen === 'finished' ? void chooseFinished(h) : applyIngredient(h))}
-                >
-                  <strong>{h.barcode || '—'}</strong>
-                  <span>{h.productName}</span>
-                </button>
-              ))}
             </div>
-          ) : null}
-        </div>
+            <div className="pd-form-row pd-mfg-search">
+              <label>Item Name</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (onHitKey(e, applyIngredient)) return
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    void lookupIngredient('name')
+                  }
+                }}
+                autoComplete="off"
+              />
+              {hitOpen && hitOpen !== 'finished' && hits.length > 0 ? renderHits() : null}
+            </div>
+            <div className="pd-form-row">
+              <label>Pack</label>
+              <input value={packet} readOnly />
+            </div>
+            <div className="pd-form-row">
+              <label>Pack Qty</label>
+              <input value={packQty} readOnly />
+            </div>
+            <div className="pd-form-row">
+              <label>Cost</label>
+              <input value={cost} readOnly />
+            </div>
+            <div className="pd-form-row">
+              <label>Qty</label>
+              <input
+                value={qty}
+                inputMode="decimal"
+                onChange={(e) => setQty(e.target.value.replace(/[^\d.]/g, ''))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addLine()
+                }}
+              />
+            </div>
+            <div className="pd-form-row">
+              <label>Unit</label>
+              <select value={unit} onChange={(e) => setUnit(e.target.value as (typeof UNITS)[number])}>
+                {UNITS.map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
+            </div>
+            <div className="pd-mfg-line-btns">
+              <button type="button" className="pd-form-code-btn" onClick={() => void openRawPicker()} disabled={busy}>
+                Raw
+              </button>
+              <button type="button" className="pd-mfg-add" onClick={addLine} disabled={busy}>
+                <Plus size={14} /> Add
+              </button>
+            </div>
+          </div>
 
-        {error ? <p className="pd-inv-msg">{error}</p> : null}
-        {hint ? <p className="pd-stk-ok">{hint}</p> : null}
+          {error ? <p className="pd-mfg-msg">{error}</p> : null}
+          {hint ? <p className="pd-mfg-ok">{hint}</p> : null}
 
-        <div className="pd-stk-grid-wrap">
-          <table className="pd-inv-grid">
-            <thead>
-              <tr>
-                <th>Barcode</th>
-                <th>Product</th>
-                <th>Pack</th>
-                <th className="num">Qty</th>
-                <th className="num">Cost</th>
-                <th>Unit</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {lines.length === 0 ? (
+          <div className="pd-grid-wrap">
+            <table className="pd-grid">
+              <thead>
                 <tr>
-                  <td colSpan={7} className="pd-inv-empty">
-                    Choose a finished product, add raw materials, then Save.
-                  </td>
+                  <th>Barcode</th>
+                  <th>Product</th>
+                  <th>Pack</th>
+                  <th className="num">Qty</th>
+                  <th className="num">Cost</th>
+                  <th>Unit</th>
+                  <th className="col-menu" />
                 </tr>
-              ) : (
-                lines.map((line) => (
-                  <tr key={line.key}>
-                    <td>{line.barcode}</td>
-                    <td>{line.productName}</td>
-                    <td>{line.packDescription}</td>
-                    <td className="num">{line.qtyDisplay}</td>
-                    <td className="num">{moneyFmt(line.lineCost)}</td>
-                    <td>{line.unit}</td>
-                    <td>
-                      <button type="button" className="pd-stk-del" onClick={() => removeLine(line.key)} aria-label="Delete">
-                        <Trash2 size={12} />
-                      </button>
-                    </td>
+              </thead>
+              <tbody>
+                {lines.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>Choose a finished product, add raw materials, then Save</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  lines.map((line) => (
+                    <tr key={line.key}>
+                      <td>{line.barcode}</td>
+                      <td>{line.productName}</td>
+                      <td>{line.packDescription}</td>
+                      <td className="num">{line.qtyDisplay}</td>
+                      <td className="num">{moneyFmt(line.lineCost)}</td>
+                      <td>{line.unit}</td>
+                      <td className="col-menu">
+                        <button type="button" className="pd-row-delete" onClick={() => removeLine(line.key)} aria-label="Delete">
+                          <Trash2 size={12} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <footer className="pd-inv-foot">
-          <span className="pd-inv-total">UNIT COST : {moneyFmt(unitCostTotal)}</span>
-          <label className="pd-stk-remarks" style={{ flex: 1 }}>
-            <span>Remarks</span>
-            <input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-          </label>
-          <button type="button" className="pd-inv-ghost" onClick={onOpenList}>List</button>
-          <button type="button" className="pd-inv-ghost" onClick={clearForm} disabled={busy}>New</button>
-          <button type="button" className="pd-inv-go" onClick={() => void save()} disabled={busy}>
+        <div className="pd-mod-foot">
+          <span className="pd-mfg-count">
+            Unit Cost: <strong>AED {moneyFmt(unitCostTotal)}</strong>
+          </span>
+          <span className="pd-mod-foot-spacer" />
+          <button type="button" className="pd-mod-foot-btn" onClick={onOpenList}>List</button>
+          <button type="button" className="pd-mod-foot-btn" onClick={clearForm} disabled={busy}>New</button>
+          <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void save()} disabled={busy}>
             {busy ? 'Saving…' : hasSaved ? 'Update' : 'Save'}
           </button>
-        </footer>
+        </div>
       </div>
     </div>
   )
+
+  function renderHits() {
+    return (
+      <div className="pd-stk-hits pd-mfg-hits" role="listbox" aria-label="Items">
+        {hits.map((h, i) => (
+          <button
+            key={h.productId}
+            type="button"
+            role="option"
+            aria-selected={i === hitIndex}
+            className={i === hitIndex ? 'is-active' : undefined}
+            onMouseEnter={() => setHitIndex(i)}
+            onClick={() => (hitOpen === 'finished' ? void chooseFinished(h) : applyIngredient(h))}
+          >
+            <strong>{h.barcode || '—'}</strong>
+            <span>{h.productName}</span>
+          </button>
+        ))}
+      </div>
+    )
+  }
 }

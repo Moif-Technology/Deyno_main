@@ -236,6 +236,7 @@ const ENTRY_DEFS: { key: EntryKey; label: string; icon: ComponentType<{ size?: n
   { key: 'stockAdjustment', label: 'Stock Adjustment', icon: RotateCcw },
   { key: 'stockAdjustList', label: 'Stock Adjust List', icon: ClipboardList },
   { key: 'productionEntry', label: 'Production Entry', icon: Package },
+  { key: 'productionList', label: 'Production List', icon: ClipboardList },
   { key: 'openingStock', label: 'Opening Stock Entry', icon: ShoppingBag },
   { key: 'stockReport', label: 'Stock report', icon: BarChart3 },
   { key: 'movementReport', label: 'Movement Report', icon: Truck },
@@ -451,6 +452,7 @@ type EntryKey =
   | 'floorDesign'
   | 'stockAdjustment'
   | 'stockAdjustList'
+  | 'productionList'
   | 'productionEntry'
   | 'openingStock'
   | 'stockReport'
@@ -4699,6 +4701,7 @@ export default function PosMainPage() {
     }
     if (
       key === 'stockAdjustList' ||
+      key === 'productionList' ||
       key === 'damageList' ||
       key === 'transferList' ||
       key === 'receiptList' ||
@@ -6139,6 +6142,7 @@ export default function PosMainPage() {
           </>
         )
       case 'stockAdjustList':
+      case 'productionList':
       case 'transferList':
       case 'receiptList':
       case 'damageList':
@@ -8532,7 +8536,7 @@ export default function PosMainPage() {
               (
                 [
                   'recipe', 'addOn', 'floorDesign',
-                  'stockAdjustment', 'productionEntry', 'openingStock',
+                  'stockAdjustment', 'productionEntry', 'productionList', 'openingStock',
                   'productRequest', 'productReceipt', 'productTransfer',
                   'transferList', 'receiptList', 'supplierList',
                   'purchaseEntry', 'purchaseList', 'purchaseReturn', 'purchaseReturnList',
@@ -8566,7 +8570,9 @@ export default function PosMainPage() {
                   })()}
                 </div>
                 <div>
-                  <p className="pd-mod-kicker">Creation</p>
+                  <p className="pd-mod-kicker">
+                    {entryModal === 'productionEntry' || entryModal === 'productionList' ? 'Manufacturing' : 'Creation'}
+                  </p>
                   <h2 className="pd-mod-item-name">{ENTRY_META[entryModal].label}</h2>
                 </div>
               </div>
@@ -9575,6 +9581,41 @@ export default function PosMainPage() {
                           <th>Stock Adj No</th>
                           <th>Post Status</th>
                           <th>Reason</th>
+                          <th>Remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={4}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'productionList' ? (
+                <>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>From</label>
+                      <DatePicker value={ef('listFrom')} onChange={(v) => setEf('listFrom', v)} max={ef('listTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('listTo')} onChange={(v) => setEf('listTo', v)} min={ef('listFrom')} />
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
+                      Search
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Production No</th>
+                          <th>Date</th>
+                          <th>Items</th>
                           <th>Remarks</th>
                         </tr>
                       </thead>
