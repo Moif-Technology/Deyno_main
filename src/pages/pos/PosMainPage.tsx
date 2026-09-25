@@ -5832,19 +5832,6 @@ export default function PosMainPage() {
       items.push({ id: `action:${label}`, group: 'Actions', label, icon, keywords, onSelect: run })
     }
 
-    const groupName = new Map(groups.map((g) => [g.id, g.name]))
-    for (const p of allProducts) {
-      items.push({
-        id: `product:${p.id}`,
-        group: 'Products',
-        label: p.name,
-        hint: [`AED ${money(p.price)}`, groupName.get(p.groupId)].filter(Boolean).join(' · '),
-        keywords: p.sub,
-        icon: Package,
-        onSelect: () => onItemClick(p),
-      })
-    }
-
     for (const g of groups) {
       items.push({
         id: `group:${g.id}`,
@@ -6656,7 +6643,7 @@ export default function PosMainPage() {
                 inputRef={navSearchRef}
                 items={buildSearchItems()}
                 placeholder="Search"
-                limits={{ Menu: 8, Products: 8 }}
+                limits={{ Menu: 8 }}
                 onQueryChange={(q) => setNavSearching(Boolean(q.trim()))}
                 onPicked={() => {
                   setNavSearching(false)
