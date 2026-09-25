@@ -5,7 +5,7 @@
 
 .pd-cc {
   width: min(1180px, 100%);
-  height: min(760px, 94vh);
+  height: min(760px, calc(94vh / var(--ui-zoom, 1)));
   background: var(--bg, #f7f5f2);
   border-radius: 18px;
   overflow: hidden;

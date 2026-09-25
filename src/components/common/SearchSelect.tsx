@@ -10,6 +10,7 @@ import type { KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown, LoaderCircle } from 'lucide-react'
 import { SearchBar } from './SearchBar'
+import { uiZoom } from '../../utils/useUiZoom'
 import './SearchSelect.css'
 
 export type SearchSelectOption = { id: number | string; name: string; code?: string }
@@ -71,15 +72,20 @@ export function SearchSelect({
   function place() {
     const el = triggerRef.current
     if (!el) return
-    const r = el.getBoundingClientRect()
+    // Rects and innerHeight are in on-screen pixels; the popup's own px get
+    // multiplied by the page zoom, so convert back into CSS px.
+    const z = uiZoom()
+    const rr = el.getBoundingClientRect()
+    const vh = window.innerHeight / z
+    const r = { left: rr.left / z, top: rr.top / z, bottom: rr.bottom / z, width: rr.width / z }
     const gap = 4
-    const below = window.innerHeight - r.bottom - gap - 8
+    const below = vh - r.bottom - gap - 8
     const above = r.top - gap - 8
     const openUp = below < 220 && above > below
     setPos({
       left: r.left,
       width: r.width,
-      ...(openUp ? { bottom: window.innerHeight - r.top + gap } : { top: r.bottom + gap }),
+      ...(openUp ? { bottom: vh - r.top + gap } : { top: r.bottom + gap }),
       maxHeight: Math.min(320, openUp ? above : below),
     })
   }

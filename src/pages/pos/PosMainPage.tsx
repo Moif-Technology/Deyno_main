@@ -27,6 +27,7 @@ import { SessionManager } from '../../utils/sessionManager'
 import { clearStaffSession } from '../../utils/pinLoginSession'
 import { getEnrollment } from '../../utils/deviceEnrollment'
 import { getPosSession } from '../../utils/posSession'
+import { uiZoom, useUiZoom } from '../../utils/useUiZoom'
 import { translateToArabic } from '../../utils/translate'
 import { apiService, ApiError } from '../../api/apiService'
 import { TableCard, TableGlyph } from '../../components/common/TableCard'
@@ -1191,7 +1192,7 @@ function QtyScrollPicker({
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current
     if (!drag || drag.pointerId !== e.pointerId) return
-    const rawPx = drag.startY - e.clientY
+    const rawPx = (drag.startY - e.clientY) / uiZoom()
     const steps = Math.round(rawPx / QTY_PICKER_ROW_HEIGHT)
     setTrackY(-(rawPx - steps * QTY_PICKER_ROW_HEIGHT))
     commit(drag.startValue + steps)
@@ -1332,6 +1333,7 @@ function categoryIcon(name: string): ComponentType<{ size?: number; strokeWidth?
 }
 
 export default function PosMainPage() {
+  useUiZoom()
   const navigate = useNavigate()
   const enrollment = getEnrollment()
   const waiter = SessionManager.staffName || 'ADMIN'
@@ -2147,7 +2149,7 @@ export default function PosMainPage() {
     if (!t.moved && Math.abs(e.clientY - t.startY) < 8) return
     t.moved = true
     if (!el.hasPointerCapture(e.pointerId)) el.setPointerCapture(e.pointerId)
-    el.scrollTop += dy
+    el.scrollTop += dy / uiZoom()
     t.lastY = e.clientY
     el.classList.add('is-dragging')
     e.preventDefault()
@@ -2396,9 +2398,11 @@ export default function PosMainPage() {
   /** Opens the radial row menu centred on (x, y), clamped so its buttons never
    * render off-screen near a viewport edge. */
   function openRowMenuAt(x: number, y: number, key: number) {
+    // Mouse coordinates are on-screen pixels; the menu's own px are zoomed.
+    const z = uiZoom()
     const margin = 90
-    const cx = Math.min(Math.max(x, margin), window.innerWidth - margin)
-    const cy = Math.min(Math.max(y, margin), window.innerHeight - margin)
+    const cx = Math.min(Math.max(x / z, margin), window.innerWidth / z - margin)
+    const cy = Math.min(Math.max(y / z, margin), window.innerHeight / z - margin)
     setRowMenu({ x: cx, y: cy, key })
   }
 

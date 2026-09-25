@@ -2,8 +2,8 @@
 @import "tailwindcss";
 
 :root {
-  --header-h:   clamp(44px, 5vh, 56px);
-  --footer-h:   clamp(24px, 3vh, 30px);
+  --header-h:   clamp(44px, calc(5vh / var(--ui-zoom, 1)), 56px);
+  --footer-h:   clamp(24px, calc(3vh / var(--ui-zoom, 1)), 30px);
 
   /* ── Typography ─────────────────────────────────────────────────── */
   /* One font everywhere — including numeric/tabular contexts, which use
@@ -73,8 +73,8 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
-  width: 100vw;
-  height: 100vh;
+  width: calc(100vw / var(--ui-zoom, 1));
+  height: calc(100vh / var(--ui-zoom, 1));
   overflow: hidden;
 }
 
