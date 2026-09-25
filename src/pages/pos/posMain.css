@@ -10296,3 +10296,28 @@
 .pd-olm-join .pd-mod-foot > .pd-mod-foot-spacer:first-child {
   display: block;
 }
+
+/* KOT Join / Split modal — reuses the Order List modal (.pd-olm) design;
+   cards are buttons that toggle a selection tick. */
+.pd-kjm-card {
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+
+.pd-kjm-tick {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+}
+
+.pd-olm .pd-mod-foot-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
