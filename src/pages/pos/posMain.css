@@ -10606,14 +10606,14 @@
 }
 
 /* ══ Portrait screens (vertical tablets) ════════════════════════════════
-   Top 60%: order on the left, groups + products on the right.
-   Bottom 40%: keypad, action tiles and PAY across the full width.
+   Top 70%: order on the left, groups + products on the right.
+   Bottom 30%: keypad, action tiles and PAY across the full width.
    The catalogue wrappers become "display: contents" so their children
    (search row, group column, products, actions) sit directly in one grid. */
 @media (orientation: portrait) {
   .pd-main {
     grid-template-columns: minmax(0, 1.15fr) 100px minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) 40%;
+    grid-template-rows: auto minmax(0, 1fr) 30%;
     grid-template-areas:
       'order search search'
       'order cats products'
@@ -10694,6 +10694,15 @@
     line-clamp: 2;
     -webkit-box-orient: vertical;
     word-break: break-word;
+  }
+
+  /* 30% band: keys share the keypad height instead of keeping a minimum
+     that would push the last row under PAY. */
+  .pd-keypad-left .pd-key {
+    min-height: 0;
+  }
+  .pd-actions-main > .pd-pay {
+    height: clamp(36px, calc(4vh / var(--ui-zoom, 1)), 50px);
   }
 
   /* Keypad a bit narrower so the tiles get more of the full width. */
