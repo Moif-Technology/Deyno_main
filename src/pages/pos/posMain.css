@@ -10321,3 +10321,286 @@
   justify-content: center;
   gap: 6px;
 }
+
+/* ══ Customer Receipt modal — simple two-pane layout ══════════════════════ */
+.pd-ol-dialog.pd-rcm {
+  width: min(960px, 100%);
+  height: min(640px, calc(90vh / var(--ui-zoom, 1)));
+  max-height: none;
+}
+
+.pd-rcm-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.pd-rcm-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 14px;
+  border-right: 1px solid var(--pd-border);
+  background: var(--surface-2);
+}
+
+.pd-rcm-search {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.pd-rcm-clear {
+  position: absolute;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.pd-rcm-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pd-rcm-cust {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: var(--text-1);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.pd-rcm-cust:hover {
+  background: #fff;
+}
+
+.pd-rcm-cust.is-on {
+  background: #fff;
+  border-color: var(--brand-border);
+  box-shadow: 0 2px 8px rgba(80, 0, 20, 0.08);
+}
+
+.pd-rcm-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pd-rcm-cust.is-on .pd-rcm-avatar {
+  background: var(--brand);
+  color: #fff;
+}
+
+.pd-rcm-cust-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pd-rcm-cust-text strong {
+  font-size: 12.5px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pd-rcm-cust-text small {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.pd-rcm-main {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 18px;
+}
+
+.pd-rcm-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.pd-rcm-empty > svg {
+  color: var(--brand-border);
+}
+
+.pd-rcm-summary {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--brand-bg);
+}
+
+.pd-rcm-summary h3 {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.pd-rcm-total {
+  text-align: right;
+}
+
+.pd-rcm-total strong {
+  display: block;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--brand);
+}
+
+.pd-rcm-total small {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.pd-rcm-label {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.pd-rcm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-rcm-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.pd-rcm-tr {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--surface-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.pd-rcm-tr:last-child {
+  border-bottom: none;
+}
+
+.pd-rcm-th {
+  padding-top: 0;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.pd-rcm-tr .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pd-rcm-strong {
+  font-weight: 800;
+}
+
+.pd-rcm-due {
+  font-weight: 800;
+  color: var(--red);
+}
+
+.pd-rcm-pay {
+  grid-template-columns: auto 1fr auto;
+}
+
+.pd-rcm-badge {
+  justify-self: start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.pd-rcm-paid {
+  font-weight: 800;
+  color: #1e7a45;
+}
+
+.pd-rcm-muted {
+  margin: 4px 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.pd-rcm .pd-mod-foot {
+  justify-content: flex-start;
+}
+
+.pd-rcm .pd-mod-foot > .pd-mod-foot-spacer:first-child {
+  display: block;
+}
+
+.pd-rcm .pd-mod-foot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pd-rcm .pd-mod-foot-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .pd-rcm-body { grid-template-columns: minmax(0, 1fr); }
+  .pd-rcm-side { max-height: 220px; border-right: none; border-bottom: 1px solid var(--pd-border); }
+}
