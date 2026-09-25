@@ -906,6 +906,18 @@
   pointer-events: none;
 }
 
+/* One line always: the reserved New KOT slot used to wrap onto a second
+   row on ~1366px screens, leaving a gap above the area buttons. */
+.pd-service-wrap > .pd-service {
+  flex-wrap: nowrap;
+}
+
+.pd-service-wrap > .pd-service > .pd-service-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .pd-service-btn-end .pd-btn-ic {
   background: var(--brand-bg);
   color: var(--brand);

@@ -22,7 +22,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Check, PenLine, StickyNote, ArrowRight, Clock, ChevronRight, ChevronDown, Hash, Home, LogOut, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Globe, Gift, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, Menu as MenuIcon, Repeat, Package, SeparatorHorizontal, Info, Search, UserPlus, CheckCircle2, HelpCircle, Mail, Factory } from 'lucide-react'
+import { AlertTriangle, Check, PenLine, StickyNote, ArrowRight, Clock, ChevronRight, ChevronDown, Hash, Home, LogOut, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Globe, Gift, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, Menu as MenuIcon, Repeat, Package, SeparatorHorizontal, Info, Search, UserPlus, CheckCircle2, HelpCircle, Mail, Factory, Trees, Zap } from 'lucide-react'
 import { SessionManager } from '../../utils/sessionManager'
 import { clearStaffSession } from '../../utils/pinLoginSession'
 import { getEnrollment } from '../../utils/deviceEnrollment'
@@ -773,6 +773,15 @@ function areaSwatch(areaId: number, areaName = '') {
       : [...String(areaName)].reduce((n, ch) => n + ch.charCodeAt(0), 0)
   const idx = Math.abs(seed) % AREA_PALETTE.length
   return AREA_PALETTE[idx]
+}
+
+function areaSupplyIcon(area: AreaRow) {
+  const name = areaNameKey(area.name)
+  const supply = normalizeSupply(area.supplyType)
+  if (/OUT\s*DOOR|OUTDOOR|GARDEN|TERRACE|PATIO|ROOF/.test(name)) return Trees
+  if (supply === 'DELIVERY') return Truck
+  if (supply === 'TAKEAWAY') return ShoppingBag
+  return Utensils
 }
 
 function pickDefaultTable(area: AreaRow | null, tableList: TableRow[], keepTableId = 0): TableRow | null {
@@ -6818,6 +6827,7 @@ export default function PosMainPage() {
               </span>
             </div>
 
+            <div className="pd-service-wrap">
             <div className="pd-service">
               {([
                 { id: 'DINE IN' as const, icon: Utensils },
@@ -6842,8 +6852,7 @@ export default function PosMainPage() {
                     if (deliveryPickerTimer.current) clearTimeout(deliveryPickerTimer.current)
                     deliveryPickerTimer.current = setTimeout(() => {
                       deliveryPickerTimer.current = null
-                      setCustomerOpen(true)
-                      void loadCustomers()
+                      openCustomerSelect()
                     }, 280)
                   }}
                   onDoubleClick={() => {
@@ -6876,6 +6885,27 @@ export default function PosMainPage() {
               >
                 <BtnIcon icon={Plus} /> <span className="pd-service-label">New KOT</span>
               </button>
+            </div>
+            {flpAreas.length ? (
+              <div className="pd-flp-area" aria-label="Areas">
+                {flpAreas.map((a) => {
+                  const Icon = areaSupplyIcon(a)
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={`pd-area-btn is-${flpAreaTone(a)}${areaId === a.id ? ' is-on' : ''}`}
+                      onClick={() => areaButtonClick(a)}
+                    >
+                      <span className="pd-area-ic" aria-hidden>
+                        <Icon size={13} strokeWidth={2.3} />
+                      </span>
+                      <span className="pd-area-name">{a.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
             </div>
           </div>
         </section>
@@ -6984,21 +7014,6 @@ export default function PosMainPage() {
         </aside>
 
         <div className="pd-right">
-          {flpAreas.length ? (
-            <div className="pd-flp-area">
-              {flpAreas.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`pd-area-btn is-${flpAreaTone(a)}${areaId === a.id ? ' is-on' : ''}`}
-                  onClick={() => areaButtonClick(a)}
-                >
-                  {a.name}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
           {tablePopupOpen ? (
             <div className="pd-table-popup">
               <div className="pd-table-popup-bar">
@@ -7228,6 +7243,23 @@ export default function PosMainPage() {
                     onClick={closeMoreActions}
                   >
                   <div className="pd-more-menu" role="dialog" aria-modal="true" aria-label="More actions">
+                    <button type="button" className="pd-more-item" onClick={() => void onSaveKot()} disabled={savingKot}>
+                      <BtnIcon icon={Zap} /> <span>Quick KOT</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`pd-more-item${remarks.trim() ? ' is-on' : ''}`}
+                      title={remarks.trim() || 'Comments'}
+                      onClick={() => {
+                        setCommentsDraft(remarks)
+                        setCommentsOpen(true)
+                      }}
+                    >
+                      <BtnIcon icon={MessageSquare} /> <span>Comments</span>
+                    </button>
+                    <button type="button" className="pd-more-item">
+                      <BtnIcon icon={Printer} /> <span>KOT Print</span>
+                    </button>
                     <button type="button" className="pd-more-item" onClick={() => setAreaOpen(true)}>
                       <BtnIcon icon={MapPinned} /> <span>Area Change</span>
                     </button>
