@@ -8569,7 +8569,7 @@ export default function PosMainPage() {
                 ? 'pd-ol-wide'
                 : entryModal === 'damageEntry'
                   ? 'pd-ol-damage'
-                : entryModal === 'table' || entryModal === 'combo' || entryModal === 'messMaster' || entryModal === 'bookingList' || entryModal === 'comboEdit' || entryModal === 'messList'
+                : entryModal === 'table' || entryModal === 'combo' || entryModal === 'messMaster' || entryModal === 'bookingList'
                   ? 'pd-ol-table'
                   : (['area', 'onlineSource', 'advancePayment', 'booking'] as EntryKey[]).includes(entryModal)
                   ? 'pd-ol-narrow'

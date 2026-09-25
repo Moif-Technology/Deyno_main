@@ -9832,3 +9832,8 @@
 .pd-edm .pd-mod-foot > .pd-mod-foot-spacer:first-child {
   display: block;
 }
+
+/* Edit screens: narrower than the 980px .pd-ol-wide they reuse. */
+.pd-ol-dialog.pd-edm {
+  width: min(820px, 100%);
+}
