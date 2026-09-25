@@ -1605,9 +1605,8 @@
 }
 
 .pd-products {
-  /* Exactly 6 rows are visible; more rows scroll. Row height comes from
-     --pd-prod-row on .pd-right; the action area below (.pd-actions) takes
-     whatever height is left. */
+  /* Always exactly 6 rows visible; more rows scroll. The action area below
+     (.pd-actions) takes whatever height is left and compacts itself. */
   flex: 0 0 auto;
   height: calc(6 * var(--pd-prod-row) + 5 * var(--pd-prod-gap));
   min-height: 0;
@@ -2404,16 +2403,14 @@
 
 /* Wide tills: widen the keypad column so the action tiles don't stretch
    into very wide, flat buttons. */
-@media (min-width: 1600px) {
-  .pd-keypad-wrap { grid-template-columns: 360px minmax(0, 1fr); }
-}
+:root.ui-w1600 .pd-keypad-wrap { grid-template-columns: 360px minmax(0, 1fr); }
 
-@media (min-width: 1800px) {
-  .pd-products {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  }
-  .pd-act, .pd-chip, .pd-service-btn { max-width: 220px; }
+:root.ui-w1800 .pd-products {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
 }
+:root.ui-w1800 .pd-act,
+:root.ui-w1800 .pd-chip,
+:root.ui-w1800 .pd-service-btn { max-width: 220px; }
 
 .pd-act:disabled,
 .pd-corner-btn:disabled {
@@ -9848,4 +9845,75 @@
 .pd-tile.is-primary.is-cash:hover {
   border-color: transparent;
   box-shadow: 0 4px 10px rgba(80, 0, 20, 0.16);
+}
+
+/* ══ Short action area ════════════════════════════════════════════════════
+   The product grid always keeps 6 rows, so on shorter screens the action
+   area gets less height. The tiles react to their own height: when rows get
+   short, each tile lays out icon + label side by side (no arrow/caption)
+   so labels never get cut off. */
+.pd-tiles {
+  container-type: size;
+  container-name: tiles;
+}
+
+@container tiles (max-height: 240px) {
+  .pd-tile {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 7px;
+    padding: 4px 8px;
+    border-radius: 10px;
+  }
+  .pd-tile small,
+  .pd-tile-arrow {
+    display: none;
+  }
+  .pd-tile-ic {
+    width: 16px;
+    height: 16px;
+  }
+  .pd-tile-text {
+    padding-right: 0;
+  }
+  .pd-tile-label {
+    font-size: 12px;
+    line-height: 1.1;
+  }
+}
+
+@container tiles (max-height: 150px) {
+  .pd-tile {
+    gap: 5px;
+    padding: 2px 6px;
+  }
+  .pd-tile-ic {
+    width: 14px;
+    height: 14px;
+  }
+  .pd-tile-label {
+    font-size: 11px;
+  }
+}
+
+/* Keypad + PAY also react to the action area's own height, so on short
+   screens the key rows share the space instead of spilling under PAY. */
+.pd-actions {
+  container-type: size;
+  container-name: actions;
+}
+
+@container actions (max-height: 230px) {
+  .pd-keypad-left .pd-key {
+    min-height: 0;
+    font-size: 14px;
+    border-radius: 10px;
+  }
+  .pd-keypad-left .pd-keys { gap: 3px; }
+  .pd-keypad-left { gap: 4px; }
+  .pd-entry { height: 24px; font-size: 14px; }
+  .pd-entry-qty { height: 20px; }
+  .pd-actions-main { gap: 5px; }
+  .pd-actions-main > .pd-pay { height: 34px; }
 }

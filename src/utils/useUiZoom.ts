@@ -39,6 +39,11 @@ export function useUiZoom() {
       const z = computeUiZoom(window.innerWidth, window.innerHeight)
       root.style.setProperty('--ui-zoom', String(z))
       root.style.zoom = z === 1 ? '' : String(z)
+      // Media queries see the real window, not the zoomed layout, so wide-
+      // screen rules key off these classes (virtual width) instead.
+      const vw = window.innerWidth / z
+      root.classList.toggle('ui-w1600', vw >= 1600)
+      root.classList.toggle('ui-w1800', vw >= 1800)
     }
     apply()
     window.addEventListener('resize', apply)
@@ -46,6 +51,7 @@ export function useUiZoom() {
       window.removeEventListener('resize', apply)
       root.style.removeProperty('--ui-zoom')
       root.style.zoom = ''
+      root.classList.remove('ui-w1600', 'ui-w1800')
     }
   }, [])
 }
