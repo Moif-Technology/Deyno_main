@@ -8,7 +8,9 @@
  *   ItemBtnClick → add/merge a ticket line using txtQty
  *   btnQty → if keypad (txtSearch) > 0, copy into txtQty and clear search
  *   btnQtyChange / "Change Qty" → QtyChangefrm, write new qty onto current row
- *   btnSaveKOT_Click → SaveBilDetailsToHoldTable("BillHold","KotSave")
+   *   btnPriceChange / "Change Price" → AdminLoginFrm then PriceChangefrm; unit price onto current row
+   *   btnDiscount_Click → AdminLoginFrm then Discountfrm (bill vs item); CalcTotal; persist KOT
+   *   btnSaveKOT_Click → SaveBilDetailsToHoldTable("BillHold","KotSave")
  *   btnOrderList_Click → OrderListFrm → DisplayKOT (always load as NEW, no combine)
  *
  * Modifir column follows dgvItemList / Modifierfrm:
@@ -17,10 +19,10 @@
  *   ItemName paints ↳ modifier in green under the item
  *   Ok writes rtxtmodifier back onto the current row's Modifir cell
  */
-import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Check, PenLine, StickyNote, ArrowRight, Clock, ChevronRight, ChevronDown, Hash, Home, LogOut, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Smartphone, Globe, Gift, SplitSquareHorizontal, Ellipsis, QrCode, ArrowLeft, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, Menu as MenuIcon, Repeat, Package, SeparatorHorizontal, Info } from 'lucide-react'
+import { AlertTriangle, Check, PenLine, StickyNote, ArrowRight, Clock, ChevronRight, ChevronDown, Hash, Home, LogOut, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Globe, Gift, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, Menu as MenuIcon, Repeat, Package, SeparatorHorizontal, Info, Search, UserPlus, CheckCircle2, HelpCircle, Mail, Factory } from 'lucide-react'
 import { SessionManager } from '../../utils/sessionManager'
 import { clearStaffSession } from '../../utils/pinLoginSession'
 import { getEnrollment } from '../../utils/deviceEnrollment'
@@ -40,12 +42,28 @@ import SalesViewerDialog from './SalesViewerDialog'
 import CounterCloseAllDialog from './CounterCloseAllDialog'
 import TableShapePicker from './TableShapePicker'
 import './posMain.css'
+import SettlementScreen, { type SettlementBill, type SettlementDone } from './SettlementScreen'
+import InventoryReportDialog from './InventoryReportDialog'
+import MovementReportDialog from './MovementReportDialog'
+import StockEntryDialog, { type StockDocType } from './StockEntryDialog'
+import StockEntryListDialog from './StockEntryListDialog'
+import RecipeEntryDialog from './RecipeEntryDialog'
+import RecipeListDialog from './RecipeListDialog'
+import ProductEntryDialog from './ProductEntryDialog'
+import ProductListDialog from './ProductListDialog'
+import KotJoinDialog from './KotJoinDialog'
+import AreaMasterDialog from './AreaMasterDialog'
+import TableMasterDialog from './TableMasterDialog'
+import FloorDesignDialog from './FloorDesignDialog'
+import FloorRuntimeCanvas from './FloorRuntimeCanvas'
+import AreaChangeDialog from './AreaChangeDialog'
 
-const NAV = ['Creation', 'Edit', 'Transactions', 'Credit', 'Reports', 'Admin', 'Settings'] as const
+const NAV = ['Creation', 'Edit', 'Manufacturing', 'Transactions', 'Credit', 'Reports', 'Admin', 'Settings'] as const
 
 const NAV_ICON: Record<(typeof NAV)[number], ComponentType<{ size?: number; strokeWidth?: number }>> = {
   Creation: Plus,
   Edit: Pencil,
+  Manufacturing: Factory,
   Transactions: ArrowLeftRight,
   Credit: CreditCard,
   Reports: BarChart3,
@@ -53,31 +71,6 @@ const NAV_ICON: Record<(typeof NAV)[number], ComponentType<{ size?: number; stro
   Settings: SettingsIcon,
 }
 const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const
-
-type SplitMethod = 'cash' | 'card' | 'qr'
-
-interface SplitPayment {
-  method: SplitMethod
-  paid: number
-  tip: number
-}
-
-const SPLIT_METHODS: { id: SplitMethod; label: string; icon: ComponentType<{ size?: number; strokeWidth?: number }> }[] = [
-  { id: 'cash', label: 'Cash', icon: Banknote },
-  { id: 'card', label: 'Credit / Debit Card', icon: CreditCard },
-  { id: 'qr', label: 'QR Payment', icon: QrCode },
-]
-
-const PAY_OPTIONS = [
-  { id: 'split', label: 'Split Pay', icon: SplitSquareHorizontal },
-  { id: 'cash', label: 'Cash', icon: Banknote },
-  { id: 'card', label: 'Credit Card', icon: CreditCard },
-  { id: 'credit', label: 'Credit', icon: Wallet },
-  { id: 'mpay', label: 'M-Pay', icon: Smartphone },
-  { id: 'online', label: 'Online', icon: Globe },
-  { id: 'complimentary', label: 'Complimentary', icon: Gift },
-  { id: 'other', label: 'Other Payments', icon: Ellipsis },
-] as const
 
 /** A nav dropdown item is either a plain leaf, a leaf that shows a chevron
  * but has no known submenu yet (so no flyout box), or a real flyout parent —
@@ -94,7 +87,6 @@ const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> 
     'Sub Group Entry',
     'Kitchen Message',
     'Combo',
-    'Recipe Entry',
     'Barcode Print Utility',
     'Notes Entry',
     'Online Source Entry',
@@ -111,17 +103,29 @@ const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> 
     'SubGroup Edit',
     'Product Edit',
     'Combo Edit',
-    'Recipe List',
     'Mess List',
   ],
+  Manufacturing: [
+    'Recipe Entry',
+    'Recipe List',
+    'Production Entry',
+    'Production List',
+  ],
   Transactions: [
-    { label: 'Production', children: ['Entry', 'List'] },
+    'Stock Adjustment',
+    'Stock Adjust List',
+    'Opening Stock Entry',
+    'Stock report',
+    'Movement Report',
     {
       label: 'Product Transfer/Receive',
       children: ['Product Request', 'Product receipt', 'Product Transfer', 'Transfer List', 'Receipt List'],
     },
+    { label: 'Purchase', children: ['SupplierList', 'Purchase entry', 'Purchase List', 'Purchase Return', 'Purchase ReturnList'] },
     'Damage Entry',
     'Damage List',
+    'Additional Stock Entry',
+    'Additional Stock List',
     'Cash/Cash Out',
   ],
   Credit: [
@@ -343,6 +347,8 @@ type ProductTile = {
   taxRate: number
   taxAmount: number
   productType: string
+  barcode: string
+  applyDiscount: boolean
 }
 /** "Add New Item" / edit-product modal draft — all number-ish fields stay
  * as strings while editing so the input can be blank/partial mid-type. */
@@ -398,6 +404,7 @@ type TicketLine = {
   qty: number
   price: number
   disc: number
+  discPerc: number
   tax: number
   total: number
   taxRate: number
@@ -409,7 +416,9 @@ type TicketLine = {
   barcode: string
   androidPrint: string
   kotDisplayStatus: string
+  applyDiscount: boolean
 }
+type ModifierPreset = { id: number; name: string; arabic: string }
 type AreaRow = {
   id: number
   name: string
@@ -417,7 +426,7 @@ type AreaRow = {
   kotPrefix: string
   tableCreationType: number
 }
-type TableRow = { id: number; name: string; areaId: number; seats: number; waiterId: number }
+type TableRow = { id: number; name: string; areaId: number; seats: number; waiterId: number; tableNo?: number; format?: string }
 
 /** Nav-menu entries under "Creation"/"Transactions" that open a simple
  * master-entry modal instead of a bespoke screen. 'product' (Product Entry)
@@ -538,6 +547,7 @@ type OrderRow = {
   kotMasterId: number
   kotNo: string
   kotTime: string
+  areaId: number
   areaName: string
   tableName: string
   tableId: number
@@ -557,8 +567,25 @@ type OccupiedKot = {
   kotNo: string
   waiterId: number
   pax: number
+  remarks: string
 }
 type ServiceKind = 'DINE IN' | 'TAKEAWAY' | 'DELIVERY'
+type CustomerPick = {
+  id: number
+  name: string
+  mobile: string
+  telephone: string
+  code: string
+}
+
+/** Counter-POS / Select Customer: digits → mobile prefill, otherwise name. */
+function prefillFromCustomerSearch(q: string): { name: string; mobile: string } {
+  const trimmed = q.trim()
+  if (!trimmed) return { name: '', mobile: '' }
+  const compact = trimmed.replace(/[\s\-()]/g, '')
+  if (/^\+?\d{6,15}$/.test(compact)) return { name: '', mobile: compact }
+  return { name: trimmed, mobile: '' }
+}
 
 function money(n: number) {
   return n.toFixed(2)
@@ -613,24 +640,45 @@ function mapSubSubGroups(rows: Record<string, unknown>[]): SubSubCat[] {
   })).filter((g) => g.id > 0 && g.name && g.subGroupId > 0)
 }
 
+/** MainGroupMaster.ApplyDiscount — missing flag defaults to allowed when GroupID > 0. */
+function flagApplyDiscount(raw: unknown, groupId: number) {
+  if (raw == null || raw === '') return groupId > 0
+  if (typeof raw === 'boolean') return raw
+  const u = String(raw).trim().toUpperCase()
+  if (u === 'TRUE' || u === 'Y' || u === 'YES') return true
+  if (u === 'FALSE' || u === 'N' || u === 'NO') return false
+  return num(raw) !== 0
+}
+
 function mapProducts(rows: Record<string, unknown>[]): ProductTile[] {
   return rows.map((p) => {
     const inv = asRow(p.inventory)
     const name = String(p.productName ?? p.ProductName ?? p.shortName ?? '').trim()
     const shortName = String(p.shortName ?? p.ShortDescription ?? '').trim()
+    const groupId = num(p.groupId ?? p.GroupID)
     return {
       id: num(p.productId ?? p.ProductID),
       name,
       sub: shortName && shortName !== name ? shortName : undefined,
       price: num(inv.unitPrice ?? p.unitPrice ?? p.UnitPrice),
-      groupId: num(p.groupId ?? p.GroupID),
+      groupId,
       subgroupId: num(p.subgroupId ?? p.subGroupId ?? p.SubGroupID),
       subsubgroupId: num(p.subsubgroupId ?? p.subSubGroupId ?? p.SubSubGroupID),
       taxRate: num(inv.outputTax1Rate ?? p.tax1Rate ?? p.Tax1Rate),
       taxAmount: num(inv.outputTax1Amount ?? p.tax1Amount ?? p.Tax1Amount),
       productType: String(p.productType ?? p.ProductType ?? '').trim().toUpperCase(),
+      barcode: String(p.barcode ?? p.BarCode ?? p.productCode ?? p.ProductCode ?? '').trim(),
+      applyDiscount: flagApplyDiscount(p.applyDiscount ?? p.ApplyDiscount, groupId),
     }
   }).filter((p) => p.id > 0 && p.name)
+}
+
+function mapModifiers(rows: Record<string, unknown>[]): ModifierPreset[] {
+  return rows.map((m) => ({
+    id: num(m.modifierId ?? m.ModifierID),
+    name: String(m.modifier ?? m.Modifier ?? '').trim(),
+    arabic: String(m.modifierArabic ?? m.ModifierArabic ?? '').trim(),
+  })).filter((m) => m.name)
 }
 
 function normalizeSupply(raw: unknown): ServiceKind {
@@ -699,6 +747,34 @@ function flpAreaTone(area: AreaRow) {
   return 'dine'
 }
 
+/** OrderListFrm.colorsList — same area always maps to the same colour (by AreaID). */
+const AREA_PALETTE = [
+  '#90EE90',
+  '#ADD8E6',
+  '#FFFFE0',
+  '#FFB6C1',
+  '#48D1CC',
+  '#DDA0DD',
+  '#FFA07A',
+  '#D3D3D3',
+  '#9ACD32',
+  '#87CEFA',
+  '#98FB98',
+  '#F08080',
+  '#F0E68C',
+  '#FFE4E1',
+  '#E0FFFF',
+] as const
+
+function areaSwatch(areaId: number, areaName = '') {
+  const seed =
+    areaId > 0
+      ? areaId
+      : [...String(areaName)].reduce((n, ch) => n + ch.charCodeAt(0), 0)
+  const idx = Math.abs(seed) % AREA_PALETTE.length
+  return AREA_PALETTE[idx]
+}
+
 function pickDefaultTable(area: AreaRow | null, tableList: TableRow[], keepTableId = 0): TableRow | null {
   if (!area) return null
   const forArea = tablesForAreaId(area.id, tableList)
@@ -715,6 +791,7 @@ function mapOrderRows(rows: Record<string, unknown>[]): OrderRow[] {
       kotMasterId: num(r.kotMasterID ?? r.KotMasterID),
       kotNo: `${prefix}${kotNo}` || String(r.kotMasterID ?? ''),
       kotTime: String(r.KotTime ?? r.kotTime ?? ''),
+      areaId: num(r.AreaID ?? r.areaId ?? r.area_id),
       areaName: String(r.AreaName ?? r.areaName ?? ''),
       tableName: String(r.TableName ?? r.tableName ?? ''),
       tableId: num(r.TableID ?? r.tableId ?? r.table_id),
@@ -733,8 +810,15 @@ function mapOrderRows(rows: Record<string, unknown>[]): OrderRow[] {
 function kotDetailsRows(payload: unknown): Record<string, unknown>[] {
   if (Array.isArray(payload)) return payload.map(asRow)
   const root = asRow(payload)
-  const nested = asRow(root.kotDetails)
-  const raw = root.data ?? nested.data
+  const nestedRaw = root.kotDetails
+  const nested = Array.isArray(nestedRaw) ? nestedRaw : asRow(nestedRaw)
+  const raw = Array.isArray(root.data)
+    ? root.data
+    : Array.isArray(nestedRaw)
+      ? nestedRaw
+      : Array.isArray((nested as Record<string, unknown>).data)
+        ? (nested as Record<string, unknown>).data
+        : []
   const rows = Array.isArray(raw) ? raw.map(asRow) : []
   const seen = new Set<string>()
   return rows.filter((r) => {
@@ -746,32 +830,84 @@ function kotDetailsRows(payload: unknown): Record<string, unknown>[] {
   })
 }
 
+/**
+ * VB DisplayKOT: txtRemarks.Text = dsHoldDetails.Rows(i).Item("Remarks")
+ * from KOTMaster. Detail rows also send Remarks as the item Modifier alias,
+ * so skip that when it matches the line modifier.
+ */
+function kotHeaderRemarks(row: Record<string, unknown>, fallback = ''): string {
+  const modifier = String(row.Modifier ?? row.Modifir ?? row.modifier ?? '')
+  const keys = [
+    'HeaderRemarks',
+    'headerRemarks',
+    'txtRemarks',
+    'KotRemarks',
+    'kotRemarks',
+    'remarks',
+    'Remarks',
+  ] as const
+  for (const key of keys) {
+    const raw = row[key]
+    if (raw == null) continue
+    const s = String(raw)
+    if (!s.trim()) continue
+    if (key === 'Remarks' && s === modifier) continue
+    return s
+  }
+  return fallback
+}
+
 function errMessage(err: unknown, fallback: string) {
   if (err instanceof ApiError && err.message) return err.message
   if (err instanceof Error && err.message) return err.message
   return fallback
 }
 
-/** Minutes since a KOT was saved, or null when the time can't be read. */
-function kotAgeMinutes(iso: string): number | null {
-  if (!iso) return null
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return null
-  return Math.max(0, Math.floor((Date.now() - t) / 60000))
+/** gvUserDesignation = CHIEF CASHIER / ADMIN skips AdminLoginFrm. */
+function isChiefCashierOrAdmin() {
+  const session = getPosSession()
+  const designation = String(session.designation || '').trim().toUpperCase()
+  const roleName = String(session.roleName || SessionManager.roleName || '').trim().toUpperCase()
+  if (designation === 'CHIEF CASHIER' || designation === 'ADMIN') return true
+  if (roleName === 'CHIEF CASHIER' || roleName === 'ADMIN' || roleName === 'OWNER') return true
+  return Number(SessionManager.roleId) === 1
+}
+
+type AdminCreds = { username: string; password: string }
+type AdminNext = 'item-remove' | 'bill-confirm' | 'return' | 'item-qty' | 'counter-close-all' | 'price-change' | 'area-change' | 'discount'
+type AlertKind = 'info' | 'success' | 'warning' | 'question'
+type AlertBox = { kind: AlertKind; title: string; message: string }
+
+function inferAlertTitle(kind: AlertKind) {
+  if (kind === 'success') return 'Saved'
+  if (kind === 'warning') return 'Attention'
+  if (kind === 'question') return 'Please Confirm'
+  return 'Information'
 }
 
 function formatKotClock(iso: string) {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const h24 = d.getHours()
+  const h12 = h24 % 12 || 12
+  const ampm = h24 >= 12 ? 'PM' : 'AM'
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(h12)}:${pad(d.getMinutes())} ${ampm}`
+}
+
+function orderListSupplySymbol(supply: string) {
+  const u = String(supply || '').replace(/_/g, ' ').toUpperCase()
+  if (u === 'DINE IN' || u === 'DINEIN') return '🍽️'
+  if (u === 'DELIVERY') return '🚚'
+  if (u === 'PARCEL' || u === 'TAKEAWAY' || u === 'TAKE AWAY') return '📦'
+  return '📍'
+}
+
+function orderListSupplyLabel(supply: string) {
+  const u = String(supply || '').replace(/_/g, ' ').toUpperCase()
+  if (u === 'TAKEAWAY' || u === 'TAKE AWAY') return 'PARCEL'
+  return u || ''
 }
 
 function kotPrintStatus(raw: unknown) {
@@ -782,24 +918,6 @@ function kotPrintStatus(raw: unknown) {
 }
 
 /** CalcTotal — SubTotal = qty*price - disc; tax from per-piece VAT unless a line disc exists. */
-/** Shared by the live `summary` memo and any save that needs to total an
- * explicit lines array that hasn't landed in state yet (e.g. mid-move). */
-function computeSummary(ls: TicketLine[]) {
-  const qty = ls.reduce((n, l) => n + l.qty, 0)
-  const subtotal = round2(ls.reduce((n, l) => n + l.price * l.qty, 0))
-  const discount = round2(ls.reduce((n, l) => n + l.disc, 0))
-  const tax = round2(ls.reduce((n, l) => n + l.tax, 0))
-  return {
-    itemCount: ls.length,
-    qty,
-    subtotal,
-    discount,
-    taxable: round2(subtotal - discount),
-    tax,
-    total: round2(subtotal - discount + tax),
-  }
-}
-
 function calcLine(price: number, qty: number, vatPerPc: number, taxRate: number, itemDisc: number) {
   const disc = round2(Math.max(0, itemDisc))
   const subtotal = round2(price * qty - disc)
@@ -809,10 +927,161 @@ function calcLine(price: number, qty: number, vatPerPc: number, taxRate: number,
       : vatPerPc > 0
         ? round2(vatPerPc * qty)
         : round2(subtotal * (taxRate / 100))
+  const gross = Math.abs(price * qty)
   return {
     disc,
+    discPerc: gross > 0 ? round2((disc * 100) / gross) : 0,
     tax,
     total: round2(subtotal + tax),
+  }
+}
+
+function lineNetSubtotal(line: TicketLine) {
+  return round2(line.price * line.qty - line.disc)
+}
+
+/**
+ * Mainfrm.CalcTotal — bill discount (lblDisc) sits on the header.
+ * Item discounts already sit in each line SubTotal.
+ */
+function calcKotTotals(lines: TicketLine[], billDiscount: number, tax1Pct: number, roundOff = 0) {
+  const itemCount = lines.length
+  const qty = lines.reduce((n, l) => n + l.qty, 0)
+  const gross = round2(lines.reduce((n, l) => n + l.price * l.qty, 0))
+  const itemDiscount = round2(lines.reduce((n, l) => n + l.disc, 0))
+  const lineSubtotal = round2(lines.reduce((n, l) => n + lineNetSubtotal(l), 0))
+  const lineTax = round2(lines.reduce((n, l) => n + l.tax, 0))
+  const disc = round2(Math.max(0, billDiscount))
+  const taxableSubTotal = round2(
+    lines.reduce((n, l) => n + (l.taxRate > 0 ? lineNetSubtotal(l) : 0), 0),
+  )
+  const nonTaxableSubTotal = round2(
+    lines.reduce((n, l) => n + (l.taxRate <= 0 ? lineNetSubtotal(l) : 0), 0),
+  )
+  let tax = lineTax
+  let total: number
+  if (disc > 0) {
+    if (taxableSubTotal > 0) {
+      const discountAmt = disc > taxableSubTotal ? taxableSubTotal : disc
+      const discountedTaxable = round2(taxableSubTotal - discountAmt)
+      tax = round2(discountedTaxable * (tax1Pct / 100))
+      total = round2(discountedTaxable + tax + nonTaxableSubTotal + roundOff)
+    } else {
+      tax = 0
+      total = round2(lineSubtotal - disc + roundOff)
+    }
+  } else {
+    total = round2(lineSubtotal + tax + roundOff)
+  }
+  return {
+    itemCount,
+    qty,
+    gross,
+    itemDiscount,
+    lineSubtotal,
+    billDiscount: disc,
+    taxableSubTotal,
+    nonTaxableSubTotal,
+    tax,
+    roundOff,
+    total,
+  }
+}
+
+/** IsItemDiscountAllowedForRow — GroupID > 0 and MainGroup ApplyDiscount <> 0. */
+function itemDiscountAllowed(line: TicketLine) {
+  if (line.groupId <= 0) return false
+  return line.applyDiscount !== false
+}
+
+function allowedItemDiscountCount(ticket: TicketLine[]) {
+  return ticket.reduce((n, l) => n + (itemDiscountAllowed(l) ? 1 : 0), 0)
+}
+
+function notAllowedItemDiscountCount(ticket: TicketLine[]) {
+  return ticket.reduce((n, l) => n + (itemDiscountAllowed(l) ? 0 : 1), 0)
+}
+
+function allowedItemDiscountTotal(ticket: TicketLine[]) {
+  return round2(ticket.reduce((n, l) => n + (itemDiscountAllowed(l) ? l.disc : 0), 0))
+}
+
+/** GetCurrentItemDiscountPercent — allowed gross (qty*price), not net. */
+function currentItemDiscountPercent(ticket: TicketLine[]) {
+  let gross = 0
+  let disc = 0
+  for (const line of ticket) {
+    if (!itemDiscountAllowed(line)) continue
+    gross += Math.abs(line.qty * line.price)
+    disc += line.disc
+  }
+  if (gross <= 0) return 0
+  return round2((disc * 100) / gross)
+}
+
+function taxRatesDiffer(ticket: TicketLine[]) {
+  if (!ticket.length) return false
+  const first = round2(ticket[0].taxRate)
+  return ticket.some((l) => round2(l.taxRate) !== first)
+}
+
+function clearAllItemDiscountRows(ticket: TicketLine[]): TicketLine[] {
+  return ticket.map((line) => ({
+    ...line,
+    ...calcLine(line.price, line.qty, line.taxAmount, line.taxRate, 0),
+    discPerc: 0,
+  }))
+}
+
+/** SplitDiscountAmountToItems — `totalDiscount` is a percent 0–100, not an amount. */
+function splitDiscountAmountToItems(ticket: TicketLine[], totalDiscount: number): TicketLine[] | null {
+  if (allowedItemDiscountCount(ticket) <= 0) return null
+  let pct = totalDiscount
+  if (pct < 0) pct = 0
+  if (pct > 100) pct = 100
+  return ticket.map((line) => {
+    if (itemDiscountAllowed(line)) {
+      const lineAmount = Math.abs(line.qty * line.price)
+      const rowDiscount = round2((lineAmount * pct) / 100)
+      return {
+        ...line,
+        ...calcLine(line.price, line.qty, line.taxAmount, line.taxRate, rowDiscount),
+        discPerc: pct,
+      }
+    }
+    return {
+      ...line,
+      ...calcLine(line.price, line.qty, line.taxAmount, line.taxRate, 0),
+      discPerc: 0,
+    }
+  })
+}
+
+/** ReapplyItemWiseDiscountForRow — keep this row's own Disc%, never copy others. */
+function reapplyLineDiscount(
+  line: TicketLine,
+  discountType: number,
+  nextQty = line.qty,
+  nextPrice = line.price,
+  vatPerPc = line.taxAmount,
+): TicketLine {
+  let disc = line.disc
+  let discPerc = line.discPerc ?? 0
+  if (discountType === 2) {
+    if (!itemDiscountAllowed(line)) {
+      disc = 0
+      discPerc = 0
+    } else if (discPerc > 0) {
+      disc = round2((Math.abs(nextQty * nextPrice) * discPerc) / 100)
+    }
+  }
+  return {
+    ...line,
+    qty: nextQty,
+    price: nextPrice,
+    taxAmount: vatPerPc,
+    ...calcLine(nextPrice, nextQty, vatPerPc, line.taxRate, disc),
+    discPerc: discPerc > 0 ? discPerc : calcLine(nextPrice, nextQty, vatPerPc, line.taxRate, disc).discPerc,
   }
 }
 
@@ -1053,12 +1322,42 @@ export default function PosMainPage() {
   const counter = enrollment?.stationName || 'Counter 01'
   const lineKey = useRef(1)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const modifierTextRef = useRef<HTMLTextAreaElement | null>(null)
 
   const [nav, setNav] = useState<(typeof NAV)[number]>('Creation')
+  const [reportsMenuOpen, setReportsMenuOpen] = useState(false)
+  const [, setReportViewersOpen] = useState(false)
+  const [salesViewerOpen, setSalesViewerOpen] = useState(false)
+  const [stockReportOpen, setStockReportOpen] = useState(false)
+  const [movementReportOpen, setMovementReportOpen] = useState(false)
+  const [stockDocType, setStockDocType] = useState<StockDocType>('ADJ')
+  const [stockEntryOpen, setStockEntryOpen] = useState(false)
+  const [stockListOpen, setStockListOpen] = useState(false)
+  const [stockEntryId, setStockEntryId] = useState<number | null>(null)
+  const [recipeEntryOpen, setRecipeEntryOpen] = useState(false)
+  const [recipeListOpen, setRecipeListOpen] = useState(false)
+  const [recipeProductId, setRecipeProductId] = useState<number | null>(null)
+  const [productEntryOpen, setProductEntryOpen] = useState(false)
+  const [productListOpen, setProductListOpen] = useState(false)
+  const [editProductId, setEditProductId] = useState<number | null>(null)
+  const [counterCloseOpen, setCounterCloseOpen] = useState(false)
+  const [entryMenuOpen, setEntryMenuOpen] = useState(false)
+  const [areaMasterOpen, setAreaMasterOpen] = useState(false)
+  const [tableMasterOpen, setTableMasterOpen] = useState(false)
+  const [floorDesignOpen, setFloorDesignOpen] = useState(false)
+  const reportsMenuRef = useRef<HTMLDivElement | null>(null)
+  const entryMenuRef = useRef<HTMLDivElement | null>(null)
   const [groups, setGroups] = useState<Cat[]>([])
   const [allSubGroups, setAllSubGroups] = useState<SubCat[]>([])
   const [allSubSubGroups, setAllSubSubGroups] = useState<SubSubCat[]>([])
   const [allProducts, setAllProducts] = useState<ProductTile[]>([])
+  const [modifiers, setModifiers] = useState<ModifierPreset[]>([])
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [notesText, setNotesText] = useState('')
+  const [notesLineKey, setNotesLineKey] = useState<number | null>(null)
+  const [alertBox, setAlertBox] = useState<AlertBox | null>(null)
+  const alertResolveRef = useRef<((ok: boolean) => void) | null>(null)
+  const alertOkRef = useRef<HTMLButtonElement | null>(null)
   const [notesHint, setNotesHint] = useState<string | null>(null)
   const [notesKind, setNotesKind] = useState<ToastKind>('error')
   const [openNavMenu, setOpenNavMenu] = useState<(typeof NAV)[number] | null>(null)
@@ -1075,14 +1374,27 @@ export default function PosMainPage() {
   const qtyChangeRef = useRef<HTMLInputElement | null>(null)
   const [priceChangeOpen, setPriceChangeOpen] = useState(false)
   const [priceChangeKey, setPriceChangeKey] = useState<number | null>(null)
-  const [priceChangeNew, setPriceChangeNew] = useState('')
-  const priceChangeRef = useRef<HTMLInputElement | null>(null)
   const [discChangeOpen, setDiscChangeOpen] = useState(false)
   const [discChangeKey, setDiscChangeKey] = useState<number | null>(null)
   const [discChangeNew, setDiscChangeNew] = useState('')
   const discChangeRef = useRef<HTMLInputElement | null>(null)
   const [movePicker, setMovePicker] = useState<{ key: number } | null>(null)
   const [moving, setMoving] = useState(false)
+  const [priceUnit, setPriceUnit] = useState('')
+  const [priceWithVat, setPriceWithVat] = useState('')
+  const [priceVatPerc, setPriceVatPerc] = useState(0)
+  const [priceFocus, setPriceFocus] = useState<'unit' | 'withVat'>('withVat')
+  const [priceError, setPriceError] = useState<string | null>(null)
+  const priceUnitRef = useRef<HTMLInputElement | null>(null)
+  const priceVatRef = useRef<HTMLInputElement | null>(null)
+  const [allowZeroPriceOnBill, setAllowZeroPriceOnBill] = useState(0)
+  const [defaultTax1, setDefaultTax1] = useState(0)
+  const adminLoginRef = useRef<HTMLInputElement | null>(null)
+  const adminPasswordRef = useRef<HTMLInputElement | null>(null)
+  const customerSearchRef = useRef<HTMLInputElement | null>(null)
+  const orderListSearchRef = useRef<HTMLInputElement | null>(null)
+  const customerMobileRef = useRef<HTMLInputElement | null>(null)
+  const customerSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const groupStripRef = useRef<HTMLDivElement | null>(null)
   const gridWrapRef = useRef<HTMLDivElement | null>(null)
   const groupTouch = useRef({ active: false, pointerId: -1, startY: 0, lastY: 0, moved: false })
@@ -1114,6 +1426,20 @@ export default function PosMainPage() {
   const [chairNo, setChairNo] = useState(0)
   const [covers, setCovers] = useState(1)
   const [remarks, setRemarks] = useState('')
+  const [billDiscount, setBillDiscount] = useState(0)
+  const [discountType, setDiscountType] = useState<0 | 2>(0)
+  const [discButtons, setDiscButtons] = useState<[number, number, number]>([5, 10, 15])
+  const [tax1Name, setTax1Name] = useState('VAT')
+  const [discountOpen, setDiscountOpen] = useState(false)
+  const [discountMode, setDiscountMode] = useState<-1 | 0 | 2>(-1)
+  const [discountAmount, setDiscountAmount] = useState('')
+  const [discountPercent, setDiscountPercent] = useState('')
+  const [discountBase, setDiscountBase] = useState(0)
+  const [discountFocus, setDiscountFocus] = useState<'amount' | 'percent'>('amount')
+  const [discountKeyLock, setDiscountKeyLock] = useState<'' | 'amount' | 'percent'>('')
+  const [discountError, setDiscountError] = useState<string | null>(null)
+  const discountAmountRef = useRef<HTMLInputElement | null>(null)
+  const discountPercentRef = useRef<HTMLInputElement | null>(null)
   const [customerId, setCustomerId] = useState(0)
   const [customerName, setCustomerName] = useState('')
   const [waiterId, setWaiterId] = useState(() => getPosSession().staffId)
@@ -1123,34 +1449,44 @@ export default function PosMainPage() {
   const [loadingKot, setLoadingKot] = useState(false)
   const [orderListOpen, setOrderListOpen] = useState(false)
   const deliveryPickerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [kotJoinOpen, setKotJoinOpen] = useState(false)
   const [orderListRows, setOrderListRows] = useState<OrderRow[]>([])
   const [orderListState, setOrderListState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [orderListError, setOrderListError] = useState<string | null>(null)
   const [orderListSearch, setOrderListSearch] = useState('')
   const [orderListSupply, setOrderListSupply] = useState<'ALL' | ServiceKind>('ALL')
+  const [orderListAreaId, setOrderListAreaId] = useState(0)
+  const [orderListSelectedId, setOrderListSelectedId] = useState(0)
   const [areaOpen, setAreaOpen] = useState(false)
+  const [areaChangeOpen, setAreaChangeOpen] = useState(false)
   const [moreActionsOpen, setMoreActionsOpen] = useState(false)
   // True while the More modal plays its zoom-out, before it unmounts.
   const [moreClosing, setMoreClosing] = useState(false)
   const moreCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [payOpen, setPayOpen] = useState(false)
-
-  // Split Payment — method → amount entry (with an inline, optional tip
-  // toggle), looping back to method selection until the bill is covered.
-  const [splitOpen, setSplitOpen] = useState(false)
-  const [splitStep, setSplitStep] = useState<'method' | 'entry' | 'done'>('method')
-  const [splitMethod, setSplitMethod] = useState<SplitMethod | null>(null)
-  const [splitTip, setSplitTip] = useState<'none' | 'with' | null>(null)
-  const [splitPaidInput, setSplitPaidInput] = useState('')
-  const [splitTipInput, setSplitTipInput] = useState('')
-  const [splitActiveField, setSplitActiveField] = useState<'paid' | 'tip'>('paid')
-  const [splitPayments, setSplitPayments] = useState<SplitPayment[]>([])
 
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentsDraft, setCommentsDraft] = useState('')
+  const [itemCancelOpen, setItemCancelOpen] = useState(false)
+  const [itemCancelIds, setItemCancelIds] = useState<Record<number, boolean>>({})
+  const [itemCancelQtyOpen, setItemCancelQtyOpen] = useState(false)
+  const [itemCancelQtyLine, setItemCancelQtyLine] = useState<TicketLine | null>(null)
+  const [itemCancelQtyNew, setItemCancelQtyNew] = useState('')
+  const [itemCancelCoversOpen, setItemCancelCoversOpen] = useState(false)
+  const [itemCancelCoversDraft, setItemCancelCoversDraft] = useState('1')
+  const [adminOpen, setAdminOpen] = useState(false)
+  const [adminLogin, setAdminLogin] = useState('')
+  const [adminPassword, setAdminPassword] = useState('')
+  const [adminFocus, setAdminFocus] = useState<'login' | 'password'>('login')
+  const [adminError, setAdminError] = useState<string | null>(null)
+  const [adminBusy, setAdminBusy] = useState(false)
+  const [adminNext, setAdminNext] = useState<AdminNext | null>(null)
+  const [adminCreds, setAdminCreds] = useState<AdminCreds | null>(null)
+  const [billConfirmOpen, setBillConfirmOpen] = useState(false)
+  const [cancelBusy, setCancelBusy] = useState(false)
+  const [returnBusy, setReturnBusy] = useState(false)
   const [customerOpen, setCustomerOpen] = useState(false)
   const [customerSearch, setCustomerSearch] = useState('')
-  const [customerRows, setCustomerRows] = useState<{ id: number; name: string; mobile: string }[]>([])
+  const [customerRows, setCustomerRows] = useState<CustomerPick[]>([])
   const [customerState, setCustomerState] = useState<'idle' | 'loading'>('idle')
 
   // Receipt lookup — "Receipt" quick action: find a credit customer, see
@@ -1228,13 +1564,6 @@ export default function PosMainPage() {
   const [floorAreaId, setFloorAreaId] = useState<number | null>(null)
   const [floorBusy, setFloorBusy] = useState(false)
 
-  // Reports — these two already have full, real implementations sitting in
-  // their own files (real apiService calls) that just weren't wired to the
-  // side nav yet, so they're opened directly instead of via the generic
-  // entry-modal system.
-  const [salesViewerOpen, setSalesViewerOpen] = useState(false)
-  const [counterCloseOpen, setCounterCloseOpen] = useState(false)
-
   // Admin submenu's plain alert/confirm popups (Cashier Change, Clear KOT,
   // ShutDown) — a different shape from the master-entry modals (no header
   // icon, red/pink alert card, OK or Yes/No only), so they get their own
@@ -1283,16 +1612,36 @@ export default function PosMainPage() {
   const [cashMode, setCashMode] = useState<'pick' | 'in' | 'out'>('pick')
   const [cashRows, setCashRows] = useState<{ desc: string; amount: number }[]>([])
 
+  const [customerEntryOpen, setCustomerEntryOpen] = useState(false)
+  const [customerEntryName, setCustomerEntryName] = useState('')
+  const [customerEntryMobile, setCustomerEntryMobile] = useState('')
+  const [customerEntryTel, setCustomerEntryTel] = useState('')
+  const [customerEntryAddress, setCustomerEntryAddress] = useState('')
+  const [customerEntryError, setCustomerEntryError] = useState<string | null>(null)
+  const [customerSaving, setCustomerSaving] = useState(false)
+  const [isTablePopupSetting, setIsTablePopupSetting] = useState(0)
   const [isTablePopup, setIsTablePopup] = useState(0)
   const [isTablesBasedOnWaiter, setIsTablesBasedOnWaiter] = useState(0)
+  const [, setDefaultAreaName] = useState(1)
   const [tablePopupOpen, setTablePopupOpen] = useState(false)
   const [tableFloorOpen, setTableFloorOpen] = useState(false)
+  const [floorMap, setFloorMap] = useState<{
+    hasFloor: boolean
+    border: { x: number; y: number }[]
+    shapes: { shapeType: string; posXPercent: number; posYPercent: number; widthPercent: number; heightPercent: number; backColorArgb?: number | null; displayText?: string }[]
+    tables: { tableId: number; tableName: string; noOfChairs: number; tableFormat: string; posXPercent: number; posYPercent: number; widthPercent: number; heightPercent: number }[]
+  } | null>(null)
   const [tablePopupMode, setTablePopupMode] = useState<'tables' | 'kots'>('tables')
   const [occupiedKots, setOccupiedKots] = useState<OccupiedKot[]>([])
   const [chairPromptOpen, setChairPromptOpen] = useState(false)
   const [kotSelectOpen, setKotSelectOpen] = useState(false)
   const [coversPrompt, setCoversPrompt] = useState<{ table: TableRow } | null>(null)
   const [coversDraft, setCoversDraft] = useState('1')
+  const [saveKotOnSettlement, setSaveKotOnSettlement] = useState(0)
+  const [settleOpen, setSettleOpen] = useState(false)
+  const [settleBill, setSettleBill] = useState<SettlementBill | null>(null)
+  const [settleOpening, setSettleOpening] = useState(false)
+  const [lastInfo, setLastInfo] = useState<SettlementDone | null>(null)
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 30_000)
@@ -1301,7 +1650,7 @@ export default function PosMainPage() {
 
   // Ctrl+K (⌘K on Mac) opens the side menu with its search box focused.
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
+    function onKey(e: globalThis.KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setSideNavHidden(false)
@@ -1331,6 +1680,66 @@ export default function PosMainPage() {
   }, [lines.length])
 
   useEffect(() => {
+    if (!reportsMenuOpen && !entryMenuOpen) return
+    function onDocClick(ev: MouseEvent) {
+      const t = ev.target as Node
+      if (reportsMenuRef.current && !reportsMenuRef.current.contains(t)) {
+        setReportsMenuOpen(false)
+        setReportViewersOpen(false)
+      }
+      if (entryMenuRef.current && !entryMenuRef.current.contains(t)) {
+        setEntryMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [reportsMenuOpen, entryMenuOpen])
+
+  useEffect(() => {
+    if (!lastInfo) return
+    const t = window.setTimeout(() => setLastInfo(null), 60_000)
+    return () => window.clearTimeout(t)
+  }, [lastInfo])
+
+  useEffect(() => {
+    if (!alertBox) return
+    const t = window.setTimeout(() => alertOkRef.current?.focus(), 0)
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      closeAlert(e.key === 'Enter')
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.clearTimeout(t)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [alertBox])
+
+  useEffect(() => {
+    if (!adminOpen) return
+    setAdminFocus('login')
+    const t = window.setTimeout(() => adminLoginRef.current?.focus(), 0)
+    return () => window.clearTimeout(t)
+  }, [adminOpen])
+
+  useEffect(() => {
+    if (!notesOpen) return
+    const t = window.setTimeout(() => {
+      modifierTextRef.current?.focus()
+      const el = modifierTextRef.current
+      if (el) el.setSelectionRange(el.value.length, el.value.length)
+    }, 0)
+    return () => window.clearTimeout(t)
+  }, [notesOpen])
+
+  useEffect(() => {
+    const el = groupStripRef.current
+    if (el) el.scrollTop = 0
+  }, [groupId, subGroupId])
+
+  useEffect(() => {
     if (!qtyChangeOpen) return
     const t = window.setTimeout(() => qtyChangeRef.current?.focus(), 0)
     return () => window.clearTimeout(t)
@@ -1338,15 +1747,21 @@ export default function PosMainPage() {
 
   useEffect(() => {
     if (!priceChangeOpen) return
-    const t = window.setTimeout(() => priceChangeRef.current?.focus(), 0)
+    const t = window.setTimeout(() => {
+      if (priceFocus === 'unit') priceUnitRef.current?.focus()
+      else priceVatRef.current?.focus()
+    }, 0)
     return () => window.clearTimeout(t)
-  }, [priceChangeOpen])
+  }, [priceChangeOpen, priceFocus])
 
   useEffect(() => {
-    if (!discChangeOpen) return
-    const t = window.setTimeout(() => discChangeRef.current?.focus(), 0)
+    if (!discountOpen) return
+    const t = window.setTimeout(() => {
+      if (discountFocus === 'percent') discountPercentRef.current?.focus()
+      else discountAmountRef.current?.focus()
+    }, 0)
     return () => window.clearTimeout(t)
-  }, [discChangeOpen])
+  }, [discountOpen, discountFocus])
 
   useEffect(() => {
     if (!rowMenu) return
@@ -1379,7 +1794,7 @@ export default function PosMainPage() {
 
   useEffect(() => {
     if (!moreActionsOpen) return
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') closeMoreActions()
     }
     window.addEventListener('keydown', onKey)
@@ -1390,9 +1805,13 @@ export default function PosMainPage() {
     if (moreCloseTimer.current) clearTimeout(moreCloseTimer.current)
   }, [])
 
+  const [catalogueNonce, setCatalogueNonce] = useState(0)
+  const catalogueReady = useRef(false)
+
   useEffect(() => {
     let alive = true
-    setCatalogueState('loading')
+    const first = !catalogueReady.current
+    if (first) setCatalogueState('loading')
     Promise.all([
       apiService.fetchGroups(),
       apiService.fetchProducts({ limit: 2000 }),
@@ -1410,10 +1829,15 @@ export default function PosMainPage() {
         setAllSubGroups(mapSubGroups(subGroupRows).filter((s) => groupIds.has(s.groupId)))
         setAllSubSubGroups(mapSubSubGroups(subSubRows))
         setAllProducts(tiles)
-        setGroupId(null)
-        setSubGroupId(null)
-        setSubSubGroupId(null)
-        setCatalogueState('ready')
+        if (first) {
+          setGroupId(null)
+          setSubGroupId(null)
+          setSubSubGroupId(null)
+          setCatalogueState('ready')
+          catalogueReady.current = true
+        } else {
+          setGroupId((cur) => (cur != null && cats.some((c) => c.id === cur) ? cur : null))
+        }
       })
       .catch((err) => {
         if (!alive) return
@@ -1423,7 +1847,7 @@ export default function PosMainPage() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [catalogueNonce])
 
   useEffect(() => {
     let alive = true
@@ -1440,19 +1864,32 @@ export default function PosMainPage() {
         areaId: Number(t.areaId) || 0,
         seats: Number(t.seats) || 0,
         waiterId: Number(t.waiterId) || 0,
+        tableNo: Number(t.tableNo) || 0,
+        format: String(t.format ?? 'SQUARE'),
       })).filter((t) => t.id > 0)
       setAreas(mapped)
       setTables(tableMapped)
       const p = asRow(params)
       setClearAfterKotSave(num(p.ClearAfterKOTSave ?? p.clearAfterKotSave))
+      setSaveKotOnSettlement(num(p.SaveKOTonSettlement ?? p.saveKotOnSettlement))
       setWaiterMandatory(num(p.ISWaiterMandotory ?? p.ISWaiterMandatory ?? p.isWaiterMandatory))
-      const popup = num(p.IsTablePopup ?? p.isTablePopup)
+      setAllowZeroPriceOnBill(num(p.AllowZeroPriceOnBill ?? p.allowZeroPriceOnBill ?? p.allow_zero_price_on_bill))
+      setDefaultTax1(num(p.Tax1 ?? p.tax1 ?? p.gvTax1Percentage))
+      setTax1Name(String(p.Tax1Name ?? p.gvTax1 ?? p.tax1Name ?? 'VAT') || 'VAT')
+      setDiscButtons([
+        num(p.DiscountButton1 ?? p.discountButton1) || 5,
+        num(p.DiscountButton2 ?? p.discountButton2) || 10,
+        num(p.DiscountButton3 ?? p.discountButton3) || 15,
+      ])
+      const popup = num(p.IsTablePopup ?? p.isTablePopup ?? p.is_table_popup)
       const defaultAreaFlag =
         p.DefaultAreaName != null || p.defaultAreaName != null || p.default_area_name != null
           ? num(p.DefaultAreaName ?? p.defaultAreaName ?? p.default_area_name)
           : 1
-      setIsTablePopup(popup)
-      setIsTablesBasedOnWaiter(num(p.IsTablesBasedOnWaiter ?? p.isTablesBasedOnWaiter))
+      setIsTablePopupSetting(popup === 1 ? 1 : 0)
+      setIsTablePopup(0)
+      setIsTablesBasedOnWaiter(num(p.IsTablesBasedOnWaiter ?? p.isTablesBasedOnWaiter ?? p.is_tables_based_on_waiter))
+      setDefaultAreaName(defaultAreaFlag)
       setAreaId(0)
       setTableId(0)
       setTableName('')
@@ -1476,6 +1913,31 @@ export default function PosMainPage() {
       alive = false
     }
   }, [])
+
+  async function reloadFloorMasters() {
+    try {
+      const [areaRows, tableRows] = await Promise.all([
+        apiService.fetchAreas().catch(() => []),
+        apiService.fetchTables().catch(() => []),
+      ])
+      const mapped = mapAreas(areaRows)
+      const tableMapped = tableRows
+        .map((t) => ({
+          id: Number(t.id) || 0,
+          name: t.label,
+          areaId: Number(t.areaId) || 0,
+          seats: t.seats,
+          waiterId: Number(t.waiterId) || 0,
+          tableNo: Number(t.tableNo) || 0,
+          format: String(t.format ?? 'SQUARE'),
+        }))
+        .filter((t) => t.id > 0)
+      setAreas(mapped)
+      setTables(tableMapped)
+    } catch {
+      /* keep current floor */
+    }
+  }
 
   const groupSubs = useMemo(
     () => (groupId == null ? [] : allSubGroups.filter((s) => s.groupId === groupId)),
@@ -1511,7 +1973,18 @@ export default function PosMainPage() {
     })
   }, [allProducts, groupId, subGroupId, subSubGroupId, query, topMoveActive, topMoveProducts])
 
-  const summary = useMemo(() => computeSummary(lines), [lines])
+  const summary = useMemo(
+    () => calcKotTotals(lines, billDiscount, defaultTax1, 0),
+    [lines, billDiscount, defaultTax1],
+  )
+  const discPreviewAmt = Number(discountAmount)
+  const discPreviewVal = Number.isFinite(discPreviewAmt) ? discPreviewAmt : 0
+  const discTaxable = round2(discountBase - discPreviewVal)
+  const discTax = round2(discTaxable * (defaultTax1 / 100))
+  const discNet = round2(discTaxable + discTax)
+  const discTaxLabel = `${tax1Name} @${defaultTax1}%`
+  const discModeOn = discountMode === 0 || discountMode === 2
+  const discBillAllowed = notAllowedItemDiscountCount(lines) <= 0
 
   const currentArea = areas.find((a) => a.id === areaId) ?? null
   const flpAreas = useMemo(
@@ -1527,15 +2000,23 @@ export default function PosMainPage() {
       }),
     [areas],
   )
+  const tablesInArea = useMemo(
+    () => tables.filter((t) => t.areaId === areaId || (areaId > 0 && t.areaId === 0)),
+    [tables, areaId],
+  )
   const tablesForArea = useMemo(() => {
-    let list = tables.filter((t) => t.areaId === areaId || (areaId > 0 && t.areaId === 0))
+    let list = tablesInArea
     if (isTablesBasedOnWaiter === 1) {
-      const staffId = getPosSession().staffId
-      list = list.filter((t) => t.waiterId === staffId)
+      const designation = String(getPosSession().designation || '').trim().toUpperCase()
+      if (designation === 'WAITER') {
+        const staffId = getPosSession().staffId
+        list = list.filter((t) => t.waiterId === staffId)
+      }
     }
     return list
-  }, [tables, areaId, isTablesBasedOnWaiter])
+  }, [tablesInArea, isTablesBasedOnWaiter])
   const kotLabel = currentKotId > 0 ? `${kotPrefix}${kotNo}` || String(currentKotId) : 'NEW'
+  const orderListSelected = orderListRows.find((r) => r.kotMasterId === orderListSelectedId) ?? null
   const areaNeedsTable = currentArea != null && currentArea.tableCreationType === 0
   const occupiedByTable = useMemo(() => {
     const map = new Map<number, OccupiedKot[]>()
@@ -1548,9 +2029,64 @@ export default function PosMainPage() {
     return map
   }, [occupiedKots])
 
+  useEffect(() => {
+    if (!tableFloorOpen || areaId <= 0) {
+      setFloorMap(null)
+      return
+    }
+    let alive = true
+    apiService
+      .fetchFloorDesign(areaId)
+      .then((data) => {
+        if (!alive) return
+        const border = Array.isArray(data.border)
+          ? (data.border as Record<string, unknown>[]).map((p) => ({
+              x: num(p.posXPercent ?? p.x),
+              y: num(p.posYPercent ?? p.y),
+            }))
+          : []
+        const shapes = Array.isArray(data.shapes)
+          ? (data.shapes as Record<string, unknown>[]).map((s) => ({
+              shapeType: String(s.shapeType ?? 'ZONE'),
+              posXPercent: num(s.posXPercent),
+              posYPercent: num(s.posYPercent),
+              widthPercent: num(s.widthPercent),
+              heightPercent: num(s.heightPercent),
+              backColorArgb: s.backColorArgb == null ? null : num(s.backColorArgb),
+              displayText: String(s.displayText ?? ''),
+            }))
+          : []
+        const layoutTables = Array.isArray(data.tables)
+          ? (data.tables as Record<string, unknown>[]).map((t) => ({
+              tableId: num(t.tableId),
+              tableName: String(t.tableName ?? ''),
+              noOfChairs: num(t.noOfChairs),
+              tableFormat: String(t.tableFormat ?? 'SQUARE'),
+              posXPercent: num(t.posXPercent),
+              posYPercent: num(t.posYPercent),
+              widthPercent: num(t.widthPercent) || 6.67,
+              heightPercent: num(t.heightPercent) || 8.57,
+            }))
+          : []
+        setFloorMap({
+          hasFloor: Boolean(data.hasFloor) && border.length >= 3,
+          border,
+          shapes,
+          tables: layoutTables,
+        })
+      })
+      .catch(() => {
+        if (alive) setFloorMap({ hasFloor: false, border: [], shapes: [], tables: [] })
+      })
+    return () => {
+      alive = false
+    }
+  }, [tableFloorOpen, areaId])
+
   function pendingQty() {
     const n = Number(padQty)
-    return Number.isFinite(n) && n > 0 ? n : 1
+    if (Number.isFinite(n) && n !== 0) return n
+    return 1
   }
 
   function clearQty() {
@@ -1614,6 +2150,7 @@ export default function PosMainPage() {
    * navigating to a separate subgroup "screen". */
   function onGroupClick(id: number) {
     setTopMoveActive(false)
+    dismissTableSelectionUi()
     setGroupId(id)
     setSubGroupId(null)
     setSubSubGroupId(null)
@@ -1621,12 +2158,14 @@ export default function PosMainPage() {
 
   function onSubGroupClick(id: number) {
     setTopMoveActive(false)
+    dismissTableSelectionUi()
     setSubGroupId(id)
     setSubSubGroupId(null)
   }
 
   function onSubSubClick(id: number) {
     setTopMoveActive(false)
+    dismissTableSelectionUi()
     setSubSubGroupId(id)
   }
 
@@ -1671,7 +2210,7 @@ export default function PosMainPage() {
 
   function onItemClick(p: ProductTile) {
     const qty = pendingQty()
-    if (!(qty > 0)) {
+    if (!Number.isFinite(qty) || qty === 0) {
       clearQty()
       return
     }
@@ -1694,9 +2233,9 @@ export default function PosMainPage() {
     )
     if (existing) {
       const nextQty = existing.qty + qty
-      const next = calcLine(existing.price, nextQty, existing.taxAmount, existing.taxRate, 0)
+      const next = reapplyLineDiscount(existing, discountType, nextQty, existing.price, existing.taxAmount)
       setLines((prev) =>
-        prev.map((l) => (l.key === existing.key ? { ...l, qty: nextQty, ...next } : l)),
+        prev.map((l) => (l.key === existing.key ? next : l)),
       )
       setSelectedLine(existing.key)
     } else {
@@ -1717,9 +2256,10 @@ export default function PosMainPage() {
           kotPending: true,
           kotChildId: 0,
           groupId: p.groupId,
-          barcode: '',
+          barcode: p.barcode || '',
           androidPrint: 'PENDING',
           kotDisplayStatus: 'PENDING',
+          applyDiscount: p.applyDiscount,
           ...calcLine(price, qty, vatPerPc, p.taxRate, 0),
         },
       ])
@@ -1787,6 +2327,54 @@ export default function PosMainPage() {
     })
   }
 
+  const notesLine = notesLineKey == null ? null : lines.find((l) => l.key === notesLineKey) ?? null
+
+  function openModifierForm(ticketKey: number) {
+    const line = lines.find((l) => l.key === ticketKey)
+    if (!line) {
+      toast('No Item Found...')
+      return
+    }
+    setRowMenu(null)
+    setSelectedLine(ticketKey)
+    setNotesLineKey(ticketKey)
+    setNotesText(line.modifiers ?? '')
+    setNotesOpen(true)
+    if (modifiers.length === 0) {
+      apiService.fetchModifiers()
+        .then((rows) => setModifiers(mapModifiers(rows)))
+        .catch(() => {})
+    }
+  }
+
+  function openModifierForSelection() {
+    const key = selectedLine ?? lines[lines.length - 1]?.key
+    if (key == null) {
+      toast('No Item Found...')
+      return
+    }
+    openModifierForm(key)
+  }
+
+  function appendModifier(name: string) {
+    const label = name.trim()
+    if (!label) return
+    setNotesText((prev) => (prev ? `${prev}-${label}` : label))
+  }
+
+  function applyModifier() {
+    if (notesLineKey == null) {
+      setNotesOpen(false)
+      return
+    }
+    setLines((prev) => prev.map((l) => (l.key === notesLineKey ? { ...l, modifiers: notesText } : l)))
+    setNotesOpen(false)
+  }
+
+  function closeModifierForm() {
+    setNotesOpen(false)
+  }
+
   /** Opens the radial row menu centred on (x, y), clamped so its buttons never
    * render off-screen near a viewport edge. */
   function openRowMenuAt(x: number, y: number, key: number) {
@@ -1847,8 +2435,7 @@ export default function PosMainPage() {
     setLines((prev) =>
       prev.map((l) => {
         if (l.key !== qtyChangeKey) return l
-        const disc = round2((l.disc / (l.qty || 1)) * n)
-        return { ...l, qty: n, ...calcLine(l.price, n, l.taxAmount, l.taxRate, disc) }
+        return reapplyLineDiscount(l, discountType, n, l.price, l.taxAmount)
       }),
     )
     setQtyChangeOpen(false)
@@ -1860,47 +2447,87 @@ export default function PosMainPage() {
 
   const priceChangeLine = priceChangeKey == null ? null : lines.find((l) => l.key === priceChangeKey) ?? null
 
-  function openPriceChange(ticketKey?: number) {
+  function showPriceChangeDialog(key: number) {
+    const line = lines.find((l) => l.key === key)
+    if (!line) {
+      toast('No Item Found...')
+      return
+    }
+    const vatPerc = line.taxRate > 0 ? line.taxRate : defaultTax1
+    const vatAmt = round2(line.price * (vatPerc / 100))
+    setSelectedLine(key)
+    setPriceChangeKey(key)
+    setPriceUnit('')
+    setPriceWithVat(money(line.price + vatAmt))
+    setPriceVatPerc(vatPerc)
+    setPriceFocus('withVat')
+    setPriceError(null)
+    setPriceChangeOpen(true)
+  }
+
+  /** btnPriceChange_Click — admin unless CHIEF CASHIER / ADMIN. Context menu skips admin. */
+  function openPriceChange(ticketKey?: number, fromMenu = false) {
     setRowMenu(null)
     const key = ticketKey ?? selectedLine
     if (key == null || lines.length === 0) {
       toast('No Item Found...')
       return
     }
-    const line = lines.find((l) => l.key === key)
-    if (!line) {
+    if (!lines.some((l) => l.key === key)) {
       toast('No Item Found...')
       return
     }
-    if (!line.kotPending) {
-      toast('Change Price From Item Cancel...')
-      return
-    }
-    if (line.productType === 'COMBO') {
-      toast('Change Price Of Combo item.......')
-      return
-    }
-    setSelectedLine(key)
     setPriceChangeKey(key)
-    setPriceChangeNew('')
-    setPriceChangeOpen(true)
+    setSelectedLine(key)
+    if (!fromMenu && !isChiefCashierOrAdmin()) {
+      requestAdmin('price-change')
+      return
+    }
+    showPriceChangeDialog(key)
   }
 
-  function onPriceChangeKey(k: string) {
-    if (k === 'C') {
-      setPriceChangeNew((prev) => prev.slice(0, -1))
-      return
-    }
-    if (k === '.' && priceChangeNew.includes('.')) return
-    setPriceChangeNew((prev) => (prev + k).slice(0, 10))
+  function padPriceField(prev: string, k: string) {
+    if (k === 'C') return prev.slice(0, -1)
+    if (k === '.' && prev.includes('.')) return prev
+    if (k === '.' && prev === '') return '0.'
+    return `${prev}${k}`.slice(0, 12)
+  }
+
+  function syncFromUnit(raw: string) {
+    setPriceUnit(raw)
+    const p = Number(raw)
+    if (!Number.isFinite(p)) return
+    const vat = p * (priceVatPerc / 100)
+    setPriceWithVat(money(p + vat))
+  }
+
+  function syncFromWithVat(raw: string) {
+    setPriceWithVat(raw)
+    const w = Number(raw)
+    if (!Number.isFinite(w) || w <= 0) return
+    const p = priceVatPerc > 0 ? (100 / (100 + priceVatPerc)) * w : w
+    setPriceUnit(money(p))
+  }
+
+  function onPricePadKey(k: string) {
+    if (priceFocus === 'unit') syncFromUnit(padPriceField(priceUnit, k))
+    else syncFromWithVat(padPriceField(priceWithVat, k))
   }
 
   function applyPriceChange() {
-    const n = Number(priceChangeNew)
-    if (!(n >= 0 && n < 9999999)) {
-      toast('Qty Price Not Acceptable.........')
+    const newPrice = Number(priceUnit)
+    if (newPrice > 0 && newPrice < 999999) {
+      commitPriceChange(newPrice)
       return
     }
+    if (newPrice === 0 && allowZeroPriceOnBill === 1) {
+      commitPriceChange(0)
+      return
+    }
+    setPriceError('Zero Price Not Acceptable.........')
+  }
+
+  function commitPriceChange(newPrice: number) {
     if (priceChangeKey == null) {
       setPriceChangeOpen(false)
       return
@@ -1908,14 +2535,17 @@ export default function PosMainPage() {
     setLines((prev) =>
       prev.map((l) => {
         if (l.key !== priceChangeKey) return l
-        return { ...l, price: n, ...calcLine(n, l.qty, l.taxAmount, l.taxRate, l.disc) }
+        const vatPerPc = round2(newPrice * ((l.taxRate || 0) / 100))
+        return reapplyLineDiscount(l, discountType, l.qty, newPrice, vatPerPc)
       }),
     )
     setPriceChangeOpen(false)
+    setPriceError(null)
   }
 
   function cancelPriceChange() {
     setPriceChangeOpen(false)
+    setPriceError(null)
   }
 
   const discChangeLine = discChangeKey == null ? null : lines.find((l) => l.key === discChangeKey) ?? null
@@ -1938,6 +2568,10 @@ export default function PosMainPage() {
     }
     if (line.productType === 'COMBO') {
       toast('Change Discount Of Combo item.......')
+      return
+    }
+    if (!itemDiscountAllowed(line)) {
+      toast('Discount not allowed for this item')
       return
     }
     setSelectedLine(key)
@@ -1979,10 +2613,6 @@ export default function PosMainPage() {
     setDiscChangeOpen(false)
   }
 
-  /** Move a line onto a different open KOT. Guarded to lines that haven't fired
-   * to the kitchen yet, and to tickets with more than one line — an empty saved
-   * KOT after removal is undefined behaviour on the backend, so that edge case
-   * is refused rather than guessed at. */
   function openMovePicker(ticketKey?: number) {
     setRowMenu(null)
     const key = ticketKey ?? selectedLine
@@ -2014,14 +2644,6 @@ export default function PosMainPage() {
     void loadOrderList('ALL', '')
   }
 
-  /**
-   * Full cross-KOT transfer: save the current ticket without the line, load the
-   * destination ticket, append the line there and save it, then reload the
-   * original ticket so the till lands back where the user started. Each step
-   * awaits the last — nothing here reads `lines`/`currentKotId` state right after
-   * setting it, since that state hasn't landed yet; `onSaveKot`/`takeOrder` return
-   * what they just did instead.
-   */
   async function moveLineToKot(target: OrderRow) {
     const key = movePicker?.key
     if (key == null) return
@@ -2042,7 +2664,7 @@ export default function PosMainPage() {
     }
     setMoving(true)
     try {
-      const savedOriginalId = await onSaveKot(remaining)
+      const savedOriginalId = (await saveKotInternal({ ticket: remaining }))?.kotId ?? null
       if (savedOriginalId == null) {
         toast('Could not save this order before moving the item — nothing was moved.')
         return
@@ -2055,7 +2677,7 @@ export default function PosMainPage() {
       }
       const movedLine: TicketLine = { ...line, key: lineKey.current++, kotPending: true }
       const appended = [...targetLines, movedLine]
-      const savedTargetId = await onSaveKot(appended)
+      const savedTargetId = (await saveKotInternal({ ticket: appended }))?.kotId ?? null
       if (savedTargetId == null) {
         toast(`Could not save the item onto ${target.kotNo}. Reopening your original order — please retry the move.`)
         await takeOrder(savedOriginalId, false)
@@ -2066,6 +2688,432 @@ export default function PosMainPage() {
       await takeOrder(savedOriginalId, false)
     } finally {
       setMoving(false)
+    }
+  }
+
+  function savedKotLines() {
+    return lines.filter((l) => !l.kotPending && l.kotChildId > 0)
+  }
+
+  function closeAdminDialog() {
+    setAdminOpen(false)
+    setAdminBusy(false)
+    setAdminError(null)
+    setAdminPassword('')
+    setAdminFocus('login')
+    setAdminNext(null)
+  }
+
+  function focusAdminField(field: 'login' | 'password') {
+    setAdminFocus(field)
+    const el = field === 'login' ? adminLoginRef.current : adminPasswordRef.current
+    window.setTimeout(() => el?.focus(), 0)
+  }
+
+  /** AdminLoginFrm.num / btnClear — keypad writes into the focused box. */
+  function onAdminPadKey(k: string) {
+    if (adminBusy) return
+    const apply = (prev: string) => {
+      if (k === 'C') return prev.slice(0, -1)
+      return (prev + k).slice(0, 40)
+    }
+    if (adminFocus === 'password') setAdminPassword(apply)
+    else setAdminLogin(apply)
+  }
+
+  function onAdminLoginKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    if (!adminLogin.trim()) {
+      setAdminError('Enter Login Name...')
+      return
+    }
+    focusAdminField('password')
+  }
+
+  function onAdminPasswordKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    void submitAdminLogin()
+  }
+
+  function requestAdmin(next: AdminNext, force = false) {
+    if (!force && isChiefCashierOrAdmin()) {
+      setAdminCreds(null)
+      if (next === 'item-remove') void runItemRemove(null)
+      else if (next === 'bill-confirm') setBillConfirmOpen(true)
+      else if (next === 'return') void runReturn()
+      else if (next === 'item-qty') void runItemQtyChange(null)
+      else if (next === 'counter-close-all') setCounterCloseOpen(true)
+      else if (next === 'price-change') showPriceChangeDialog(priceChangeKey ?? selectedLine ?? -1)
+      else if (next === 'area-change') setAreaChangeOpen(true)
+      else if (next === 'discount') openDiscountDialog()
+      return
+    }
+    setAdminNext(next)
+    setAdminLogin('')
+    setAdminPassword('')
+    setAdminFocus('login')
+    setAdminError(null)
+    setAdminOpen(true)
+  }
+
+  /** btnItemCancel_Click — CurrentKOTID required, then ItemRemovefrm. */
+  function onItemCancelClick() {
+    if (currentKotId <= 0) {
+      toast('Please Select A KOT.......')
+      return
+    }
+    const saved = savedKotLines()
+    if (!saved.length) {
+      toast('Please Select A KOT.......')
+      return
+    }
+    const next: Record<number, boolean> = {}
+    for (const line of saved) next[line.kotChildId] = false
+    setItemCancelIds(next)
+    setItemCancelQtyOpen(false)
+    setItemCancelQtyLine(null)
+    setItemCancelQtyNew('')
+    setItemCancelCoversOpen(false)
+    setItemCancelCoversDraft(String(covers > 0 ? covers : 1))
+    setItemCancelOpen(true)
+  }
+
+  /** btnBillCancel_Click — admin first, then confirm. */
+  function onBillCancelClick() {
+    if (currentKotId <= 0) {
+      toast('Select A KOT........')
+      clearQty()
+      return
+    }
+    requestAdmin('bill-confirm')
+  }
+
+  /** btnReturn_Click — admin first, then LoadSalesData(bill) or negate txtQty. */
+  function onReturnClick() {
+    if (returnBusy) return
+    requestAdmin('return')
+  }
+
+  async function runReturn() {
+    const billNo = Number(entry)
+    if (Number.isFinite(billNo) && billNo !== 0) {
+      await loadSalesData(billNo)
+      setEntry('')
+      return
+    }
+    const q = Number(padQty)
+    const base = Number.isFinite(q) && q !== 0 ? q : 1
+    setPadQty(String(base * -1))
+  }
+
+  /** LoadSalesData — bill lines as negative qty, CurrentKOTID = 0. */
+  async function loadSalesData(billNo: number) {
+    setReturnBusy(true)
+    try {
+      const payload = await apiService.fetchSaleByBill(billNo)
+      const items = Array.isArray(payload.items) ? payload.items : []
+      if (!items.length) {
+        toast(`Bill No : ${billNo} Not found..............`)
+        return
+      }
+      applyReturnBill(payload, items)
+    } catch (err) {
+      toast(errMessage(err, `Bill No : ${billNo} Not found..............`))
+    } finally {
+      setReturnBusy(false)
+    }
+  }
+
+  function applyReturnBill(payload: Record<string, unknown>, items: Record<string, unknown>[]) {
+    const nextLines: TicketLine[] = items.map((row) => {
+      const origQty = num(row.qty ?? row.Qty)
+      const qty = round2(-1 * origQty)
+      const price = num(row.unitPrice ?? row.UnitPrice)
+      const disc = num(row.discount ?? row.Discount ?? row.itemDisc ?? row.ItemDisc)
+      const taxLine = num(row.tax1AmountC ?? row.Tax1AmountC)
+      const taxRate = num(row.tax1RateC ?? row.Tax1RateC)
+      const productId = num(row.productId ?? row.ProductID)
+      const tile = allProducts.find((x) => x.id === productId)
+      const absQty = Math.abs(origQty) || 1
+      const vatPerPc =
+        absQty > 0 && taxLine !== 0 ? round2(Math.abs(taxLine) / absQty) : tile?.taxAmount || 0
+      const calced = calcLine(price, qty, vatPerPc, taxRate || tile?.taxRate || 0, disc)
+      return {
+        key: lineKey.current++,
+        productId,
+        item: String(row.shortDescription ?? row.ShortDescription ?? tile?.name ?? 'Item'),
+        modifiers: String(row.modifier ?? row.Modifier ?? ''),
+        qty,
+        price,
+        disc: calced.disc,
+        discPerc: calced.discPerc,
+        tax: calced.tax,
+        total: calced.total,
+        taxRate: taxRate || tile?.taxRate || 0,
+        taxAmount: vatPerPc,
+        productType: String(tile?.productType ?? '').trim().toUpperCase(),
+        kotPending: true,
+        kotChildId: 0,
+        groupId: num(row.groupId ?? row.GroupID) || tile?.groupId || 0,
+        barcode: String(row.barcode ?? row.BarCode ?? tile?.barcode ?? ''),
+        androidPrint: 'PENDING',
+        kotDisplayStatus: 'PENDING',
+        applyDiscount: tile?.applyDiscount ?? flagApplyDiscount(row.applyDiscount ?? row.ApplyDiscount, num(row.groupId ?? row.GroupID) || tile?.groupId || 0),
+      }
+    })
+    setLines((prev) => [...prev, ...nextLines])
+    setSelectedLine(nextLines[nextLines.length - 1]?.key ?? null)
+    setCurrentKotId(0)
+    setKotPrefix('')
+    setKotNo('')
+    const nextAreaId = num(payload.areaId ?? payload.AreaID)
+    if (nextAreaId > 0) {
+      setAreaId(nextAreaId)
+      const area = areas.find((a) => a.id === nextAreaId)
+      if (area) setService(normalizeSupply(area.supplyType))
+    }
+    const nextTableId = num(payload.tableId ?? payload.TableID)
+    setTableId(nextTableId)
+    setTableName(
+      String(payload.tableName ?? payload.TableName ?? '')
+        || tables.find((t) => t.id === nextTableId)?.name
+        || '',
+    )
+    setChairNo(1)
+    setCovers(Math.max(1, num(payload.noOfCustomers ?? payload.NofCustomer) || 1))
+    setRemarks(String(payload.remarks ?? payload.Remarks ?? ''))
+    setCustomerId(num(payload.customerId ?? payload.CustomerID))
+    setCustomerName(String(payload.customerName ?? payload.CustomerName ?? ''))
+    const loadedWaiter = num(payload.waiterId ?? payload.WaiterID)
+    setWaiterId(loadedWaiter > 0 ? loadedWaiter : getPosSession().staffId)
+  }
+
+
+  async function submitAdminLogin() {
+    const username = adminLogin.trim()
+    const password = adminPassword
+    if (!username) {
+      setAdminError('Enter Login Name...')
+      focusAdminField('login')
+      return
+    }
+    if (!password) {
+      setAdminError('Enter Password...')
+      focusAdminField('password')
+      return
+    }
+    setAdminBusy(true)
+    setAdminError(null)
+    try {
+      const result = await apiService.verifyAdmin(username, password)
+      if (result.ok === false || Number(result.IsAdmin) === 0) {
+        setAdminError(String(result.message || 'Password Failed...'))
+        setAdminPassword('')
+        focusAdminField('password')
+        return
+      }
+      const creds = { username, password }
+      const next = adminNext
+      setAdminCreds(creds)
+      setAdminOpen(false)
+      setAdminPassword('')
+      setAdminNext(null)
+      if (next === 'item-remove') await runItemRemove(creds)
+      else if (next === 'bill-confirm') setBillConfirmOpen(true)
+      else if (next === 'return') await runReturn()
+      else if (next === 'item-qty') await runItemQtyChange(creds)
+      else if (next === 'counter-close-all') setCounterCloseOpen(true)
+      else if (next === 'price-change') showPriceChangeDialog(priceChangeKey ?? selectedLine ?? -1)
+      else if (next === 'area-change') setAreaChangeOpen(true)
+      else if (next === 'discount') openDiscountDialog()
+    } catch (err) {
+      setAdminError(errMessage(err, 'Password Failed...'))
+      setAdminPassword('')
+      focusAdminField('password')
+    } finally {
+      setAdminBusy(false)
+    }
+  }
+
+  /** ItemRemovefrm.btnremove_Click */
+  function onItemRemoveClick() {
+    requestAdmin('item-remove')
+  }
+
+  function closeItemCancel() {
+    setItemCancelOpen(false)
+    setItemCancelQtyOpen(false)
+    setItemCancelQtyLine(null)
+    setItemCancelQtyNew('')
+    setItemCancelCoversOpen(false)
+  }
+
+  function applyKotAfterItemCancel(details: unknown, closeDialog: boolean) {
+    if (details) applyKotDetails(details, allProducts, false)
+    const rows = kotDetailsRows(details)
+    const next: Record<number, boolean> = {}
+    for (const row of rows) {
+      const id = num(row.KotChildID ?? row.kotChildID ?? row.KOTChildID ?? row.dgvKOTChildID)
+      if (id > 0) next[id] = false
+    }
+    setItemCancelIds(next)
+    setItemCancelQtyOpen(false)
+    setItemCancelQtyLine(null)
+    if (closeDialog || !rows.length) closeItemCancel()
+  }
+
+  async function runItemRemove(creds: AdminCreds | null) {
+    if (currentKotId <= 0) {
+      toast('Please Select A KOT.......')
+      return
+    }
+    const saved = savedKotLines()
+    if (saved.length <= 1) {
+      toast('Only one item Remains in KOT.You have to make BILL CANCEL.......')
+      return
+    }
+    const selectedIds = saved.filter((l) => itemCancelIds[l.kotChildId]).map((l) => l.kotChildId)
+    if (!selectedIds.length) {
+      toast('Select an Item. . .')
+      return
+    }
+    if (selectedIds.length >= saved.length) {
+      toast('All Items Cannot Remove..Make Cancel Bill. . .')
+      return
+    }
+    setCancelBusy(true)
+    try {
+      const result = await apiService.cancelKotItems(currentKotId, selectedIds, {
+        username: creds?.username,
+        password: creds?.password,
+      })
+      if (result.discountReset) toast('Discount Reset....... ')
+      const details = result.kotDetails
+      if (details) applyKotAfterItemCancel(details, false)
+      else {
+        const fresh = await apiService.fetchKotDetails(String(currentKotId))
+        applyKotAfterItemCancel(fresh, false)
+      }
+      setAdminCreds(null)
+    } catch (err) {
+      toast(errMessage(err, 'Unable To Cancel Item'))
+    } finally {
+      setCancelBusy(false)
+      clearQty()
+    }
+  }
+
+  /** dgvItemList Qty column → pnlQtyChange */
+  function openItemCancelQty(line: TicketLine) {
+    if (cancelBusy) return
+    if (line.productType === 'COMBO') {
+      toast('Change Qty Of Combo item.......')
+      return
+    }
+    setItemCancelQtyLine(line)
+    setItemCancelQtyNew('')
+    setItemCancelQtyOpen(true)
+  }
+
+  function onItemCancelQtyKey(k: string) {
+    if (k === 'C') {
+      setItemCancelQtyNew((prev) => prev.slice(0, -1))
+      return
+    }
+    if (k === '.' && itemCancelQtyNew.includes('.')) return
+    setItemCancelQtyNew((prev) => (prev + k).slice(0, 8))
+  }
+
+  function onItemCancelQtyDone() {
+    const n = Number(itemCancelQtyNew)
+    if (!(n > 0)) {
+      toast('Invalid Qty. . .')
+      return
+    }
+    requestAdmin('item-qty')
+  }
+
+  async function runItemQtyChange(creds: AdminCreds | null) {
+    if (currentKotId <= 0 || !itemCancelQtyLine) {
+      toast('Please Select A KOT.......')
+      return
+    }
+    const n = Number(itemCancelQtyNew)
+    if (!(n > 0)) {
+      toast('Invalid Qty. . .')
+      return
+    }
+    setCancelBusy(true)
+    try {
+      const result = await apiService.updateKotItemQty(
+        currentKotId,
+        itemCancelQtyLine.kotChildId,
+        n,
+        { username: creds?.username, password: creds?.password },
+      )
+      const details = result.kotDetails
+      if (details) applyKotAfterItemCancel(details, true)
+      else {
+        const fresh = await apiService.fetchKotDetails(String(currentKotId))
+        applyKotAfterItemCancel(fresh, true)
+      }
+      setAdminCreds(null)
+    } catch (err) {
+      toast(errMessage(err, 'Unable To Change Qty'))
+    } finally {
+      setCancelBusy(false)
+      clearQty()
+    }
+  }
+
+  async function saveItemCancelCovers() {
+    if (currentKotId <= 0) {
+      toast('Select a KOT first.')
+      return
+    }
+    const n = Math.trunc(Number(itemCancelCoversDraft))
+    if (!(n > 0)) return
+    if (n === covers) {
+      setItemCancelCoversOpen(false)
+      return
+    }
+    setCancelBusy(true)
+    try {
+      await apiService.updateKotCovers(currentKotId, n)
+      setCovers(n)
+      setItemCancelCoversOpen(false)
+    } catch (err) {
+      toast(errMessage(err, 'Unable To Update Covers'))
+    } finally {
+      setCancelBusy(false)
+    }
+  }
+
+  async function runBillCancel(creds: AdminCreds | null) {
+    if (currentKotId <= 0) {
+      toast('Select A KOT........')
+      setBillConfirmOpen(false)
+      return
+    }
+    const areaForRefresh = areaId
+    setCancelBusy(true)
+    try {
+      const result = await apiService.cancelKot(currentKotId, {
+        username: creds?.username,
+        password: creds?.password,
+      })
+      toast(String(result.msg || 'KOT Cancelled...............'))
+      setBillConfirmOpen(false)
+      setAdminCreds(null)
+      clearData()
+      if (areaForRefresh > 0) await loadOccupied(areaForRefresh)
+    } catch (err) {
+      toast(errMessage(err, 'Unable To Cancel KOT'))
+    } finally {
+      setCancelBusy(false)
+      clearQty()
     }
   }
 
@@ -2091,6 +3139,8 @@ export default function PosMainPage() {
         return n === 'DINE IN' || normalizeSupply(a.supplyType) === 'DINE IN'
       })
       if (dine) return dine
+      const byTables = match.find((a) => a.tableCreationType === 0) ?? areas.find((a) => a.tableCreationType === 0)
+      if (byTables) return byTables
     }
     return match[0] ?? null
   }
@@ -2118,6 +3168,11 @@ export default function PosMainPage() {
     }
   }
 
+  /** ResetOrderWaiterField — keep the logged-in waiter on this POS. */
+  function resetOrderWaiterField() {
+    setWaiterId(getPosSession().staffId)
+  }
+
   function resetOpenKotTicket() {
     if (currentKotId <= 0) return
     setLines([])
@@ -2131,24 +3186,34 @@ export default function PosMainPage() {
     setCustomerName('')
     setCovers(1)
     setRemarks('')
-    setWaiterId(getPosSession().staffId)
+    setBillDiscount(0)
+    setDiscountType(0)
+    setDiscountOpen(false)
+    resetOrderWaiterField()
   }
 
-  async function loadOccupied(forAreaId: number) {
-    if (forAreaId <= 0) {
+  async function loadOccupied(forAreaId: number, deliveryAllAreas = false) {
+    if (forAreaId <= 0 && !deliveryAllAreas) {
       setOccupiedKots([])
       return [] as OccupiedKot[]
     }
     try {
-      const rows = await apiService.fetchOrderList({ areaId: forAreaId })
-      const mapped = mapOrderRows(rows).map((r) => ({
-        kotMasterId: r.kotMasterId,
-        tableId: r.tableId,
-        chairNo: r.chairNo,
-        kotNo: r.kotNo,
-        waiterId: r.waiterId,
-        pax: r.pax,
-      }))
+      const rows = await apiService.fetchOrderList(
+        deliveryAllAreas
+          ? { supplyType: 'DELIVERY' }
+          : { areaId: forAreaId },
+      )
+      const mapped = mapOrderRows(rows)
+        .map((r) => ({
+          kotMasterId: r.kotMasterId,
+          tableId: r.tableId,
+          chairNo: r.chairNo,
+          kotNo: r.kotNo,
+          waiterId: r.waiterId,
+          pax: r.pax,
+          remarks: r.remarks,
+        }))
+        .sort((a, b) => a.tableId - b.tableId || a.chairNo - b.chairNo || a.kotMasterId - b.kotMasterId)
       setOccupiedKots(mapped)
       return mapped
     } catch {
@@ -2162,27 +3227,41 @@ export default function PosMainPage() {
     return n === 'TAKE AWAY' || n === 'TAKEAWAY'
   }
 
-  /** AreaClickToPopulationTable */
-  async function areaClickToPopulationTable(area: AreaRow) {
+  /**
+   * AreaClickToPopulationTable — dine-in chairs vs takeaway/delivery KOT tiles.
+   * Company IsTablePopup (isTablePopupSetting) chooses Floor Map vs table grid.
+   * Runtime isTablePopup is origin of THIS pick only (1 = floor, 0 = grid) and is reset here.
+   */
+  async function areaClickToPopulationTable(area: AreaRow, deliveryList = false) {
+    setAreaId(area.id)
+    setKotPrefix(area.kotPrefix)
+    setService(normalizeSupply(area.supplyType))
+    setIsTablePopup(0)
     setTableId(0)
     setTableName('')
     setChairNo(0)
+    setKotNo('')
     setRemarks('')
-    setKotPrefix(area.kotPrefix)
     resetOpenKotTicket()
     setTablePopupOpen(false)
     setTableFloorOpen(false)
     setChairPromptOpen(false)
     setKotSelectOpen(false)
     setCoversPrompt(null)
-    const occ = await loadOccupied(area.id)
-    if (area.tableCreationType === 0) {
-      setTablePopupMode('tables')
-      setTableFloorOpen(true)
-    } else {
-      setOccupiedKots(occ)
-      setTablePopupMode('kots')
-      setTablePopupOpen(true)
+    try {
+      const occ = await loadOccupied(area.id, deliveryList)
+      if (area.tableCreationType === 0) {
+        setTablePopupMode('tables')
+        // Company IsTablePopup: 1 = TableFloorRuntimeFrm, 0 = flpTable grid over items
+        if (isTablePopupSetting === 1) setTableFloorOpen(true)
+        else setTablePopupOpen(true)
+      } else {
+        setOccupiedKots(occ)
+        setTablePopupMode('kots')
+        setTablePopupOpen(true)
+      }
+    } catch (err) {
+      toast(errMessage(err, 'Table not Found. . .'))
     }
     clearQty()
   }
@@ -2215,7 +3294,7 @@ export default function PosMainPage() {
     // type) — set it explicitly so the TAKEAWAY tab actually highlights.
     setService('TAKEAWAY')
     setRemarks('')
-    hideTablePopup()
+    hideTablePopup(true)
     resetOpenKotTicket()
     clearQty()
   }
@@ -2232,12 +3311,9 @@ export default function PosMainPage() {
     // supplyType-derived guess for which tab should be highlighted.
     setService('DELIVERY')
     setRemarks('')
-    hideTablePopup()
+    hideTablePopup(true)
     resetOpenKotTicket()
-    if (askCustomer) {
-      setCustomerOpen(true)
-      void loadCustomers()
-    }
+    if (askCustomer) openCustomerSelect()
     clearQty()
   }
 
@@ -2252,31 +3328,23 @@ export default function PosMainPage() {
     }
     const dine = pickAreaForService('DINE IN')
     if (!dine) {
-      // No area is tagged as DINE IN in this setup — still open the table
-      // layout modal (empty) instead of silently failing with just a toast.
-      setService('DINE IN')
-      setAreaId(0)
-      setTableId(0)
-      setTableName('')
-      setChairNo(0)
-      setTablePopupOpen(false)
-      setChairPromptOpen(false)
-      setKotSelectOpen(false)
-      setCoversPrompt(null)
-      setTablePopupMode('tables')
-      setTableFloorOpen(true)
-      toast('No DINE IN area is configured yet — set one up in Admin.')
+      toast('DINE IN Area Not Found........')
       return
     }
     areaButtonClick(dine)
   }
 
-  function hideTablePopup() {
+  function hideTablePopup(resetOrigin = false) {
     setTablePopupOpen(false)
     setTableFloorOpen(false)
     setChairPromptOpen(false)
     setKotSelectOpen(false)
     setCoversPrompt(null)
+    if (resetOrigin) setIsTablePopup(0)
+  }
+
+  function dismissTableSelectionUi() {
+    hideTablePopup(true)
   }
 
   function assignFreeChairOrFail(freeChair: number) {
@@ -2288,10 +3356,11 @@ export default function PosMainPage() {
     setTableId(0)
     setTableName('')
     setChairNo(0)
+    setIsTablePopup(0)
     toast('No Free Chair Avilable int This Table')
   }
 
-  /** TableFloorRuntimeFrm Table_Click */
+  /** TableFloorRuntimeFrm Table_Click — access + vacant pax, then TableBtnClick. */
   async function floorTableClick(table: TableRow) {
     const occ = occupiedByTable.get(table.id) ?? []
     const activeWaiter = occ[0]?.waiterId ?? 0
@@ -2301,10 +3370,11 @@ export default function PosMainPage() {
       return
     }
     if (occ.length === 0) {
-      setCoversDraft(String(covers > 0 ? covers : 1))
+      setCoversDraft('1')
       setCoversPrompt({ table })
       return
     }
+    setIsTablePopup(1)
     setTableFloorOpen(false)
     await finishTableBtnClick(table, true)
   }
@@ -2317,18 +3387,20 @@ export default function PosMainPage() {
       toast('No. of persons is required.')
       return
     }
-    setCovers(Math.trunc(n))
+    setCovers(Math.max(1, Math.trunc(n)))
     setCoversPrompt(null)
+    setIsTablePopup(1)
     setTableFloorOpen(false)
     await finishTableBtnClick(table, true)
   }
 
-  /** TableBtnClick — dine-in table (TB…) */
+  /** TableBtnClick — dine-in table grid / Area Change (never floor extras). */
   async function tableBtnClick(table: TableRow, fromFloor = false) {
     if (fromFloor && isTablePopup === 1) {
       await floorTableClick(table)
       return
     }
+    setIsTablePopup(0)
     await finishTableBtnClick(table, fromFloor)
   }
 
@@ -2340,25 +3412,32 @@ export default function PosMainPage() {
     setChairNo(0)
     setKotSelectOpen(false)
     const occ = occupiedByTable.get(table.id) ?? []
-    const seats = table.seats > 0 ? table.seats : 4
-    const firstOccupied = occ.find((k) => k.chairNo > 0)?.chairNo ?? (occ[0]?.chairNo || 0)
-    const freeChair = Array.from({ length: seats }, (_, i) => i + 1).find((n) => !occ.some((k) => k.chairNo === n)) ?? 0
+    const seats = Math.max(0, Math.trunc(table.seats))
+    const firstOccupied =
+      occ.find((k) => k.chairNo > 0)?.chairNo
+      ?? (occ[0] ? Math.max(1, occ[0].chairNo) : 0)
+    const chairSlots = seats > 0 ? seats : Math.max(occ.length, 1)
+    const freeChair = Array.from({ length: chairSlots }, (_, i) => i + 1).find((n) => !occ.some((k) => k.chairNo === n)) ?? 0
 
-    if (firstOccupied <= 0) {
+    // FirstAllocatedChair = 0 → vacant table: chair 1, hide popup (VB TableBtnClick)
+    if (occ.length === 0) {
       setChairNo(1)
+      setChairPromptOpen(false)
       hideTablePopup()
       clearQty()
       return
     }
 
+    // Occupied: floor origin shows chairs only; grid keeps tables + chairs
     if (fromFloor) {
       setTablePopupOpen(true)
       setTablePopupMode('tables')
     }
+    setChairPromptOpen(true)
 
-    if (ticketHasItems && occ.length > 0) {
+    if (ticketHasItems) {
       const first = occ[0]
-      const ok = window.confirm(`Do You Want To Add Selected Item With KOT ${first.kotNo}`)
+      const ok = await ask(`Do You Want To Add Selected Item With KOT ${first.kotNo}`)
       if (ok) {
         if (occ.length === 1) {
           await takeOrder(first.kotMasterId, true)
@@ -2374,11 +3453,12 @@ export default function PosMainPage() {
       return
     }
 
+    // DisplayKOT edit mode — load the first occupied chair's KOT
     const chair = firstOccupied || 1
     setChairNo(chair)
-    setChairPromptOpen(true)
     const kot = occ.find((k) => k.chairNo === chair) ?? occ[0]
     if (kot) await takeOrder(kot.kotMasterId, false)
+    if (occ.length <= 1) hideTablePopup()
     clearQty()
   }
 
@@ -2402,28 +3482,30 @@ export default function PosMainPage() {
     setChairNo(chair)
     const occ = occupiedByTable.get(table.id) ?? []
     const kot = occ.find((k) => k.chairNo === chair)
-    let loadedKot = false
     if (ticketHasItems && kot) {
-      const ok = window.confirm(`Do You Want To Add Selected Item With KOT ${kot.kotNo}`)
+      const ok = await ask(`Do You Want To Add Selected Item With KOT ${kot.kotNo}`)
       if (ok) {
         await takeOrder(kot.kotMasterId, true)
-        loadedKot = true
       } else {
         setTableId(0)
         setTableName('')
         setChairNo(0)
+        setIsTablePopup(0)
       }
     } else if (kot) {
       await takeOrder(kot.kotMasterId, false)
-      loadedKot = true
     }
-    if (!loadedKot) hideTablePopup()
+    hideTablePopup()
     clearQty()
   }
 
   /** Tapping a chair dot directly on a table card — picks that table + chair
    * in one step instead of the table-then-chair two-screen flow. */
-  async function dotChairClick(table: TableRow, chair: number) {
+  async function dotChairClick(table: TableRow, chair: number, fromFloor = false) {
+    if (fromFloor) {
+      setIsTablePopup(1)
+      setTableFloorOpen(false)
+    }
     setTableId(table.id)
     setTableName(table.name)
     await chairBtnClick(chair, table)
@@ -2431,6 +3513,7 @@ export default function PosMainPage() {
 
   /** KI tile — takeaway/delivery existing KOT */
   async function kotTileClick(kot: OccupiedKot) {
+    setIsTablePopup(0)
     await takeOrder(kot.kotMasterId, false)
     hideTablePopup()
   }
@@ -2444,6 +3527,9 @@ export default function PosMainPage() {
     setCurrentKotId(0)
     setKotNo('')
     setRemarks('')
+    setBillDiscount(0)
+    setDiscountType(0)
+    setDiscountOpen(false)
     setCustomerId(0)
     setCustomerName('')
     setCovers(1)
@@ -2451,6 +3537,7 @@ export default function PosMainPage() {
     setTableName('')
     setChairNo(0)
     setWaiterId(getPosSession().staffId)
+    setIsTablePopup(0)
     const match = pickAreaForService(service)
     applyArea(match)
     clearQty()
@@ -2461,106 +3548,35 @@ export default function PosMainPage() {
     setNotesKind(kind)
   }
 
-  /** Sum of amounts already collected across every leg of the current split,
-   * plus a hypothetical extra leg — used both to render "Remaining" and to
-   * decide whether confirming a leg finishes the bill. */
-  function splitRemainingAmount(payments: SplitPayment[] = splitPayments) {
-    const collected = payments.reduce((sum, p) => sum + p.paid, 0)
-    return Math.max(0, round2(summary.total - collected))
+  function closeAlert(ok = false) {
+    const resolve = alertResolveRef.current
+    alertResolveRef.current = null
+    setAlertBox(null)
+    resolve?.(ok)
   }
 
-  function openSplitPayment() {
-    setPayOpen(false)
-    setSplitPayments([])
-    setSplitMethod(null)
-    setSplitTip(null)
-    setSplitPaidInput('')
-    setSplitTipInput('')
-    setSplitActiveField('paid')
-    setSplitStep('method')
-    setSplitOpen(true)
-  }
-
-  function selectSplitMethod(method: SplitMethod) {
-    setSplitMethod(method)
-    setSplitTip(null)
-    // Left blank rather than pre-filled with the remaining balance — the
-    // keypad only appends/clears (no backspace), so a pre-filled value would
-    // turn the very next digit tap into "1500.005" instead of a fresh entry.
-    setSplitPaidInput('')
-    setSplitTipInput('')
-    setSplitActiveField('paid')
-    setSplitStep('entry')
-  }
-
-  /** "Add Tip" toggle on the amount-entry screen — expands/collapses the
-   * Tip Amount box inline instead of a separate step. */
-  function toggleSplitTip() {
-    if (splitTip === 'with') {
-      setSplitTip(null)
-      setSplitTipInput('')
-      setSplitActiveField('paid')
-    } else {
-      setSplitTip('with')
-      setSplitActiveField('tip')
+  function showAlert(box: AlertBox): Promise<boolean> {
+    if (alertResolveRef.current) {
+      alertResolveRef.current(false)
+      alertResolveRef.current = null
     }
-  }
-
-  function splitBack() {
-    if (splitStep === 'entry') {
-      setSplitMethod(null)
-      setSplitTip(null)
-      setSplitStep('method')
-    }
-  }
-
-  /** Shared digit-pad handler for both the Paid Amount and Tip Amount boxes —
-   * whichever box the cashier last tapped (splitActiveField) receives the key. */
-  function onSplitKeypad(k: string) {
-    const setField = splitActiveField === 'tip' ? setSplitTipInput : setSplitPaidInput
-    setField((prev) => {
-      if (k === 'C') return ''
-      if (k === '.') return prev.includes('.') ? prev : prev + '.'
-      const dot = prev.indexOf('.')
-      if (dot !== -1 && prev.length - dot > 2) return prev
-      return (prev + k).slice(0, 9)
+    return new Promise((resolve) => {
+      alertResolveRef.current = resolve
+      setAlertBox(box)
     })
   }
 
-  /** PAID — records this leg, then either loops back to method selection
-   * (balance remaining) or moves to the completed summary (bill settled). */
-  function confirmSplitPayment() {
-    const remaining = splitRemainingAmount()
-    const paidRaw = Number(splitPaidInput)
-    if (!splitMethod || !Number.isFinite(paidRaw) || paidRaw <= 0) {
-      toast('Enter a valid paid amount')
-      return
-    }
-    const paid = Math.min(round2(paidRaw), remaining)
-    const tip = splitTip === 'with' ? Math.max(0, round2(Number(splitTipInput) || 0)) : 0
-    const nextPayments = [...splitPayments, { method: splitMethod, paid, tip }]
-    setSplitPayments(nextPayments)
-
-    if (splitRemainingAmount(nextPayments) <= 0.004) {
-      setSplitStep('done')
-      return
-    }
-    setSplitMethod(null)
-    setSplitTip(null)
-    setSplitPaidInput('')
-    setSplitTipInput('')
-    setSplitActiveField('paid')
-    setSplitStep('method')
-  }
-
-  function finishSplitPayment() {
-    setSplitOpen(false)
-    toast('Payment completed', 'success')
-    clearData()
+  function ask(message: string) {
+    return showAlert({ kind: 'question', title: inferAlertTitle('question'), message })
   }
 
   /** DisplayKOT — AppendItems=0 replaces the grid; =1 keeps NEW lines then adds KOT lines. */
-  function applyKotDetails(payload: unknown, productTiles: ProductTile[], append = false) {
+  function applyKotDetails(
+    payload: unknown,
+    productTiles: ProductTile[],
+    append = false,
+    listedRemarks = '',
+  ) {
     const rows = kotDetailsRows(payload)
     if (!rows.length) {
       toast('NO Item for KOT')
@@ -2585,10 +3601,11 @@ export default function PosMainPage() {
         key: lineKey.current++,
         productId,
         item: String(row.ShortDescription ?? row.ItemName ?? row.itemName ?? tile?.name ?? 'Item'),
-        modifiers: String(row.Modifier ?? row.Modifir ?? row.Remarks ?? ''),
+        modifiers: String(row.Modifier ?? row.Modifir ?? row.modifier ?? ''),
         qty,
         price,
         disc: calced.disc,
+        discPerc: calced.discPerc,
         tax: calced.tax,
         total: calced.total,
         taxRate: taxRate || tile?.taxRate || 0,
@@ -2599,9 +3616,15 @@ export default function PosMainPage() {
           row.KotChildID ?? row.kotChildID ?? row.KOTChildID ?? row.dgvKOTChildID ?? row.kot_child_id,
         ),
         groupId: num(row.GroupID ?? row.groupID ?? row.dgvGrpID) || tile?.groupId || 0,
-        barcode: String(row.BarCode ?? row.Barcode ?? ''),
+        barcode: String(row.BarCode ?? row.Barcode ?? tile?.barcode ?? ''),
         androidPrint: kotPrintStatus(row.AndroidPrint ?? row.Androidprint ?? row.android_printed),
         kotDisplayStatus: String(row.KOTDisplayStatus ?? row.kotDisplayStatus ?? 'PENDING'),
+        applyDiscount:
+          tile?.applyDiscount
+          ?? flagApplyDiscount(
+            row.ApplyDiscount ?? row.applyDiscount,
+            num(row.GroupID ?? row.groupID ?? row.dgvGrpID) || tile?.groupId || 0,
+          ),
       }
     })
     if (append) {
@@ -2629,12 +3652,18 @@ export default function PosMainPage() {
     )
     setChairNo(num(first.ChairNo ?? first.chairNo))
     setCovers(Math.max(1, num(first.NofCustomer ?? first.nofCustomer) || 1))
-    setRemarks(String(first.HeaderRemarks ?? first.txtRemarks ?? first.KotRemarks ?? ''))
+    setRemarks(kotHeaderRemarks(first, listedRemarks))
+    const loadedBillDisc = num(first.BillDiscount ?? first.billDiscount)
+    const loadedType = num(first.DiscountType ?? first.discountType)
+    const hasItemDisc = nextLines.some((l) => l.disc > 0)
+    if (loadedType === 2 || (loadedBillDisc <= 0 && hasItemDisc)) setDiscountType(2)
+    else setDiscountType(0)
+    setBillDiscount(loadedType === 2 ? 0 : loadedBillDisc)
     setCustomerId(num(first.CustomerID ?? first.customerID))
     setCustomerName(String(first.CustomerName ?? first.customerName ?? ''))
     const loadedWaiter = num(first.WaiterID ?? first.waiterID)
     setWaiterId(loadedWaiter > 0 ? loadedWaiter : getPosSession().staffId)
-    return append ? [...lines, ...nextLines] : nextLines
+    return nextLines
   }
 
   function buildKotItems(ticket: TicketLine[]) {
@@ -2653,6 +3682,7 @@ export default function PosMainPage() {
         Tax1AmountC: line.tax,
         ItemDisc: line.disc,
         ItemDiscount: line.disc,
+        DiscPerc: line.discPerc,
         LineTotal: line.total,
         dgvGrpID: line.groupId,
         GroupID: line.groupId,
@@ -2670,6 +3700,42 @@ export default function PosMainPage() {
     })
   }
 
+  function buildSettleItems(ticket: TicketLine[]) {
+    return ticket.map((line) => {
+      const sub = round2(line.price * line.qty - line.disc)
+      return {
+        productId: line.productId,
+        ProductID: line.productId,
+        qty: line.qty,
+        Qty: line.qty,
+        unitPrice: line.price,
+        UnitPrice: line.price,
+        unitCost: 0,
+        packQty: 1,
+        PackQty: 1,
+        discount: line.disc,
+        ItemDisc: line.disc,
+        subTotalC: sub,
+        SubTotalC: sub,
+        tax1AmountC: line.tax,
+        Tax1AmountC: line.tax,
+        tax1RateC: line.taxRate,
+        Tax1RateC: line.taxRate,
+        lineTotal: line.total,
+        LineTotal: line.total,
+        shortDescription: line.item,
+        ShortDescription: line.item,
+        itemName: line.item,
+        groupId: line.groupId,
+        GroupID: line.groupId,
+        kotChildID: line.kotChildId,
+        KotChildID: line.kotChildId,
+        modifier: line.modifiers,
+        Modifier: line.modifiers,
+      }
+    })
+  }
+
   /**
    * btnSaveKOT_Click → SaveBilDetailsToHoldTable("BillHold","KotSave")
    * Validations match Mainfrm.vb one-for-one. Printing is deferred.
@@ -2681,18 +3747,29 @@ export default function PosMainPage() {
    * is used the state has already been switched to the right ticket via `takeOrder`.
    * Returns the saved/kept KOT id, or null if validation blocked the save or it failed.
    */
-  async function onSaveKot(linesOverride?: TicketLine[]): Promise<number | null> {
-    if (savingKot) return null
-    const ls = linesOverride ?? lines
-    const sm = linesOverride ? computeSummary(linesOverride) : summary
-    if (ls.length === 0) {
+  async function saveKotInternal(opts?: {
+    forSettlement?: boolean
+    forDiscount?: boolean
+    ticket?: TicketLine[]
+    billDisc?: number
+    discType?: 0 | 2
+  }): Promise<{
+    kotId: number
+    lines: TicketLine[]
+    kotLabel: string
+  } | null> {
+    if (savingKot && !opts?.forSettlement && !opts?.forDiscount) return null
+    const ticket = opts?.ticket ?? lines
+    const discType = opts?.discType ?? discountType
+    const discAmt = opts?.billDisc ?? billDiscount
+    const totals = calcKotTotals(ticket, discAmt, defaultTax1, 0)
+    if (ticket.length === 0) {
       toast('Enter Atleast One Item details...........')
       return null
     }
     const resolvedArea = pickAreaForService(service, areaId) ?? (areaId > 0 ? currentArea : null)
     if (!resolvedArea) {
       toast('Please Select An Area...........')
-      setAreaOpen(true)
       return null
     }
     const supply = normalizeSupply(resolvedArea.supplyType) || service
@@ -2702,8 +3779,7 @@ export default function PosMainPage() {
     }
     if (supply === 'DELIVERY' && customerId < 1) {
       toast('Select a Customer...........')
-      setCustomerOpen(true)
-      void loadCustomers()
+      openCustomerSelect()
       return null
     }
     if (supply === 'DINE IN' && waiterMandatory === 1 && waiterId <= 0) {
@@ -2742,17 +3818,26 @@ export default function PosMainPage() {
         gvCounterNo: String(session.counterNo),
         gvUserName: session.staffName,
         gvCashierID: session.staffId,
-        txtDiscount: sm.discount,
-        lblSubTotalAmt: sm.subtotal,
-        lblTax1Total: sm.tax,
-        lblRound: 0,
-        lblBillTotal: sm.total,
+        txtDiscount: totals.billDiscount,
+        BillDiscount: totals.billDiscount,
+        DiscountType: discType,
+        gvTax1Percentage: defaultTax1,
+        Tax1RateM: defaultTax1,
+        lblSubTotalAmt: totals.lineSubtotal,
+        lblTax1Total: totals.tax,
+        lblRound: totals.roundOff,
+        lblBillTotal: totals.total,
         txtNoofCustomer: covers,
         txtRemarks: remarks,
+        Remarks: remarks,
+        remarks,
+        HeaderRemarks: remarks,
         mfKotPrefix: resolvedArea.kotPrefix || kotPrefix,
         CurrentKOTID: currentKotId > 0 ? currentKotId : 0,
-        btnname: 'KotSave',
-        Items: buildKotItems(ls),
+        IsTablePopup: isTablePopup,
+        isTablePopup,
+        btnname: opts?.forSettlement ? 'Settlement' : opts?.forDiscount ? 'Discount' : 'KotSave',
+        Items: buildKotItems(ticket),
       })
       const kotId = num(result.CurrentKOTID ?? result.jobId)
       if (kotId > 0) setCurrentKotId(kotId)
@@ -2761,36 +3846,32 @@ export default function PosMainPage() {
         details = await apiService.fetchKotDetails(String(kotId))
       }
       const savedNo = `${String(result.KotPrefix ?? kotPrefix)}${String(result.KotNumber ?? kotNo)}`
-      toast(`Kot ${savedNo} Saved. . . `, 'success')
-      if (clearAfterKotSave === 1) {
+      if (opts?.forDiscount) toast('Discount Saved....... ')
+      else if (!opts?.forSettlement) toast(`Kot ${savedNo} Saved. . . `)
+      let savedLines: TicketLine[] = ticket
+      if (clearAfterKotSave === 1 && !opts?.forSettlement && !opts?.forDiscount) {
         clearData()
       } else if (details) {
-        applyKotDetails(details, allProducts, false)
+        const applied = applyKotDetails(details, allProducts, false)
+        if (applied) savedLines = applied
       }
-      return kotId > 0 ? kotId : currentKotId
+      if (kotId < 1) {
+        toast('Unable To Save')
+        return null
+      }
+      return { kotId, lines: savedLines, kotLabel: savedNo }
     } catch (err) {
       toast(errMessage(err, 'Unable To Save'))
       return null
     } finally {
       setSavingKot(false)
-      clearQty()
+      if (!opts?.forSettlement) clearQty()
     }
   }
 
-  async function loadOrderList(supply: 'ALL' | ServiceKind = orderListSupply, search = orderListSearch) {
-    setOrderListState('loading')
-    setOrderListError(null)
-    try {
-      const rows = await apiService.fetchOrderList({
-        search: search.trim() || undefined,
-        supplyType: supply === 'ALL' ? undefined : supply === 'TAKEAWAY' ? 'PARCEL' : supply,
-      })
-      setOrderListRows(mapOrderRows(rows))
-      setOrderListState('idle')
-    } catch (err) {
-      setOrderListError(errMessage(err, 'Could not load order list'))
-      setOrderListState('error')
-    }
+  async function onSaveKot() {
+    if (savingKot) return
+    await saveKotInternal()
   }
 
   /** btnOrderList_Click — always load as NEW (no combine). */
@@ -2802,21 +3883,432 @@ export default function PosMainPage() {
    * Order List instead of making the cashier open More > Order List and
    * pick the filter chip by hand. */
   function openOrderListFor(supply: 'ALL' | ServiceKind) {
+    hideTablePopup()
+    setMoreActionsOpen(false)
     setOrderListSearch('')
     setOrderListSupply(supply)
+    setOrderListAreaId(0)
+    setOrderListSelectedId(0)
     setOrderListOpen(true)
-    void loadOrderList(supply, '')
+    void loadOrderList(supply, '', 0).then(() => {
+      window.setTimeout(() => orderListSearchRef.current?.focus(), 50)
+    })
+  }
+
+  /** btnDiscount_Click — admin, same tax %, then Discountfrm. */
+  function onDiscountClick() {
+    if (currentKotId <= 0) {
+      toast('Select A Bill......')
+      return
+    }
+    requestAdmin('discount')
+  }
+
+  function openDiscountDialog() {
+    if (currentKotId <= 0) {
+      toast('Select A Bill......')
+      return
+    }
+    if (taxRatesDiffer(lines)) {
+      toast('Tax Rate is Different..    Discount Not Applicable')
+      return
+    }
+    const currentType = discountType
+    if (currentType === 2 && allowedItemDiscountCount(lines) <= 0) {
+      toast('Discount is not allowed for any item in this bill.')
+      return
+    }
+    const totals = calcKotTotals(lines, billDiscount, defaultTax1, 0)
+    const oldDiscount = currentType === 2 ? allowedItemDiscountTotal(lines) : round2(Math.max(0, billDiscount))
+    const subTotal = currentType === 2 ? round2(totals.lineSubtotal + oldDiscount) : totals.lineSubtotal
+    const billAllowed = notAllowedItemDiscountCount(lines) <= 0
+    let mode: -1 | 0 | 2 = oldDiscount > 0 ? currentType : -1
+    if (mode === 0 && !billAllowed) mode = -1
+    setDiscountBase(subTotal)
+    setDiscountMode(mode)
+    setDiscountAmount(oldDiscount > 0 || mode !== -1 ? money(oldDiscount) : '')
+    setDiscountPercent(mode === 2 ? money(currentItemDiscountPercent(lines)) : mode === 0 && subTotal > 0 ? money(round2((oldDiscount * 100) / subTotal)) : '')
+    setDiscountFocus(mode === 2 ? 'percent' : 'amount')
+    setDiscountKeyLock('')
+    setDiscountError(null)
+    setDiscountOpen(true)
+  }
+
+  function closeDiscountDialog() {
+    setDiscountOpen(false)
+    setDiscountError(null)
+    setDiscountKeyLock('')
+  }
+
+  function selectDiscountMode(mode: 0 | 2) {
+    if (mode === 0) {
+      const blocked = notAllowedItemDiscountCount(lines)
+      if (blocked > 0) {
+        toast(
+          `Bill discount is not allowed because ${blocked} item(s) are marked as non-discountable in this bill. Please use item-wise discount.`,
+        )
+        return
+      }
+      setDiscountMode(0)
+      setDiscountFocus('amount')
+      return
+    }
+    setDiscountMode(2)
+    setDiscountFocus('percent')
+  }
+
+  function onDiscountAmountChange(raw: string) {
+    if (discountMode === -1 || discountMode === 2) return
+    if (discountKeyLock === 'percent') return
+    const next = raw.replace(/[^\d.]/g, '').slice(0, 12)
+    setDiscountKeyLock('amount')
+    setDiscountAmount(next)
+    const amt = next === '' || next === '.' ? 0 : Number(next)
+    if (!Number.isFinite(amt)) {
+      setDiscountKeyLock('')
+      return
+    }
+    setDiscountPercent(discountBase > 0 ? money(round2((amt * 100) / discountBase)) : money(0))
+    if (discountBase - amt < 0) {
+      toast('Discount Amount Not Acceptable.........')
+      setDiscountError('Discount Amount Not Acceptable.........')
+      setDiscountAmount('')
+      setDiscountPercent('')
+    } else {
+      setDiscountError(null)
+    }
+    setDiscountKeyLock('')
+  }
+
+  function onDiscountPercentChange(raw: string) {
+    if (discountMode === -1) return
+    if (discountKeyLock === 'amount') return
+    const next = raw.replace(/[^\d.]/g, '').slice(0, 12)
+    setDiscountKeyLock('percent')
+    setDiscountPercent(next)
+    const pct = next === '' || next === '.' ? 0 : Number(next)
+    if (!Number.isFinite(pct)) {
+      setDiscountKeyLock('')
+      return
+    }
+    const amt = round2((discountBase * pct) / 100)
+    setDiscountAmount(money(amt))
+    if (discountBase - amt < 0) {
+      toast('Discount Amount Not Acceptable.........')
+      setDiscountError('Discount Amount Not Acceptable.........')
+      setDiscountAmount('')
+      setDiscountPercent('')
+    } else {
+      setDiscountError(null)
+    }
+    setDiscountKeyLock('')
+  }
+
+  function onDiscountPadKey(k: string) {
+    const cur = discountFocus === 'amount' ? discountAmount : discountPercent
+    if (k === 'C') {
+      const next = cur.slice(0, -1)
+      if (discountFocus === 'amount') onDiscountAmountChange(next)
+      else onDiscountPercentChange(next)
+      return
+    }
+    if (k === '.' && cur.includes('.')) return
+    const next = (cur + k).slice(0, 12)
+    if (discountFocus === 'amount') onDiscountAmountChange(next)
+    else onDiscountPercentChange(next)
+  }
+
+  async function applyDiscountDone() {
+    if (discountMode !== 0 && discountMode !== 2) {
+      toast('Please select discount mode first.')
+      return
+    }
+    const previousDiscountType = discountType
+    const nextType = discountMode
+    const newAmount = Number(discountAmount)
+    const newPercent = Number(discountPercent)
+    const newDiscount = nextType === 2
+      ? (Number.isFinite(newPercent) ? newPercent : 0)
+      : (Number.isFinite(newAmount) ? newAmount : 0)
+    if (nextType === 0) {
+      const blocked = notAllowedItemDiscountCount(lines)
+      if (blocked > 0) {
+        toast(
+          `Bill discount is not allowed because ${blocked} item(s) are marked as non-discountable in this bill. Please use item-wise discount.`,
+        )
+        return
+      }
+      if (discountBase - (Number.isFinite(newDiscount) ? newDiscount : 0) < 0) {
+        toast('Discount Amount Not Acceptable.........')
+        return
+      }
+    }
+    let nextLines = lines
+    if (previousDiscountType === 2 && nextType === 0) {
+      if (allowedItemDiscountTotal(lines) > 0) {
+        const ok = await ask(
+          'Item-wise discount already applied. Switching to bill discount will remove all item discounts. Continue?',
+        )
+        if (!ok) return
+        nextLines = clearAllItemDiscountRows(lines)
+      }
+    } else if (previousDiscountType === 0 && nextType === 2) {
+      if (billDiscount > 0) {
+        const ok = await ask(
+          'Bill discount already applied. Switching to item-wise discount will remove bill discount. Continue?',
+        )
+        if (!ok) return
+      }
+    }
+    let nextBill = 0
+    if (nextType === 2) {
+      const split = splitDiscountAmountToItems(nextLines, Number.isFinite(newDiscount) ? newDiscount : 0)
+      if (!split) {
+        toast('Discount is not allowed for any item in this bill.')
+        return
+      }
+      nextLines = split
+      nextBill = 0
+    } else {
+      nextBill = round2(Math.max(0, Number.isFinite(newDiscount) ? newDiscount : 0))
+    }
+    setLines(nextLines)
+    setBillDiscount(nextBill)
+    setDiscountType(nextType)
+    setDiscountOpen(false)
+    setDiscountError(null)
+    await saveKotInternal({
+      forDiscount: true,
+      ticket: nextLines,
+      billDisc: nextBill,
+      discType: nextType,
+    })
+  }
+
+  /** btnSettlement_Click — require a saved KOT unless SaveKOTonSettlement=1. */
+  async function onSettlementClick() {
+    if (settleOpening || settleOpen || savingKot) return
+    if (lines.length === 0) {
+      toast('Enter Atleast One Item details...........')
+      return
+    }
+    const pending = lines.some((l) => l.kotPending)
+    if (saveKotOnSettlement === 0) {
+      if (currentKotId <= 0 || pending) {
+        toast('Save KOT Before Settlement...')
+        return
+      }
+    }
+    setSettleOpening(true)
+    try {
+      let kotId = currentKotId
+      let ticket = lines
+      let label = currentKotId > 0 ? `${kotPrefix}${kotNo}` || String(currentKotId) : 'NEW'
+      if (saveKotOnSettlement === 1 || pending || kotId <= 0) {
+        const saved = await saveKotInternal({ forSettlement: true })
+        if (!saved) return
+        kotId = saved.kotId
+        ticket = saved.lines
+        label = saved.kotLabel
+      }
+      const totals = calcKotTotals(ticket, billDiscount, defaultTax1, 0)
+      const keypadPaid = Number(entry)
+      setSettleBill({
+        kotId,
+        kotLabel: label,
+        net: totals.total,
+        subtotal: totals.lineSubtotal,
+        discount: totals.billDiscount,
+        tax: totals.tax,
+        taxable: round2(Math.max(0, totals.lineSubtotal - totals.billDiscount)),
+        customerId,
+        waiterId,
+        tableId,
+        areaId,
+        covers,
+        remarks,
+        items: buildSettleItems(ticket),
+        prefillPaid: Number.isFinite(keypadPaid) && keypadPaid > 0 ? round2(keypadPaid) : 0,
+      })
+      setSettleOpen(true)
+      setEntry('')
+    } finally {
+      setSettleOpening(false)
+    }
+  }
+
+  function closeSettlement() {
+    if (settleOpening) return
+    setSettleOpen(false)
+    setSettleBill(null)
+  }
+
+  function onSettlementCompleted(info: SettlementDone) {
+    setSettleOpen(false)
+    setSettleBill(null)
+    setLastInfo(info)
+    toast('Transaction Completed. . . ')
+    const areaForRefresh = areaId
+    clearData()
+    clearQty()
+    if (areaForRefresh > 0) void loadOccupied(areaForRefresh)
+  }
+
+  function onSettlementAlreadySettled() {
+    setSettleOpen(false)
+    setSettleBill(null)
+    toast('This KOT is already settled / invoiced from another counter...')
+    const areaForRefresh = areaId
+    clearData()
+    clearQty()
+    if (areaForRefresh > 0) void loadOccupied(areaForRefresh)
+  }
+
+  function orderListAreaColor(listAreaId: number, areaName: string) {
+    const i = areas.findIndex((a) => a.id === listAreaId)
+    if (i >= 0) return AREA_PALETTE[i % AREA_PALETTE.length]
+    return areaSwatch(listAreaId, areaName)
+  }
+
+  function orderListWaiterBlocked(row: OrderRow) {
+    const logged = getPosSession().staffId
+    return row.waiterId > 0 && logged > 0 && row.waiterId !== logged
+  }
+
+  /** OrderListFrm.DisplayOrderList — open KOTs, optional supply / area / exact KOT. */
+  async function loadOrderList(
+    supply: 'ALL' | ServiceKind = orderListSupply,
+    search = orderListSearch,
+    filterAreaId = orderListAreaId,
+    kotExact = false,
+  ): Promise<OrderRow[]> {
+    setOrderListState('loading')
+    setOrderListError(null)
+    try {
+      const rows = mapOrderRows(await apiService.fetchOrderList({
+        search: search.trim() || undefined,
+        supplyType: supply === 'ALL' ? undefined : supply === 'TAKEAWAY' ? 'PARCEL' : supply,
+        areaId: filterAreaId > 0 ? filterAreaId : undefined,
+        kotExact,
+      }))
+      setOrderListRows(rows)
+      setOrderListSelectedId((cur) => (rows.some((r) => r.kotMasterId === cur) ? cur : 0))
+      setOrderListState('idle')
+      return rows
+    } catch (err) {
+      setOrderListError(errMessage(err, 'Could not load order list'))
+      setOrderListState('error')
+      return []
+    }
+  }
+
+  /** Mainfrm.btnOrderList_Click → OrderListFrm.ShowDialog */
+  /**
+   * OrderListFrm.kotNumberButton_Click / OrderPanel_DoubleClick then
+   * Mainfrm.btnOrderList_Click DisplayKOT(..., 0) — always load as NEW.
+   */
+  async function openOrderFromList(row: OrderRow, checkWaiter = true) {
+    if (checkWaiter && orderListWaiterBlocked(row)) {
+      toast('This table has an active KOT under another waiter.')
+      return
+    }
+    if (!row.kotMasterId) return
+    hideTablePopup()
+    await takeOrder(row.kotMasterId, false)
+  }
+
+  /** OrderListFrm.OrderPanel_Click — highlight only. */
+  function selectOrderCard(row: OrderRow) {
+    setOrderListSelectedId(row.kotMasterId)
+  }
+
+  /** OrderListFrm.txtKOTNo_KeyDown Enter — unique exact match auto-loads. */
+  async function onOrderListKotSearch() {
+    const q = orderListSearch.trim()
+    if (!q) {
+      await loadOrderList('ALL', '', 0)
+      return
+    }
+    setOrderListSupply('ALL')
+    setOrderListAreaId(0)
+    const rows = await loadOrderList('ALL', q, 0, true)
+    if (rows.length === 1) await openOrderFromList(rows[0], false)
+  }
+
+  /** Mainfrm.Button1_Click — KotJoinFrm.ShowDialog */
+  function onKotJoinClick() {
+    setKotJoinOpen(true)
+  }
+
+  function onKotJoined(targetKotId: number, sourceKotIds: number[]) {
+    if (currentKotId > 0 && sourceKotIds.includes(currentKotId)) clearData()
+    else if (currentKotId > 0 && currentKotId === targetKotId) void takeOrder(targetKotId, false)
+    if (areaId > 0) void loadOccupied(areaId)
+  }
+
+  function onKotSplit(info: { sourceKotId: number; newKotId: number; sourceEmptyAfterSplit: boolean }) {
+    if (currentKotId > 0 && currentKotId === info.sourceKotId) {
+      if (info.sourceEmptyAfterSplit) clearData()
+      else void takeOrder(info.sourceKotId, false)
+    }
+    if (areaId > 0) void loadOccupied(areaId)
+  }
+
+  /** TableFloorRuntimeFrmAreaChange after UpdateKotTable. */
+  function onAreaChanged(info: {
+    kotMasterId: number
+    fromAreaId: number
+    fromTableId: number
+    toAreaId: number
+    toTableId: number
+    toTableName: string
+    toAreaName: string
+  }) {
+    if (currentKotId > 0 && currentKotId === info.kotMasterId) {
+      const destArea = areas.find((a) => a.id === info.toAreaId)
+      if (destArea) {
+        setAreaId(destArea.id)
+        setService(normalizeSupply(destArea.supplyType))
+      } else {
+        setAreaId(info.toAreaId)
+      }
+      setTableId(info.toTableId)
+      setTableName(info.toTableName)
+    }
+    const refreshArea = currentKotId > 0 && currentKotId === info.kotMasterId ? info.toAreaId : areaId
+    if (refreshArea > 0) void loadOccupied(refreshArea)
+  }
+
+  function onOrderListSupply(s: 'ALL' | ServiceKind) {
+    setOrderListSearch('')
+    setOrderListSupply(s)
+    setOrderListAreaId(0)
+    void loadOrderList(s, '', 0)
+  }
+
+  function onOrderListArea(clickedAreaId: number) {
+    setOrderListSearch('')
+    setOrderListAreaId(clickedAreaId)
+    setOrderListSupply('ALL')
+    void loadOrderList('ALL', '', clickedAreaId)
   }
 
   /** DisplayKOT — Order List and table load. AppendItems=0 replaces; =1 keeps NEW lines.
    *  Returns the freshly-loaded lines so a caller mid-orchestration (e.g. moving a line
    *  to another KOT) can use them directly instead of racing the `lines` state update. */
   async function takeOrder(kotMasterId: number, append = false): Promise<TicketLine[] | null> {
-    if (kotMasterId <= 0 || loadingKot) return null
+    if (kotMasterId <= 0) return null
+    if (loadingKot) {
+      await new Promise((r) => window.setTimeout(r, 50))
+    }
     setLoadingKot(true)
     try {
       const details = await apiService.fetchKotDetails(String(kotMasterId))
-      const result = applyKotDetails(details, allProducts, append)
+      const listedRemarks =
+        orderListRows.find((r) => r.kotMasterId === kotMasterId)?.remarks
+        || occupiedKots.find((k) => k.kotMasterId === kotMasterId)?.remarks
+        || ''
+      const result = applyKotDetails(details, allProducts, append, listedRemarks)
       if (!result) return null
       setOrderListOpen(false)
       return result
@@ -2838,6 +4330,8 @@ export default function PosMainPage() {
           id: num(c.customerId ?? c.CustomerID),
           name: String(c.customerName ?? c.CustomerName ?? '').trim(),
           mobile: String(c.mobileNo ?? c.MobileNo ?? '').trim(),
+          telephone: String(c.telephone ?? c.Telephone ?? '').trim(),
+          code: String(c.customerCode ?? c.CustomerCode ?? '').trim(),
         })).filter((c) => c.id > 0 && c.name),
       )
     } catch {
@@ -2847,6 +4341,73 @@ export default function PosMainPage() {
     }
   }
 
+  function openCustomerSelect() {
+    setCustomerSearch('')
+    setCustomerOpen(true)
+    void loadCustomers('')
+    window.setTimeout(() => customerSearchRef.current?.focus(), 50)
+  }
+
+  function onCustomerQueryChange(val: string) {
+    setCustomerSearch(val)
+    if (customerSearchTimer.current) clearTimeout(customerSearchTimer.current)
+    customerSearchTimer.current = setTimeout(() => void loadCustomers(val), 280)
+  }
+
+  function pickCustomer(c: CustomerPick) {
+    setCustomerId(c.id)
+    setCustomerName(c.name)
+    setCustomerOpen(false)
+    setCustomerEntryOpen(false)
+  }
+
+  function openNewCustomer() {
+    const prefill = prefillFromCustomerSearch(customerSearch)
+    setCustomerEntryName(prefill.name)
+    setCustomerEntryMobile(prefill.mobile)
+    setCustomerEntryTel('')
+    setCustomerEntryAddress('')
+    setCustomerEntryError(null)
+    setCustomerEntryOpen(true)
+    window.setTimeout(() => {
+      if (prefill.mobile) customerMobileRef.current?.focus()
+    }, 50)
+  }
+
+  async function saveNewCustomer() {
+    const name = customerEntryName.trim()
+    const mobile = customerEntryMobile.trim().replace(/[\s\-()]/g, '')
+    const telephone = customerEntryTel.trim().replace(/[\s\-()]/g, '')
+    if (!name) {
+      setCustomerEntryError('Customer name is required')
+      return
+    }
+    setCustomerSaving(true)
+    setCustomerEntryError(null)
+    try {
+      const created = await apiService.createCustomer({
+        customerName: name,
+        mobileNo: mobile || undefined,
+        telephone: telephone || undefined,
+        address: customerEntryAddress.trim() || undefined,
+        autoCode: true,
+        newBarcode: true,
+      })
+      const id = num(created.customerId ?? created.CustomerID ?? created.id)
+      pickCustomer({
+        id: id > 0 ? id : 0,
+        name: String(created.customerName ?? created.CustomerName ?? name).trim() || name,
+        mobile: String(created.mobileNo ?? created.MobileNo ?? mobile).trim(),
+        telephone: String(created.telephone ?? created.Telephone ?? telephone).trim(),
+        code: String(created.customerCode ?? created.CustomerCode ?? '').trim(),
+      })
+      toast('Customer saved')
+    } catch (err) {
+      setCustomerEntryError(errMessage(err, 'Failed to save customer'))
+    } finally {
+      setCustomerSaving(false)
+    }
+  }
   async function loadReceiptCustomers(search = receiptSearch) {
     setReceiptCustomersState('loading')
     try {
@@ -3972,6 +5533,43 @@ export default function PosMainPage() {
   /** Opens whatever a side-menu leaf points at. Shared by the menu itself
    * and the side-menu global search, so both behave identically. */
   function onNavPick(label: string, path: string) {
+    // Transactions / Manufacturing screens backed by Sonu's real dialogs.
+    const openStock = (docType: StockDocType, list: boolean) => {
+      setStockDocType(docType)
+      if (list) setStockListOpen(true)
+      else {
+        setStockEntryId(null)
+        setStockEntryOpen(true)
+      }
+      setSideNavHidden(true)
+    }
+    if (label === 'Stock Adjustment') return openStock('ADJ', false)
+    if (label === 'Stock Adjust List') return openStock('ADJ', true)
+    if (label === 'Damage Entry') return openStock('DMG', false)
+    if (label === 'Damage List') return openStock('DMG', true)
+    if (label === 'Additional Stock Entry') return openStock('ASE', false)
+    if (label === 'Additional Stock List') return openStock('ASE', true)
+    if (label === 'Stock report') {
+      setStockReportOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Movement Report') {
+      setMovementReportOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Recipe Entry') {
+      setRecipeProductId(null)
+      setRecipeEntryOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Recipe List') {
+      setRecipeListOpen(true)
+      setSideNavHidden(true)
+      return
+    }
     if (label === 'Product Entry') {
       openNewProductModal()
       setSideNavHidden(true)
@@ -5174,15 +6772,15 @@ export default function PosMainPage() {
                     <span className="label-full">Total</span>
                     <span className="label-short">Tot</span>
                   </span>
-                  <span className="val">{money(summary.subtotal)}</span>
+                  <span className="val">{money(summary.gross)}</span>
                 </span>
                 <span className="pd-summary-item">
                   <span className="label">Disc</span>
-                  <span className="val">{money(summary.discount)}</span>
+                  <span className="val">{money(round2(summary.itemDiscount + summary.billDiscount))}</span>
                 </span>
                 <span className="pd-summary-item">
                   <span className="label">Txbl</span>
-                  <span className="val">{money(summary.taxable)}</span>
+                  <span className="val">{money(summary.taxableSubTotal)}</span>
                 </span>
                 <span className="pd-summary-item">
                   <span className="label">Tax</span>
@@ -5383,7 +6981,7 @@ export default function PosMainPage() {
             <div className="pd-table-popup">
               <div className="pd-table-popup-bar">
                 <strong>{currentArea?.name || 'Tables'}</strong>
-                <button type="button" className="pd-table-home" onClick={hideTablePopup}>
+                <button type="button" className="pd-table-home" onClick={() => hideTablePopup()}>
                   <Home size={14} /> Home
                 </button>
               </div>
@@ -5539,14 +7137,14 @@ export default function PosMainPage() {
                     </span>
                     <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
                   </button>
-                  <button type="button" className="pd-tile">
+                  <button type="button" className="pd-tile" onClick={onDiscountClick}>
                     <Percent className="pd-tile-ic" strokeWidth={2} />
                     <span className="pd-tile-text">
                       <span className="pd-tile-label">Discount</span>
                     </span>
                     <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
                   </button>
-                  <button type="button" className="pd-tile is-danger">
+                  <button type="button" className="pd-tile is-danger" onClick={onBillCancelClick}>
                     <Ban className="pd-tile-ic" strokeWidth={2} />
                     <span className="pd-tile-text">
                       <span className="pd-tile-label">Cancel Bill</span>
@@ -5624,11 +7222,11 @@ export default function PosMainPage() {
                     <button
                       type="button"
                       className="pd-more-item"
-                      onClick={() => toast('KOT Join — coming soon', 'info')}
+                      onClick={onKotJoinClick}
                     >
                       <BtnIcon icon={Merge} /> <span>KOT Join</span>
                     </button>
-                    <button type="button" className="pd-more-item">
+                    <button type="button" className="pd-more-item" onClick={onReturnClick}>
                       <BtnIcon icon={RotateCcw} /> <span>Return</span>
                     </button>
                     <button type="button" className="pd-more-item">
@@ -5646,8 +7244,11 @@ export default function PosMainPage() {
                     <button type="button" className="pd-more-item">
                       <BtnIcon icon={ClipboardList} /> <span>Delivery List</span>
                     </button>
-                    <button type="button" className="pd-more-item is-danger">
+                    <button type="button" className="pd-more-item is-danger" onClick={onItemCancelClick}>
                       <BtnIcon icon={MinusCircle} /> <span>Item Cancel</span>
+                    </button>
+                    <button type="button" className="pd-more-item" onClick={openModifierForSelection}>
+                      <BtnIcon icon={StickyNote} /> <span>Kitchen Message</span>
                     </button>
                   </div>
                   </div>,
@@ -5659,8 +7260,8 @@ export default function PosMainPage() {
             <button
               type="button"
               className="pd-pay"
-              onClick={() => setPayOpen(true)}
-              disabled={lines.length === 0}
+              onClick={() => void onSettlementClick()}
+              disabled={settleOpening || savingKot || lines.length === 0}
             >
               <BtnIcon icon={CreditCard} size={16} />
               PAY <em>AED {money(summary.total)}</em>
@@ -5807,14 +7408,14 @@ export default function PosMainPage() {
             if (e.target === e.currentTarget) cancelPriceChange()
           }}
         >
-          <div className="pd-qty-dialog" role="dialog" aria-modal="true" aria-labelledby="pd-price-title">
+          <div className="pd-price-dialog" role="dialog" aria-modal="true" aria-labelledby="pd-price-title">
             <div className="pd-mod-header">
               <div className="pd-mod-header-left">
                 <div className="pd-mod-header-icon">
                   <Tag size={15} color="#fff" />
                 </div>
                 <div>
-                  <p className="pd-mod-kicker">Price Change</p>
+                  <p className="pd-mod-kicker">Price Change..</p>
                   <h2 id="pd-price-title" className="pd-mod-item-name">
                     {priceChangeLine.item}
                   </h2>
@@ -5824,8 +7425,12 @@ export default function PosMainPage() {
                 <X size={13} />
               </button>
             </div>
-            <div className="pd-qty-body">
-              <div className="pd-qty-fields">
+            <div className="pd-price-body">
+              <div className="pd-price-fields">
+                <div className="pd-qty-row">
+                  <span>BarCode</span>
+                  <strong>{priceChangeLine.barcode || '—'}</strong>
+                </div>
                 <div className="pd-qty-row">
                   <span>Current Price</span>
                   <strong>{money(priceChangeLine.price)}</strong>
@@ -5833,21 +7438,65 @@ export default function PosMainPage() {
                 <div className="pd-qty-row">
                   <span>New Price</span>
                   <input
-                    ref={priceChangeRef}
-                    className="pd-qty-input"
-                    value={priceChangeNew}
-                    onChange={(e) => setPriceChangeNew(e.target.value.replace(/[^\d.]/g, '').slice(0, 10))}
+                    ref={priceUnitRef}
+                    className={`pd-qty-input${priceFocus === 'unit' ? ' is-focus' : ''}`}
+                    value={priceUnit}
+                    onFocus={() => setPriceFocus('unit')}
+                    onChange={(e) => {
+                      setPriceFocus('unit')
+                      syncFromUnit(e.target.value.replace(/[^\d.]/g, '').slice(0, 12))
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') applyPriceChange()
                       if (e.key === 'Escape') cancelPriceChange()
                     }}
                     inputMode="decimal"
-                    placeholder="Enter price…"
                   />
                 </div>
+                <div className="pd-price-vat-row">
+                  <div className="pd-qty-row">
+                    <span>VAT %</span>
+                    <strong>{money(priceVatPerc)}</strong>
+                  </div>
+                  <div className="pd-qty-row">
+                    <span>VAT Amount</span>
+                    <strong>
+                      {money(
+                        priceUnit !== '' && Number.isFinite(Number(priceUnit))
+                          ? round2(Number(priceUnit) * (priceVatPerc / 100))
+                          : round2(priceChangeLine.price * (priceVatPerc / 100)),
+                      )}
+                    </strong>
+                  </div>
+                </div>
+                <div className="pd-qty-row">
+                  <span>Price With VAT</span>
+                  <input
+                    ref={priceVatRef}
+                    className={`pd-qty-input${priceFocus === 'withVat' ? ' is-focus' : ''}`}
+                    value={priceWithVat}
+                    onFocus={() => setPriceFocus('withVat')}
+                    onChange={(e) => {
+                      setPriceFocus('withVat')
+                      syncFromWithVat(e.target.value.replace(/[^\d.]/g, '').slice(0, 12))
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') applyPriceChange()
+                      if (e.key === 'Escape') cancelPriceChange()
+                    }}
+                    inputMode="decimal"
+                  />
+                </div>
+                {priceError ? <p className="pd-price-err">{priceError}</p> : null}
               </div>
               <div className="pd-qty-pad">
-                <NumberKeypad className="pd-qty-keys" onKey={onPriceChangeKey} />
+                <div className="pd-qty-keys">
+                  {KEYS.map((k) => (
+                    <button key={k} type="button" className="pd-key" onClick={() => onPricePadKey(k)}>
+                      {k}
+                    </button>
+                  ))}
+                </div>
                 <div className="pd-qty-actions">
                   <button type="button" className="pd-qty-done" onClick={applyPriceChange}>
                     Done
@@ -6039,228 +7688,15 @@ export default function PosMainPage() {
         </div>
       ) : null}
 
-      {payOpen ? (
-        <div
-          className="pd-mod-overlay"
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setPayOpen(false)
-          }}
-        >
-          <div className="pd-ol-dialog pd-pay-dialog" role="dialog" aria-modal="true">
-            <div className="pd-mod-header">
-              <div className="pd-mod-header-left">
-                <div className="pd-mod-header-icon">
-                  <CreditCard size={15} color="#fff" />
-                </div>
-                <div>
-                  <p className="pd-mod-kicker">Net AED {money(summary.total)}</p>
-                  <h2 className="pd-mod-item-name">Choose Payment Mode</h2>
-                </div>
-              </div>
-              <button type="button" className="pd-mod-x" onClick={() => setPayOpen(false)} aria-label="Close">
-                <X size={13} />
-              </button>
-            </div>
-            <div className="pd-ol-body">
-              <div className="pd-pay-grid">
-                {PAY_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    className="pd-pay-option"
-                    onClick={() => {
-                      if (opt.id === 'split') {
-                        openSplitPayment()
-                        return
-                      }
-                      setPayOpen(false)
-                      toast(`${opt.label} — coming soon`, 'info')
-                    }}
-                  >
-                    <span className="pd-pay-option-icon" aria-hidden>
-                      <opt.icon size={18} strokeWidth={2} />
-                    </span>
-                    <span className="pd-pay-option-label">{opt.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {splitOpen ? (
-        <div
-          className="pd-mod-overlay"
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && splitStep !== 'done') setSplitOpen(false)
-          }}
-        >
-          <div className="pd-ol-dialog pd-ol-narrow pd-split-dialog" role="dialog" aria-modal="true">
-            <div className="pd-mod-header">
-              <div className="pd-mod-header-left">
-                {splitStep === 'entry' ? (
-                  <button type="button" className="pd-mod-back" onClick={splitBack} aria-label="Back">
-                    <ArrowLeft size={16} />
-                  </button>
-                ) : (
-                  <div className="pd-mod-header-icon">
-                    <SplitSquareHorizontal size={15} color="#fff" />
-                  </div>
-                )}
-                <div>
-                  <p className="pd-mod-kicker">Split Payment</p>
-                  <h2 className="pd-mod-item-name">
-                    {splitStep === 'method' && 'Select Payment Method'}
-                    {splitStep === 'entry' && 'Enter Amount'}
-                    {splitStep === 'done' && 'Payment Complete'}
-                  </h2>
-                </div>
-              </div>
-              <button type="button" className="pd-mod-x" onClick={() => setSplitOpen(false)} aria-label="Close">
-                <X size={13} />
-              </button>
-            </div>
-
-            {splitStep !== 'done' ? (
-              <div className="pd-split-totals">
-                <span className="pd-split-total-item">
-                  <span className="label">Bill Total</span>
-                  <span className="val">AED {money(summary.total)}</span>
-                </span>
-                <span className="pd-split-total-item">
-                  <span className="label">Paid</span>
-                  <span className="val">AED {money(splitPayments.reduce((s, p) => s + p.paid, 0))}</span>
-                </span>
-                <span className="pd-split-total-item pd-split-total-remaining">
-                  <span className="label">Remaining</span>
-                  <span className="val">AED {money(splitRemainingAmount())}</span>
-                </span>
-              </div>
-            ) : null}
-
-            <div className="pd-ol-body">
-              {splitStep === 'method' ? (
-                <div className="pd-split-method-grid">
-                  {SPLIT_METHODS.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className={`pd-split-method is-${m.id}`}
-                      onClick={() => selectSplitMethod(m.id)}
-                    >
-                      <span className="pd-split-method-icon" aria-hidden>
-                        <m.icon size={28} strokeWidth={2} />
-                      </span>
-                      <span className="pd-split-method-label">{m.label}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {splitStep === 'entry' && splitMethod ? (
-                <div className="pd-split-entry">
-                  <div className="pd-split-toprow">
-                    <button
-                      type="button"
-                      className="pd-split-full-btn"
-                      onClick={() => {
-                        setSplitPaidInput(splitRemainingAmount().toFixed(2))
-                        setSplitActiveField('paid')
-                      }}
-                    >
-                      Pay Full Remaining (AED {money(splitRemainingAmount())})
-                    </button>
-                    <button
-                      type="button"
-                      className={`pd-split-tip-add${splitTip === 'with' ? ' is-on' : ''}`}
-                      onClick={toggleSplitTip}
-                    >
-                      {splitTip === 'with' ? <X size={14} /> : <Plus size={14} />}
-                      {splitTip === 'with' ? 'Remove Tip' : 'Add Tip'}
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={`pd-split-amount-box${splitActiveField === 'paid' ? ' is-active' : ''}`}
-                    onClick={() => setSplitActiveField('paid')}
-                  >
-                    <span className="pd-split-amount-label">Paid Amount</span>
-                    <span className="pd-split-amount-val">
-                      <em>AED</em> {splitPaidInput || '0.00'}
-                    </span>
-                  </button>
-
-                  {splitTip === 'with' ? (
-                    <button
-                      type="button"
-                      className={`pd-split-amount-box is-tip${splitActiveField === 'tip' ? ' is-active' : ''}`}
-                      onClick={() => setSplitActiveField('tip')}
-                    >
-                      <span className="pd-split-amount-label">Tip Amount</span>
-                      <span className="pd-split-amount-val">
-                        <em>AED</em> {splitTipInput || '0.00'}
-                      </span>
-                    </button>
-                  ) : null}
-
-                  <NumberKeypad className="pd-keys pd-split-keys" onKey={onSplitKeypad} />
-
-                  <button
-                    type="button"
-                    className="pd-split-paid-btn"
-                    disabled={!(Number(splitPaidInput) > 0)}
-                    onClick={confirmSplitPayment}
-                  >
-                    PAID
-                  </button>
-                </div>
-              ) : null}
-
-              {splitStep === 'done' ? (
-                <div className="pd-split-done">
-                  <span className="pd-split-done-icon" aria-hidden>
-                    <CircleCheck size={40} strokeWidth={1.6} />
-                  </span>
-                  <p className="pd-split-done-title">Bill fully settled</p>
-                  <div className="pd-split-done-list">
-                    {splitPayments.map((p, i) => {
-                      const meta = SPLIT_METHODS.find((m) => m.id === p.method)
-                      return (
-                        <span key={i} className="pd-split-done-row">
-                          <span className="pd-split-done-row-label">
-                            {meta ? <meta.icon size={14} /> : null} {meta?.label}
-                          </span>
-                          <span className="pd-split-done-row-val">
-                            AED {money(p.paid)}
-                            {p.tip > 0 ? ` + ${money(p.tip)} tip` : ''}
-                          </span>
-                        </span>
-                      )
-                    })}
-                  </div>
-                  <button type="button" className="pd-split-paid-btn" onClick={finishSplitPayment}>
-                    Done
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {tableFloorOpen ? (
         <div
-          className="pd-mod-overlay"
+          className="pd-mod-overlay pd-ol-overlay"
           role="presentation"
           onClick={(e) => {
-            if (e.target === e.currentTarget) hideTablePopup()
+            if (e.target === e.currentTarget) dismissTableSelectionUi()
           }}
         >
-          <div className="pd-floor-dialog" role="dialog" aria-modal="true">
+          <div className="pd-floor-dialog pd-ol-screen" role="dialog" aria-modal="true">
             <div className="pd-mod-header">
               <div className="pd-mod-header-left">
                 <div className="pd-mod-header-icon">
@@ -6271,14 +7707,36 @@ export default function PosMainPage() {
                   <h2 className="pd-mod-item-name">{currentArea?.name || 'Tables'}</h2>
                 </div>
               </div>
-              <button type="button" className="pd-mod-x" onClick={hideTablePopup} aria-label="Close">
+              <button type="button" className="pd-mod-x" onClick={dismissTableSelectionUi} aria-label="Close">
                 <X size={13} />
               </button>
             </div>
-            <div className="pd-floor-canvas">
+            <div className={`pd-floor-canvas${floorMap?.hasFloor ? ' is-map' : ''}`}>
+              {floorMap == null ? (
+                <p className="pd-floor-note">Loading floor…</p>
+              ) : floorMap.hasFloor ? (
+                <FloorRuntimeCanvas
+                  border={floorMap.border}
+                  shapes={floorMap.shapes}
+                  tables={floorMap.tables.map((t) => {
+                      const occ = occupiedByTable.get(t.tableId) ?? []
+                      return {
+                        ...t,
+                        occupied: occ.length > 0,
+                        pax: occ[0]?.pax,
+                        kotNo: occ[0]?.kotNo,
+                      }
+                    })}
+                  onTableClick={(id) => {
+                    const t = tablesInArea.find((x) => x.id === id) ?? tablesForArea.find((x) => x.id === id)
+                    if (t) void floorTableClick(t)
+                  }}
+                />
+              ) : (
+                <>
               <p className="pd-floor-note">No floor map defined for this Area. Showing default table layout.</p>
               <div className="pd-table-grid is-floor">
-                {tablesForArea.map((t) => {
+                {tablesInArea.map((t) => {
                   const occ = occupiedByTable.get(t.id) ?? []
                   const occupied = occ.length > 0
                   return (
@@ -6289,14 +7747,19 @@ export default function PosMainPage() {
                       status={occupied ? 'occupied' : 'free'}
                       orderNo={occupied ? occ[0].kotNo : undefined}
                       pax={occupied ? occ[0].pax : undefined}
-                      onClick={() => void tableBtnClick(t, true)}
+                      onClick={() => void floorTableClick(t)}
                       occupiedChairs={occ.filter((k) => k.chairNo > 0).map((k) => k.chairNo)}
-                      onChairSelect={(chair) => void dotChairClick(t, chair)}
+                      onChairSelect={(chair) => {
+                        if (occ.length === 0) void floorTableClick(t)
+                        else void dotChairClick(t, chair, true)
+                      }}
                     />
                   )
                 })}
-                {tablesForArea.length === 0 ? <p className="pd-cat-msg">No tables in this area</p> : null}
+                {tablesInArea.length === 0 ? <p className="pd-cat-msg">No tables in this area</p> : null}
               </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -6464,7 +7927,7 @@ export default function PosMainPage() {
           className="pd-mod-overlay"
           role="presentation"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setCustomerOpen(false)
+            if (e.target === e.currentTarget && !customerEntryOpen) setCustomerOpen(false)
           }}
         >
           <div className="pd-ol-dialog pd-ol-narrow" role="dialog" aria-modal="true">
@@ -6483,31 +7946,57 @@ export default function PosMainPage() {
               </button>
             </div>
             <div className="pd-ol-body">
-              <SearchBar
-                size="sm"
-                value={customerSearch}
-                onValueChange={setCustomerSearch}
-                onSubmit={(v) => void loadCustomers(v)}
-                onClear={() => void loadCustomers('')}
-                placeholder="Search name / mobile"
-              />
-              <div className="pd-ol-list">
-                {customerState === 'loading' ? <p className="pd-cat-msg">Loading…</p> : null}
-                {customerRows.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`pd-ol-row${customerId === c.id ? ' is-on' : ''}`}
-                    onClick={() => {
-                      setCustomerId(c.id)
-                      setCustomerName(c.name)
-                      setCustomerOpen(false)
+              <div className="pd-cust-toolbar">
+                <label className="pd-search pd-cust-search">
+                  <Search size={14} color="var(--text-3)" />
+                  <input
+                    ref={customerSearchRef}
+                    value={customerSearch}
+                    onChange={(e) => onCustomerQueryChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void loadCustomers(e.currentTarget.value)
                     }}
-                  >
-                    <strong>{c.name}</strong>
-                    <span>{c.mobile || '—'}</span>
-                  </button>
-                ))}
+                    placeholder="Name, tel, or mobile…"
+                  />
+                  {customerSearch ? (
+                    <button
+                      type="button"
+                      className="pd-search-clear"
+                      aria-label="Clear search"
+                      onClick={() => onCustomerQueryChange('')}
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : null}
+                </label>
+                <button type="button" className="pd-cust-new" onClick={openNewCustomer}>
+                  <UserPlus size={14} /> New
+                </button>
+              </div>
+              <div className="pd-ol-list">
+                {customerState === 'loading' ? <p className="pd-cat-msg">Searching…</p> : null}
+                {customerState !== 'loading' && customerRows.length === 0 ? (
+                  <div className="pd-cust-empty">
+                    <p>No customers found</p>
+                    <button type="button" className="pd-cust-new is-block" onClick={openNewCustomer}>
+                      <UserPlus size={14} /> New Customer
+                    </button>
+                  </div>
+                ) : null}
+                {customerRows.map((c) => {
+                  const sub = [c.mobile, c.telephone, c.code].filter(Boolean).join(' · ')
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`pd-ol-row${customerId === c.id ? ' is-on' : ''}`}
+                      onClick={() => pickCustomer(c)}
+                    >
+                      <strong>{c.name}</strong>
+                      <span>{sub || '—'}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           </div>
@@ -6649,9 +8138,7 @@ export default function PosMainPage() {
         </div>
       ) : null}
 
-      {salesViewerOpen ? <SalesViewerDialog areas={areas} onClose={() => setSalesViewerOpen(false)} /> : null}
 
-      {counterCloseOpen ? <CounterCloseAllDialog onClose={() => setCounterCloseOpen(false)} /> : null}
 
       {confirmAlert ? (
         <div
@@ -10576,152 +12063,1059 @@ export default function PosMainPage() {
         </div>
       ) : null}
 
-      {orderListOpen ? (
+      {customerEntryOpen ? (
         <div
-          className="pd-mod-overlay"
+          className="pd-mod-overlay pd-admin-overlay"
           role="presentation"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setOrderListOpen(false)
+            if (e.target === e.currentTarget && !customerSaving) setCustomerEntryOpen(false)
           }}
         >
-          <div className="pd-ol-dialog pd-ol-wide" role="dialog" aria-modal="true">
+          <div className="pd-ol-dialog pd-ol-narrow" role="dialog" aria-modal="true" aria-labelledby="pd-cust-entry-title">
             <div className="pd-mod-header">
               <div className="pd-mod-header-left">
                 <div className="pd-mod-header-icon">
-                  <ClipboardList size={15} color="#fff" />
+                  <UserPlus size={15} color="#fff" />
                 </div>
                 <div>
-                  <p className="pd-mod-kicker">Saved KOTs</p>
-                  <h2 className="pd-mod-item-name">Order List</h2>
+                  <p className="pd-mod-kicker">New Customer</p>
+                  <h2 id="pd-cust-entry-title" className="pd-mod-item-name">
+                    Customer Entry
+                  </h2>
                 </div>
               </div>
-              <button type="button" className="pd-mod-x" onClick={() => setOrderListOpen(false)} aria-label="Close">
+              <button
+                type="button"
+                className="pd-mod-x"
+                onClick={() => setCustomerEntryOpen(false)}
+                disabled={customerSaving}
+                aria-label="Close"
+              >
                 <X size={13} />
               </button>
             </div>
-            <div className="pd-ol-body">
-              <div className="pd-ord-toolbar">
-                <div className="pd-ord-tabs" role="tablist" aria-label="Order type">
-                  {([
-                    ['ALL', 'All Orders', ClipboardList],
-                    ['DINE IN', 'Dine In', Utensils],
-                    ['TAKEAWAY', 'Takeaway', ShoppingBag],
-                    ['DELIVERY', 'Delivery', Truck],
-                  ] as const).map(([s, label, Icon]) => (
-                    <button
-                      key={s}
-                      type="button"
-                      role="tab"
-                      aria-selected={orderListSupply === s}
-                      className={`pd-ord-tab${orderListSupply === s ? ' is-on' : ''}`}
-                      onClick={() => {
-                        setOrderListSupply(s)
-                        void loadOrderList(s, orderListSearch)
-                      }}
-                    >
-                      <Icon size={14} strokeWidth={2.2} />
-                      <span>{label}</span>
-                    </button>
-                  ))}
-                </div>
-                <SearchBar
-                  size="sm"
-                  className="pd-ord-search"
-                  value={orderListSearch}
-                  onValueChange={setOrderListSearch}
-                  onSubmit={(v) => void loadOrderList(orderListSupply, v)}
-                  onClear={() => void loadOrderList(orderListSupply, '')}
-                  placeholder="Search KOT number"
+            <form
+              className="pd-ol-body pd-admin-form"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void saveNewCustomer()
+              }}
+            >
+              <label className="pd-admin-field">
+                <span>Customer Name</span>
+                <input
+                  autoFocus={!customerEntryMobile}
+                  value={customerEntryName}
+                  onChange={(e) => setCustomerEntryName(e.target.value)}
+                  disabled={customerSaving}
                 />
+              </label>
+              <label className="pd-admin-field">
+                <span>Mobile Number</span>
+                <input
+                  ref={customerMobileRef}
+                  value={customerEntryMobile}
+                  onChange={(e) => setCustomerEntryMobile(e.target.value.replace(/[^\d+]/g, '').slice(0, 15))}
+                  inputMode="tel"
+                  disabled={customerSaving}
+                />
+              </label>
+              <label className="pd-admin-field">
+                <span>Telephone</span>
+                <input
+                  value={customerEntryTel}
+                  onChange={(e) => setCustomerEntryTel(e.target.value.replace(/[^\d+]/g, '').slice(0, 15))}
+                  inputMode="tel"
+                  disabled={customerSaving}
+                />
+              </label>
+              <label className="pd-admin-field">
+                <span>Address</span>
+                <input
+                  value={customerEntryAddress}
+                  onChange={(e) => setCustomerEntryAddress(e.target.value.slice(0, 300))}
+                  disabled={customerSaving}
+                />
+              </label>
+              {customerEntryError ? <p className="pd-admin-err">{customerEntryError}</p> : null}
+              <div className="pd-mod-foot pd-admin-foot">
+                <span className="pd-mod-foot-spacer" />
+                <button type="submit" className="pd-mod-foot-btn is-ok" disabled={customerSaving}>
+                  {customerSaving ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  className="pd-mod-foot-btn is-close"
+                  onClick={() => setCustomerEntryOpen(false)}
+                  disabled={customerSaving}
+                >
+                  Close
+                </button>
               </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
-              {orderListState === 'idle' && orderListRows.length > 0 ? (
-                <div className="pd-ord-summary">
-                  <span>
-                    <b>{orderListRows.length}</b> open {orderListRows.length === 1 ? 'order' : 'orders'}
-                  </span>
-                  <span>
-                    Total <b>AED {money(orderListRows.reduce((sum, r) => sum + r.amount, 0))}</b>
-                  </span>
+      {orderListOpen ? (
+        <div className="pd-mod-overlay pd-ol-overlay" role="presentation">
+          <div className="pd-ol-dialog pd-ol-screen pd-kj-screen pd-ol-glass" role="dialog" aria-modal="true">
+            <aside className="pd-kj-side">
+              <span className="pd-kj-heading">KOT No.</span>
+              <input
+                ref={orderListSearchRef}
+                className="pd-kj-search"
+                value={orderListSearch}
+                onChange={(e) => setOrderListSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void onOrderListKotSearch()
+                }}
+                aria-label="KOT number"
+              />
+              <button
+                type="button"
+                className={`pd-kj-btn${orderListSupply === 'ALL' && orderListAreaId === 0 && !orderListSearch.trim() ? ' is-on' : ''}`}
+                onClick={() => onOrderListSupply('ALL')}
+              >
+                All Order
+              </button>
+              <button
+                type="button"
+                className={`pd-kj-btn${orderListSupply === 'DINE IN' ? ' is-on' : ''}`}
+                onClick={() => onOrderListSupply('DINE IN')}
+              >
+                DineIn
+              </button>
+              <button
+                type="button"
+                className={`pd-kj-btn${orderListSupply === 'TAKEAWAY' ? ' is-on' : ''}`}
+                onClick={() => onOrderListSupply('TAKEAWAY')}
+              >
+                Take Away
+              </button>
+              <button
+                type="button"
+                className={`pd-kj-btn${orderListSupply === 'DELIVERY' ? ' is-on' : ''}`}
+                onClick={() => onOrderListSupply('DELIVERY')}
+              >
+                Delivery
+              </button>
+              <button type="button" className="pd-kj-btn pd-kj-selected" disabled>
+                {orderListSelected
+                  ? `${orderListSelected.kotNo} : ${orderListSelected.pax || 0}`
+                  : 'KOT'}
+              </button>
+              <span className="pd-kj-side-spacer" />
+              <button type="button" className="pd-kj-btn pd-kj-home" onClick={() => setOrderListOpen(false)}>
+                Home
+              </button>
+            </aside>
+            <div className="pd-kj-main">
+              {areas.length ? (
+                <div className="pd-ol-indicate pd-kj-indicate" aria-label="Area colours">
+                  {areas.map((a) => {
+                    const color = orderListAreaColor(a.id, a.name)
+                    const on = orderListAreaId === a.id
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        className={`pd-ol-area${on ? ' is-on' : ''}`}
+                        style={{ background: color }}
+                        onClick={() => onOrderListArea(a.id)}
+                      >
+                        {a.name}
+                      </button>
+                    )
+                  })}
                 </div>
               ) : null}
-
-              <div className="pd-ord-grid">
-                {orderListState === 'loading' ? <p className="pd-ord-empty">Loading orders…</p> : null}
-                {orderListState === 'error' ? <p className="pd-ord-empty is-error">{orderListError}</p> : null}
+              <div className="pd-kj-cards">
+                {orderListState === 'loading' ? <p className="pd-cat-msg">Loading orders…</p> : null}
+                {orderListState === 'error' ? <p className="pd-cat-msg">{orderListError}</p> : null}
                 {orderListState === 'idle' && orderListRows.length === 0 ? (
-                  <div className="pd-ord-empty">
-                    <ClipboardList size={28} strokeWidth={1.6} />
-                    <b>No open orders</b>
-                    <span>{orderListSearch.trim() ? 'Nothing matches that KOT number.' : 'Saved KOTs will show up here.'}</span>
-                  </div>
+                  <p className="pd-cat-msg">No open KOTs</p>
                 ) : null}
                 {orderListRows.map((row) => {
-                  const mins = kotAgeMinutes(row.kotTime)
-                  const SupplyIcon = row.supplyType === 'DELIVERY' ? Truck : row.supplyType === 'TAKEAWAY' ? ShoppingBag : Utensils
+                  const color = orderListAreaColor(row.areaId, row.areaName)
+                  const picked = orderListSelectedId === row.kotMasterId
+                  const chairTxt = row.chairNo > 0 ? String(row.chairNo) : ''
+                  const tableLine =
+                    row.tableName.trim() && chairTxt
+                      ? `Table: ${row.tableName} - Chair: ${chairTxt}`
+                      : 'Table: N/A'
                   return (
-                    <button
+                    <div
                       key={row.kotMasterId}
-                      type="button"
-                      className={`pd-ord-card${mins != null && mins >= 30 ? ' is-late' : ''}`}
-                      disabled={loadingKot}
-                      onClick={() => void takeOrder(row.kotMasterId, false)}
+                      className={`pd-ol-card pd-ol-list-card${picked ? ' is-on' : ''}`}
+                      style={{ '--ol-color': color } as CSSProperties}
+                      onClick={() => selectOrderCard(row)}
+                      onDoubleClick={() => void openOrderFromList(row)}
                     >
-                      <span className="pd-ord-top">
-                        <span className="pd-ord-kot">
-                          <small>KOT</small>
-                          {row.kotNo}
-                        </span>
-                        <span className="pd-ord-type">
-                          <SupplyIcon size={12} strokeWidth={2.4} />
-                          {row.supplyType === 'TAKEAWAY' ? 'Takeaway' : row.supplyType === 'DELIVERY' ? 'Delivery' : 'Dine In'}
-                        </span>
+                      <span className="pd-ol-card-area">
+                        {orderListSupplySymbol(row.supplyType)} {row.areaName || 'Unknown Area'}
                       </span>
-
-                      <span className="pd-ord-time">
-                        <Clock size={12} />
-                        {mins == null ? formatKotClock(row.kotTime) : mins < 1 ? 'Just now' : mins < 60 ? `${mins} min ago` : `${Math.floor(mins / 60)}h ${mins % 60}m ago`}
+                      <span className="pd-ol-card-time">
+                        <Clock size={11} strokeWidth={2.4} /> {formatKotClock(row.kotTime)}
                       </span>
-
-                      <span className="pd-ord-info">
-                        <span>
-                          <MapPinned size={12} />
-                          {row.tableName ? `Table ${row.tableName}` : 'No table'}
-                          {row.areaName ? <em> · {row.areaName}</em> : null}
-                        </span>
-                        <span>
-                          <Users size={12} />
-                          {row.pax || 0} pax
-                        </span>
-                        <span>
-                          <User size={12} />
-                          {row.waiterName || waiter}
-                        </span>
+                      <span className={`pd-ol-card-table${row.tableName.trim() && chairTxt ? ' is-set' : ''}`}>
+                        {tableLine}
                       </span>
-
-                      {row.remarks ? (
-                        <span className="pd-ord-note">
-                          <MessageSquare size={11} />
-                          {row.remarks}
-                        </span>
-                      ) : null}
-
-                      <span className="pd-ord-foot">
-                        <span className="pd-ord-amt">
-                          <small>AED</small>
-                          {money(row.amount)}
-                        </span>
-                        <span className="pd-ord-open">
-                          Open <ArrowRight size={13} strokeWidth={2.4} />
-                        </span>
+                      <span className="pd-ol-card-supply">Supply Type: {orderListSupplyLabel(row.supplyType)}</span>
+                      <span className="pd-ol-card-note">
+                        <Mail size={11} strokeWidth={2.4} /> {row.remarks}
                       </span>
-                    </button>
+                      <span className="pd-ol-card-pax">
+                        <Users size={11} strokeWidth={2.4} /> PAX: {row.pax || 0}
+                      </span>
+                      <span className="pd-ol-card-waiter">
+                        <User size={11} strokeWidth={2.4} /> {row.waiterName || waiter}
+                      </span>
+                      <span className="pd-ol-card-amt">Amount: {money(row.amount)}</span>
+                      <button
+                        type="button"
+                        className="pd-ol-card-kot-btn"
+                        disabled={loadingKot}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void openOrderFromList(row)
+                        }}
+                      >
+                        ➔ KOT No: {row.kotNo}
+                      </button>
+                    </div>
                   )
                 })}
               </div>
             </div>
           </div>
         </div>
+      ) : null}
+
+      {alertBox ? (
+        <div
+          className={`pd-alert-overlay pd-alert-${alertBox.kind}`}
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && alertBox.kind !== 'question') closeAlert(true)
+          }}
+        >
+          <div className="pd-alert" role="alertdialog" aria-modal="true" aria-labelledby="pd-alert-title">
+            <div className="pd-alert-icon" aria-hidden>
+              {alertBox.kind === 'success' ? (
+                <CheckCircle2 size={34} strokeWidth={2.2} />
+              ) : alertBox.kind === 'warning' ? (
+                <AlertTriangle size={34} strokeWidth={2.2} />
+              ) : alertBox.kind === 'question' ? (
+                <HelpCircle size={34} strokeWidth={2.2} />
+              ) : (
+                <Info size={34} strokeWidth={2.2} />
+              )}
+            </div>
+            <p className="pd-alert-kicker">{alertBox.title}</p>
+            <h2 id="pd-alert-title" className="pd-alert-msg">
+              {alertBox.message}
+            </h2>
+            <div className="pd-alert-actions">
+              {alertBox.kind === 'question' ? (
+                <>
+                  <button
+                    ref={alertOkRef}
+                    type="button"
+                    className="pd-alert-btn is-yes"
+                    onClick={() => closeAlert(true)}
+                  >
+                    Yes
+                  </button>
+                  <button type="button" className="pd-alert-btn is-no" onClick={() => closeAlert(false)}>
+                    No
+                  </button>
+                </>
+              ) : (
+                <button
+                  ref={alertOkRef}
+                  type="button"
+                  className="pd-alert-btn is-ok"
+                  onClick={() => closeAlert(true)}
+                >
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {lastInfo ? (
+        <div className="pd-last-info">
+          Last {money(lastInfo.net)} · Paid {money(lastInfo.paid)} · Change {money(lastInfo.change)}
+          {lastInfo.billNo ? ` · Bill ${lastInfo.billNo}` : ''}
+        </div>
+      ) : null}
+
+      {notesOpen ? (
+        <div
+          className="pd-mod-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModifierForm()
+          }}
+        >
+          <div
+            className="pd-mod-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pd-mod-title"
+          >
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <StickyNote size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">Kitchen Message</p>
+                  <h2 id="pd-mod-title" className="pd-mod-item-name">
+                    {notesLine?.item || '- - -'}
+                  </h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={closeModifierForm} aria-label="Close">
+                <X size={13} />
+              </button>
+            </div>
+            <div className="pd-mod-top">
+              <div className="pd-mod-top-row">
+                <button type="button" className="pd-mod-clear" onClick={() => setNotesText('')}>
+                  Clear
+                </button>
+              </div>
+              <textarea
+                ref={modifierTextRef}
+                className="pd-mod-text"
+                value={notesText}
+                onChange={(e) => setNotesText(e.target.value)}
+                rows={1}
+              />
+            </div>
+            <div className="pd-mod-chips">
+              {modifiers.length === 0 ? (
+                <p className="pd-cat-msg">No modifiers on this branch</p>
+              ) : (
+                modifiers.map((m, i) => (
+                  <button
+                    key={`${m.id}-${m.name}-${i}`}
+                    type="button"
+                    className="pd-mod-chip"
+                    onClick={() => appendModifier(m.name)}
+                  >
+                    {m.name}
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="pd-mod-foot">
+              <button
+                type="button"
+                className="pd-mod-foot-btn"
+                onClick={() => modifierTextRef.current?.focus()}
+              >
+                KeyBoard
+              </button>
+              <span className="pd-mod-foot-spacer" />
+              <button type="button" className="pd-mod-foot-btn is-ok" onClick={applyModifier}>
+                Ok
+              </button>
+              <button type="button" className="pd-mod-foot-btn is-close" onClick={closeModifierForm}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {discountOpen ? (
+        <div
+          className="pd-mod-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeDiscountDialog()
+          }}
+        >
+          <div className="pd-price-dialog pd-disc-dialog" role="dialog" aria-modal="true" aria-labelledby="pd-disc-title">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <Percent size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">Discount</p>
+                  <h2 id="pd-disc-title" className="pd-mod-item-name">
+                    {discModeOn ? (discountMode === 2 ? 'On Item' : 'On Bill') : 'Select Discount Mode First'}
+                  </h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={closeDiscountDialog} aria-label="Close">
+                <X size={13} />
+              </button>
+            </div>
+            <div className="pd-price-body">
+              <div className="pd-price-fields">
+                <div className="pd-disc-modes">
+                  <button
+                    type="button"
+                    className={`pd-disc-mode${discountMode === 2 ? ' is-on' : ''}`}
+                    onClick={() => selectDiscountMode(2)}
+                  >
+                    Discount On Item
+                  </button>
+                  <button
+                    type="button"
+                    className={`pd-disc-mode${discountMode === 0 ? ' is-on' : ''}${!discBillAllowed ? ' is-blocked' : ''}`}
+                    disabled={!discBillAllowed}
+                    onClick={() => selectDiscountMode(0)}
+                  >
+                    Discount On Bill
+                  </button>
+                </div>
+                <div className="pd-qty-row">
+                  <span>Sub Total</span>
+                  <strong>{money(discountBase)}</strong>
+                </div>
+                {discountMode !== 2 ? (
+                  <div className="pd-qty-row">
+                    <span>{discModeOn ? 'Discount Amount' : 'Select Discount Mode First'}</span>
+                    <input
+                      ref={discountAmountRef}
+                      className={`pd-qty-input${discountFocus === 'amount' ? ' is-focus' : ''}`}
+                      value={discountAmount}
+                      readOnly={!discModeOn}
+                      disabled={!discModeOn}
+                      onFocus={() => {
+                        if (discModeOn && discountMode === 0) setDiscountFocus('amount')
+                      }}
+                      onChange={(e) => onDiscountAmountChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void applyDiscountDone()
+                        if (e.key === 'Escape') closeDiscountDialog()
+                      }}
+                      inputMode="decimal"
+                    />
+                  </div>
+                ) : null}
+                <div className="pd-qty-row">
+                  <span>{discountMode === 2 ? 'Item Disc %' : 'Disc Percentage'}</span>
+                  <input
+                    ref={discountPercentRef}
+                    className={`pd-qty-input${discountFocus === 'percent' ? ' is-focus' : ''}`}
+                    value={discountPercent}
+                    disabled={!discModeOn}
+                    onFocus={() => {
+                      if (discModeOn) setDiscountFocus('percent')
+                    }}
+                    onChange={(e) => onDiscountPercentChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void applyDiscountDone()
+                      if (e.key === 'Escape') closeDiscountDialog()
+                    }}
+                    inputMode="decimal"
+                  />
+                </div>
+                <div className="pd-disc-quick">
+                  {discButtons.map((pct, i) => (
+                    <button
+                      key={`dsc-${i}-${pct}`}
+                      type="button"
+                      className="pd-disc-pct"
+                      disabled={!discModeOn}
+                      onClick={() => onDiscountPercentChange(String(pct))}
+                    >
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+                {discountMode !== 2 ? (
+                  <>
+                    <div className="pd-qty-row">
+                      <span>Taxable</span>
+                      <strong>{money(discTaxable)}</strong>
+                    </div>
+                    <div className="pd-qty-row">
+                      <span>{discTaxLabel}</span>
+                      <strong>{money(discTax)}</strong>
+                    </div>
+                    <div className="pd-qty-row">
+                      <span>Net Amount</span>
+                      <strong>{money(discNet)}</strong>
+                    </div>
+                  </>
+                ) : null}
+                {discountError ? <p className="pd-price-err">{discountError}</p> : null}
+              </div>
+              <div className="pd-qty-pad">
+                <div className="pd-qty-keys">
+                  {KEYS.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      className="pd-key"
+                      disabled={!discModeOn}
+                      onClick={() => onDiscountPadKey(k)}
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+                <div className="pd-qty-actions">
+                  <button
+                    type="button"
+                    className="pd-qty-done"
+                    disabled={!discModeOn || savingKot}
+                    onClick={() => void applyDiscountDone()}
+                  >
+                    Done
+                  </button>
+                  <button type="button" className="pd-qty-cancel" onClick={closeDiscountDialog}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {itemCancelOpen ? (
+        <div
+          className="pd-mod-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !cancelBusy) closeItemCancel()
+          }}
+        >
+          <div className="pd-ol-dialog pd-ol-wide pd-ic-dialog" role="dialog" aria-modal="true" aria-labelledby="pd-ic-title">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <MinusCircle size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">Item Remove</p>
+                  <h2 id="pd-ic-title" className="pd-mod-item-name">
+                    KOT {kotLabel}
+                  </h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="pd-mod-x"
+                onClick={closeItemCancel}
+                disabled={cancelBusy}
+                aria-label="Close"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div className="pd-ol-body">
+              <p className="pd-ic-hint">Tap Qty to change quantity. Tick Remove, then Remove. You cannot remove the last item.</p>
+              <div className="pd-ic-table-wrap">
+                <table className="pd-grid pd-ic-grid">
+                  <thead>
+                    <tr>
+                      <th>SL</th>
+                      <th>KOT</th>
+                      <th>Item Name</th>
+                      <th>Qty</th>
+                      <th>Unit Price</th>
+                      <th>Line Total</th>
+                      <th>Remove</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savedKotLines().map((line, i) => {
+                      const marked = Boolean(itemCancelIds[line.kotChildId])
+                      return (
+                        <tr key={line.kotChildId} className={marked ? 'is-marked' : ''}>
+                          <td>{i + 1}</td>
+                          <td>{kotLabel}</td>
+                          <td>
+                            <span className="pd-item-name">{line.item}</span>
+                            {line.modifiers ? <span className="pd-item-mod">↳ {line.modifiers}</span> : null}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="pd-ic-qty-btn"
+                              disabled={cancelBusy}
+                              onClick={() => openItemCancelQty(line)}
+                            >
+                              {line.qty}
+                            </button>
+                          </td>
+                          <td className="num">{money(line.price)}</td>
+                          <td className="num">{money(line.price * line.qty)}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className={`pd-ic-check${marked ? ' is-on' : ''}`}
+                              disabled={cancelBusy}
+                              aria-pressed={marked}
+                              onClick={() =>
+                                setItemCancelIds((prev) => ({
+                                  ...prev,
+                                  [line.kotChildId]: !prev[line.kotChildId],
+                                }))
+                              }
+                            >
+                              {marked ? '✔' : ''}
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="pd-mod-foot">
+              <button
+                type="button"
+                className="pd-mod-foot-btn pd-ic-covers"
+                disabled={cancelBusy}
+                onClick={() => {
+                  setItemCancelCoversDraft(String(covers > 0 ? covers : 1))
+                  setItemCancelCoversOpen(true)
+                }}
+              >
+                <BtnIcon icon={Users} />
+                <span>{covers} covers</span>
+              </button>
+              <span className="pd-mod-foot-spacer" />
+              <button
+                type="button"
+                className="pd-mod-foot-btn is-ok"
+                onClick={onItemRemoveClick}
+                disabled={cancelBusy}
+              >
+                {cancelBusy ? 'Saving…' : 'Remove'}
+              </button>
+              <button
+                type="button"
+                className="pd-mod-foot-btn is-close"
+                onClick={closeItemCancel}
+                disabled={cancelBusy}
+              >
+                Close
+              </button>
+            </div>
+
+            {itemCancelQtyOpen && itemCancelQtyLine ? (
+              <div className="pd-ic-qty-panel" role="dialog" aria-labelledby="pd-ic-qty-title">
+                <p id="pd-ic-qty-title" className="pd-ic-qty-name">{itemCancelQtyLine.item}</p>
+                <div className="pd-qty-body">
+                  <div className="pd-qty-fields">
+                    <div className="pd-qty-row">
+                      <span>Current Qty</span>
+                      <strong>{itemCancelQtyLine.qty}</strong>
+                    </div>
+                    <div className="pd-qty-row">
+                      <span>New Qty</span>
+                      <input
+                        className="pd-qty-input"
+                        value={itemCancelQtyNew}
+                        onChange={(e) =>
+                          setItemCancelQtyNew(e.target.value.replace(/[^\d.]/g, '').slice(0, 8))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') onItemCancelQtyDone()
+                          if (e.key === 'Escape') setItemCancelQtyOpen(false)
+                        }}
+                        inputMode="decimal"
+                        autoFocus
+                        placeholder="Enter qty…"
+                      />
+                    </div>
+                  </div>
+                  <div className="pd-qty-pad">
+                    <div className="pd-qty-keys">
+                      {KEYS.map((k) => (
+                        <button key={k} type="button" className="pd-key" onClick={() => onItemCancelQtyKey(k)}>
+                          {k}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="pd-qty-actions">
+                      <button type="button" className="pd-qty-done" onClick={onItemCancelQtyDone} disabled={cancelBusy}>
+                        Done
+                      </button>
+                      <button
+                        type="button"
+                        className="pd-qty-cancel"
+                        onClick={() => {
+                          setItemCancelQtyOpen(false)
+                          setItemCancelQtyNew('')
+                        }}
+                        disabled={cancelBusy}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {itemCancelCoversOpen ? (
+              <div className="pd-ic-qty-panel pd-ic-covers-panel" role="dialog" aria-labelledby="pd-ic-pax-title">
+                <p id="pd-ic-pax-title" className="pd-ic-qty-name">Enter No. of Persons</p>
+                <p className="pd-covers-value">{itemCancelCoversDraft || '0'}</p>
+                <div className="pd-covers-keys">
+                  {KEYS.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      className="pd-key"
+                      onClick={() => {
+                        if (k === 'C') {
+                          setItemCancelCoversDraft((prev) => prev.slice(0, -1))
+                          return
+                        }
+                        if (k === '.') return
+                        setItemCancelCoversDraft((prev) => (prev === '0' ? k : (prev + k).slice(0, 3)))
+                      }}
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+                <div className="pd-qty-actions">
+                  <button type="button" className="pd-qty-done" onClick={() => void saveItemCancelCovers()} disabled={cancelBusy}>
+                    Ok
+                  </button>
+                  <button
+                    type="button"
+                    className="pd-qty-cancel"
+                    onClick={() => setItemCancelCoversOpen(false)}
+                    disabled={cancelBusy}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {adminOpen ? (
+        <div
+          className="pd-mod-overlay pd-admin-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !adminBusy) closeAdminDialog()
+          }}
+        >
+          <div className="pd-ol-dialog pd-ol-narrow" role="dialog" aria-modal="true" aria-labelledby="pd-admin-title">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <ShieldCheck size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">Admin Login</p>
+                  <h2 id="pd-admin-title" className="pd-mod-item-name">
+                    ADMIN / CHIEF CASHIER
+                  </h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={closeAdminDialog} disabled={adminBusy} aria-label="Close">
+                <X size={13} />
+              </button>
+            </div>
+            <form
+              className="pd-ol-body pd-admin-form"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void submitAdminLogin()
+              }}
+            >
+              <label className={`pd-admin-field${adminFocus === 'login' ? ' is-on' : ''}`}>
+                <span>Login</span>
+                <input
+                  ref={adminLoginRef}
+                  value={adminLogin}
+                  onChange={(e) => setAdminLogin(e.target.value)}
+                  onFocus={() => setAdminFocus('login')}
+                  onKeyDown={onAdminLoginKeyDown}
+                  disabled={adminBusy}
+                  autoComplete="username"
+                  enterKeyHint="next"
+                />
+              </label>
+              <label className={`pd-admin-field${adminFocus === 'password' ? ' is-on' : ''}`}>
+                <span>Password</span>
+                <input
+                  ref={adminPasswordRef}
+                  type="password"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  onFocus={() => setAdminFocus('password')}
+                  onKeyDown={onAdminPasswordKeyDown}
+                  disabled={adminBusy}
+                  autoComplete="current-password"
+                  enterKeyHint="done"
+                />
+              </label>
+              {adminError ? <p className="pd-admin-err">{adminError}</p> : null}
+              <div className="pd-admin-keys">
+                {KEYS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className="pd-key"
+                    disabled={adminBusy}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onAdminPadKey(k)}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+              <div className="pd-mod-foot pd-admin-foot">
+                <span className="pd-mod-foot-spacer" />
+                <button type="submit" className="pd-mod-foot-btn is-ok" disabled={adminBusy}>
+                  {adminBusy ? 'Checking…' : 'Login'}
+                </button>
+                <button type="button" className="pd-mod-foot-btn is-close" onClick={closeAdminDialog} disabled={adminBusy}>
+                  Close
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {billConfirmOpen ? (
+        <div
+          className="pd-mod-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !cancelBusy) setBillConfirmOpen(false)
+          }}
+        >
+          <div className="pd-ol-dialog pd-ol-narrow" role="dialog" aria-modal="true">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <Ban size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">KOT Cancel</p>
+                  <h2 className="pd-mod-item-name">KOT {kotLabel}</h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="pd-mod-x"
+                onClick={() => setBillConfirmOpen(false)}
+                disabled={cancelBusy}
+                aria-label="Close"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div className="pd-ol-body">
+              <p className="pd-confirm-msg">Are You Sure to Cancel KOT........</p>
+            </div>
+            <div className="pd-mod-foot">
+              <span className="pd-mod-foot-spacer" />
+              <button
+                type="button"
+                className="pd-mod-foot-btn is-ok"
+                onClick={() => void runBillCancel(adminCreds)}
+                disabled={cancelBusy}
+              >
+                {cancelBusy ? 'Cancelling…' : 'Yes'}
+              </button>
+              <button
+                type="button"
+                className="pd-mod-foot-btn is-close"
+                onClick={() => setBillConfirmOpen(false)}
+                disabled={cancelBusy}
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {settleOpen && settleBill ? (
+        <SettlementScreen
+          bill={settleBill}
+          onClose={closeSettlement}
+          onCompleted={onSettlementCompleted}
+          onAlreadySettled={onSettlementAlreadySettled}
+        />
+      ) : null}
+
+      {salesViewerOpen ? (
+        <SalesViewerDialog
+          areas={areas.map((a) => ({ id: a.id, name: a.name }))}
+          onClose={() => setSalesViewerOpen(false)}
+        />
+      ) : null}
+
+      {stockReportOpen ? (
+        <InventoryReportDialog onClose={() => setStockReportOpen(false)} />
+      ) : null}
+
+      {movementReportOpen ? (
+        <MovementReportDialog onClose={() => setMovementReportOpen(false)} />
+      ) : null}
+
+      {stockListOpen ? (
+        <StockEntryListDialog
+          docType={stockDocType}
+          onClose={() => setStockListOpen(false)}
+          onNew={() => {
+            setStockEntryId(null)
+            setStockListOpen(false)
+            setStockEntryOpen(true)
+          }}
+          onSelect={(id) => {
+            setStockEntryId(id)
+            setStockListOpen(false)
+            setStockEntryOpen(true)
+          }}
+        />
+      ) : null}
+
+      {productListOpen ? (
+        <ProductListDialog
+          onClose={() => setProductListOpen(false)}
+          onEdit={(id) => {
+            setEditProductId(id)
+            setProductListOpen(false)
+            setProductEntryOpen(true)
+          }}
+        />
+      ) : null}
+
+      {productEntryOpen ? (
+        <ProductEntryDialog
+          key={editProductId ?? 'new'}
+          productId={editProductId}
+          taxRate={defaultTax1}
+          onMenuChanged={() => setCatalogueNonce((n) => n + 1)}
+          onClose={() => {
+            setProductEntryOpen(false)
+            if (editProductId) setProductListOpen(true)
+            setEditProductId(null)
+          }}
+          onSaved={() => {
+            const wasEdit = editProductId != null
+            setProductEntryOpen(false)
+            setEditProductId(null)
+            if (wasEdit) setProductListOpen(true)
+            toast(wasEdit ? 'Product updated' : 'Product saved', 'success')
+          }}
+        />
+      ) : null}
+
+      {recipeListOpen ? (
+        <RecipeListDialog
+          onClose={() => setRecipeListOpen(false)}
+          onNew={() => {
+            setRecipeProductId(null)
+            setRecipeListOpen(false)
+            setRecipeEntryOpen(true)
+          }}
+          onSelect={(id) => {
+            setRecipeProductId(id)
+            setRecipeListOpen(false)
+            setRecipeEntryOpen(true)
+          }}
+        />
+      ) : null}
+
+      {recipeEntryOpen ? (
+        <RecipeEntryDialog
+          key={recipeProductId ?? 'new'}
+          finishedProductId={recipeProductId}
+          onClose={() => {
+            setRecipeEntryOpen(false)
+            setRecipeProductId(null)
+          }}
+          onOpenList={() => {
+            setRecipeEntryOpen(false)
+            setRecipeListOpen(true)
+          }}
+        />
+      ) : null}
+
+      {stockEntryOpen ? (
+        <StockEntryDialog
+          key={`${stockDocType}-${stockEntryId ?? 'new'}`}
+          docType={stockDocType}
+          entryId={stockEntryId}
+          onClose={() => {
+            setStockEntryOpen(false)
+            setStockEntryId(null)
+          }}
+          onOpenList={() => {
+            setStockEntryOpen(false)
+            setStockListOpen(true)
+          }}
+        />
+      ) : null}
+
+      {counterCloseOpen ? (
+        <CounterCloseAllDialog onClose={() => setCounterCloseOpen(false)} />
+      ) : null}
+
+      {kotJoinOpen ? (
+        <KotJoinDialog
+          areas={areas}
+          tables={tables}
+          waiter={waiter}
+          onClose={() => setKotJoinOpen(false)}
+          onJoined={onKotJoined}
+          onSplit={onKotSplit}
+        />
+      ) : null}
+
+      {areaMasterOpen ? (
+        <AreaMasterDialog
+          onClose={() => setAreaMasterOpen(false)}
+          onSaved={() => {
+            void reloadFloorMasters()
+          }}
+        />
+      ) : null}
+
+      {tableMasterOpen ? (
+        <TableMasterDialog
+          areas={areas}
+          onClose={() => setTableMasterOpen(false)}
+          onSaved={() => {
+            void reloadFloorMasters()
+          }}
+        />
+      ) : null}
+
+      {floorDesignOpen ? (
+        <FloorDesignDialog
+          onClose={() => setFloorDesignOpen(false)}
+        />
+      ) : null}
+
+      {areaChangeOpen ? (
+        <AreaChangeDialog
+          areas={areas}
+          tables={tables}
+          onClose={() => setAreaChangeOpen(false)}
+          onTransferred={onAreaChanged}
+        />
       ) : null}
     </div>
   )

@@ -74,6 +74,8 @@ function errMessage(err: unknown, fallback: string) {
 
 export default function SettlementScreen({ bill, onClose, onCompleted, onAlreadySettled }: Props) {
   const net = round2(bill.net)
+  const due = round2(Math.abs(net))
+  const isReturn = net < 0 || bill.items.some((it) => Number(it.qty ?? it.Qty) < 0)
   const [selected, setSelected] = useState<SettleMethod>('CASH')
   const [draft, setDraft] = useState(() => (bill.prefillPaid > 0 ? money(bill.prefillPaid) : ''))
   const [alloc, setAlloc] = useState<Alloc>(emptyAlloc)
@@ -126,8 +128,8 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
   const allocated = round2(cash + card + online)
   const methodsUsed = TENDERS.filter((m) => live[m] > 0).length
   const isSplit = methodsUsed > 1
-  const change = !isSplit && cash > 0 && card <= 0 && online <= 0 ? round2(Math.max(0, cash - net)) : 0
-  const remaining = round2(Math.max(0, net - allocated + (change > 0 ? change : 0)))
+  const change = !isSplit && cash > 0 && card <= 0 && online <= 0 ? round2(Math.max(0, cash - due)) : 0
+  const remaining = round2(Math.max(0, due - allocated + (change > 0 ? change : 0)))
   const paidShown = allocated > 0 ? allocated : 0
 
   function commitDraft(from: SettleMethod, value: string, base = alloc): Alloc {
@@ -200,6 +202,7 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
       roundOffAdj: 0,
       netAmount: net,
       paidAmount: paid,
+      isReturn,
       paymentMode,
       PaymentMode: paymentMode,
       tipAmount: tip,
@@ -219,7 +222,7 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
     const next = { ...source }
     if (fillSelected && selected !== 'CREDIT') {
       const sum = round2(next.CASH + next.CARD + next.ONLINE)
-      const left = round2(net - sum)
+      const left = round2(due - sum)
       if (left > 0.009 && next[selected] <= 0) next[selected] = left
     }
     return {
@@ -243,7 +246,7 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
         salesId: String(result.salesId ?? ''),
         net,
         paid,
-        change: round2(Number(result.balancePaid ?? Math.max(0, paid - net - tip))),
+        change: round2(Number(result.balancePaid ?? Math.max(0, paid - due - tip))),
       })
     } catch (err) {
       const msg = errMessage(err, 'Try Again............')
@@ -263,7 +266,7 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
       setError('Credit settlement will be added in the next phase.')
       return
     }
-    if (net <= 0) {
+    if (due === 0) {
       setError('Enter Atleast One Item details...........')
       return
     }
@@ -273,34 +276,34 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
     const { next, parts: filled } = collectParts(committed, true)
     let parts = filled
     if (!parts.length) {
-      parts = [{ payMode: selected, amount: net }]
+      parts = [{ payMode: selected, amount: due }]
     }
 
     const sum = round2(parts.reduce((n, p) => n + p.amount, 0))
     const split = parts.length > 1
-    if (split && Math.abs(sum - net) > 0.02) {
+    if (split && Math.abs(sum - due) > 0.02) {
       setError('Split total must match Net Amount...')
       return
     }
 
     const onlyCash = parts.length === 1 && parts[0].payMode === 'CASH'
     const onlyCard = parts.length === 1 && parts[0].payMode === 'CARD'
-    const paid = onlyCash ? parts[0].amount : split ? net : Math.max(sum, 0)
-    if (!split && paid + 0.02 < net) {
+    const paid = onlyCash ? parts[0].amount : split ? due : Math.max(sum, 0)
+    if (!split && paid + 0.02 < due) {
       setError('Amount Paid is Less than Net Amount..........')
       return
     }
 
-    if (onlyCard && paid + 0.02 > net && tipConfirmed == null) {
-      setTipAsk(round2(paid - net))
+    if (onlyCard && paid + 0.02 > due && tipConfirmed == null) {
+      setTipAsk(round2(paid - due))
       setAlloc(next)
       return
     }
     const tip = onlyCard && tipConfirmed != null && tipConfirmed > 0 ? tipConfirmed : 0
     const settleParts = split
       ? parts
-      : [{ payMode: parts[0].payMode, amount: net }]
-    await postSettle(settleParts, split ? net : paid, tip)
+      : [{ payMode: parts[0].payMode, amount: due }]
+    await postSettle(settleParts, split ? due : paid, tip)
   }
 
   async function confirmTip(yes: boolean) {
@@ -331,8 +334,8 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
         </header>
 
         <div className="pd-settle-due">
-          <span>TOTAL DUE</span>
-          <strong>AED {money(net)}</strong>
+          <span>{isReturn ? 'RETURN DUE' : 'TOTAL DUE'}</span>
+          <strong>AED {money(due)}</strong>
         </div>
 
         <div className="pd-settle-methods">
@@ -408,7 +411,7 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
             disabled={busy}
           >
             <CreditCard size={16} />
-            {busy ? 'PAYING…' : `PAY AED ${money(net)}`}
+            {busy ? 'PAYING…' : `${isReturn ? 'REFUND' : 'PAY'} AED ${money(due)}`}
           </button>
         </footer>
       </div>

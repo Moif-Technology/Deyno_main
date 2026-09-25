@@ -184,13 +184,24 @@ class ApiService {
 
   async fetchProducts(opts?: {
     groupId?: string | number
+    subGroupId?: string | number
     search?: string
     limit?: number
   }): Promise<Row[]> {
     const res = await api.get<Row>(
-      `/products${qs({ groupId: opts?.groupId, search: opts?.search, limit: opts?.limit ?? 2000 })}`,
+      `/products${qs({
+        groupId: opts?.groupId,
+        subGroupId: opts?.subGroupId,
+        search: opts?.search,
+        limit: opts?.limit ?? 2000,
+      })}`,
     )
     return listOf(res, 'products')
+  }
+
+  async fetchProduct(productId: string | number): Promise<Row> {
+    const res = await api.get<Row>(`/products/${encodeURIComponent(String(productId))}`)
+    return ((res.product as Row) ?? res) as Row
   }
 
   async createProduct(body: Row): Promise<Row> {
@@ -449,6 +460,81 @@ class ApiService {
     }
   }
 
+  async fetchInventoryLookups(): Promise<{
+    brands: Row[]
+    suppliers: Row[]
+    locations: string[]
+    groups: Row[]
+  }> {
+    const session = getPosSession()
+    const res = await api.get<Row>(`/pos/inventory/lookups${qs({ stationId: session.stationId })}`)
+    const locations = Array.isArray(res.locations)
+      ? (res.locations as unknown[]).map((v) => String(v)).filter(Boolean)
+      : []
+    return {
+      brands: listOf(res, 'brands'),
+      suppliers: listOf(res, 'suppliers'),
+      locations,
+      groups: listOf(res, 'groups'),
+    }
+  }
+
+  /** RptInventoryfrm.btnReport_Click → ProductInventory.rpt */
+  async fetchInventoryReport(opts: {
+    supplierId?: string | number
+    brandId?: string | number
+    groupId?: string | number
+    subGroupId?: string | number
+    subSubGroupId?: string | number
+    location?: string
+    productType?: string
+    name?: string
+    qtyOp?: string
+    qty?: string | number
+    costType?: string
+    groupWise?: boolean
+    supplierWise?: boolean
+    hidePrice?: boolean
+  }): Promise<Row> {
+    const session = getPosSession()
+    return api.get<Row>(
+      `/pos/inventory/report${qs({
+        supplierId: opts.supplierId,
+        brandId: opts.brandId,
+        groupId: opts.groupId,
+        subGroupId: opts.subGroupId,
+        subSubGroupId: opts.subSubGroupId,
+        location: opts.location,
+        productType: opts.productType,
+        name: opts.name,
+        qtyOp: opts.qtyOp,
+        qty: opts.qty,
+        costType: opts.costType,
+        groupWise: opts.groupWise ? 1 : undefined,
+        supplierWise: opts.supplierWise ? 1 : undefined,
+        hidePrice: opts.hidePrice ? 1 : undefined,
+        stationId: session.stationId,
+      })}`,
+    )
+  }
+
+  /** RptProductMovementRpt — stock ledger from product_log_entry. */
+  async fetchMovementReport(opts: {
+    dateFrom: string
+    dateTo: string
+    name?: string
+  }): Promise<Row> {
+    const session = getPosSession()
+    return api.get<Row>(
+      `/pos/inventory/movement${qs({
+        dateFrom: opts.dateFrom,
+        dateTo: opts.dateTo,
+        name: opts.name,
+        stationId: session.stationId,
+      })}`,
+    )
+  }
+
   async fetchSalesReport(
     kind: 'salesman-wise' | 'item-wise' | 'group-wise',
     opts: {
@@ -648,6 +734,118 @@ class ApiService {
 
   async saveFloorDesign(areaId: string | number, payload: Row): Promise<Row> {
     return api.put<Row>(`/floor-design/${encodeURIComponent(String(areaId))}`, payload)
+  }
+
+  // ── Stock adjustment / damage / additional stock (Transactions) ───────
+
+  async searchStockEntryProducts(q: string): Promise<Row[]> {
+    const session = getPosSession()
+    const res = await api.get<Row>(
+      `/pos/stock-entry/products${qs({ q, stationId: session.stationId })}`,
+    )
+    return listOf(res, 'products')
+  }
+
+  async fetchStockDraftEnteredQty(productId: string | number): Promise<number> {
+    const session = getPosSession()
+    const res = await api.get<Row>(
+      `/pos/stock-entry/draft-entered-qty${qs({ productId, stationId: session.stationId })}`,
+    )
+    return Number(res.physicalQty ?? res.physical_qty) || 0
+  }
+
+  async fetchStockEntries(opts: {
+    docType: 'ADJ' | 'DMG' | 'ASE'
+    dateFrom: string
+    dateTo: string
+  }): Promise<Row[]> {
+    const session = getPosSession()
+    const res = await api.get<Row>(
+      `/pos/stock-entry${qs({
+        docType: opts.docType,
+        dateFrom: opts.dateFrom,
+        dateTo: opts.dateTo,
+        stationId: session.stationId,
+      })}`,
+    )
+    return listOf(res, 'entries')
+  }
+
+  async fetchStockEntry(entryId: string | number): Promise<Row> {
+    const session = getPosSession()
+    return api.get<Row>(
+      `/pos/stock-entry/${encodeURIComponent(String(entryId))}${qs({ stationId: session.stationId })}`,
+    )
+  }
+
+  async saveStockEntry(payload: Row): Promise<Row> {
+    const session = getPosSession()
+    return api.post<Row>('/pos/stock-entry', { ...payload, stationId: session.stationId })
+  }
+
+  async postStockEntry(entryId: string | number): Promise<Row> {
+    const session = getPosSession()
+    return api.post<Row>(`/pos/stock-entry/${encodeURIComponent(String(entryId))}/post`, {
+      stationId: session.stationId,
+    })
+  }
+
+  // ── Recipe entry (New Sale / Edit) ────────────────────────────────────
+
+  async searchRecipeProducts(opts: {
+    role: 'finished' | 'ingredient' | 'raw'
+    q?: string
+    barcode?: string
+    mode?: 'exact' | 'contains'
+  }): Promise<Row[]> {
+    const session = getPosSession()
+    const res = await api.get<Row>(
+      `/pos/recipes/products${qs({
+        role: opts.role,
+        q: opts.q,
+        barcode: opts.barcode,
+        mode: opts.mode,
+        stationId: session.stationId,
+      })}`,
+    )
+    return listOf(res, 'products')
+  }
+
+  async fetchRecipes(opts: { q?: string; barcode?: string }): Promise<Row[]> {
+    const session = getPosSession()
+    const res = await api.get<Row>(
+      `/pos/recipes${qs({ q: opts.q, barcode: opts.barcode, stationId: session.stationId })}`,
+    )
+    return listOf(res, 'recipes')
+  }
+
+  async fetchRecipe(finishedProductId: string | number): Promise<Row> {
+    const session = getPosSession()
+    return api.get<Row>(
+      `/pos/recipes/${encodeURIComponent(String(finishedProductId))}${qs({ stationId: session.stationId })}`,
+    )
+  }
+
+  async saveRecipe(finishedProductId: string | number, payload: Row): Promise<Row> {
+    const session = getPosSession()
+    return api.put<Row>(`/pos/recipes/${encodeURIComponent(String(finishedProductId))}`, {
+      ...payload,
+      stationId: session.stationId,
+    })
+  }
+
+  async deleteRecipe(finishedProductId: string | number): Promise<Row> {
+    const session = getPosSession()
+    return api.delete<Row>(
+      `/pos/recipes/${encodeURIComponent(String(finishedProductId))}${qs({ stationId: session.stationId })}`,
+    )
+  }
+
+  async deleteStockEntry(entryId: string | number): Promise<Row> {
+    const session = getPosSession()
+    return api.delete<Row>(
+      `/pos/stock-entry/${encodeURIComponent(String(entryId))}${qs({ stationId: session.stationId })}`,
+    )
   }
 }
 
