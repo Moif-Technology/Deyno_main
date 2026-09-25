@@ -506,9 +506,6 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
             >
               Split Save
             </button>
-            <button type="button" className="pd-ks-btn pd-ks-close" onClick={onClose} disabled={saveBusy}>
-              Close
-            </button>
           </div>
         </div>
       </div>

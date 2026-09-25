@@ -3,8 +3,10 @@
  * Double-click → SalesMasterBackOfficeFrm (read-only bill).
  */
 import { useEffect, useMemo, useState } from 'react'
-import { X, Search } from 'lucide-react'
+import { X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { DatePicker } from '../../components/common/DatePicker'
+import { SearchBar } from '../../components/common/SearchBar'
 import SalesBillDialog from './SalesBillDialog'
 
 type AreaOpt = { id: number; name: string }
@@ -133,11 +135,11 @@ export default function SalesViewerDialog({ areas, onClose }: Props) {
         <div className="pd-sv-filters">
           <label>
             <span>From</span>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <DatePicker value={dateFrom} onChange={setDateFrom} max={dateTo} />
           </label>
           <label>
             <span>To</span>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <DatePicker value={dateTo} onChange={setDateTo} min={dateFrom} />
           </label>
           <label>
             <span>Bill No</span>
@@ -181,14 +183,13 @@ export default function SalesViewerDialog({ areas, onClose }: Props) {
           </label>
           <label className="pd-sv-search">
             <span>Search</span>
-            <span className="pd-sv-search-box">
-              <Search size={13} />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Bill / customer / cashier"
-              />
-            </span>
+            <SearchBar
+              size="sm"
+              value={search}
+              onValueChange={setSearch}
+              onSubmit={() => void load()}
+              placeholder="Bill / customer / cashier"
+            />
           </label>
           <button type="button" className="pd-sv-search-btn" onClick={() => void load()}>
             Search
@@ -282,9 +283,6 @@ export default function SalesViewerDialog({ areas, onClose }: Props) {
             }}
           >
             Select
-          </button>
-          <button type="button" className="pd-settle-cancel" onClick={onClose}>
-            Close
           </button>
         </footer>
       </div>

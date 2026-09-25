@@ -18,21 +18,33 @@
  *   Ok writes rtxtmodifier back onto the current row's Modifir cell
  */
 import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, ChevronDown, Hash, Home, LogOut, Search, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Smartphone, Globe, Gift, SplitSquareHorizontal, Ellipsis, QrCode, ArrowLeft, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, PanelLeftClose, PanelLeftOpen, Repeat, Package, SeparatorHorizontal } from 'lucide-react'
+import { AlertTriangle, Check, PenLine, StickyNote, ArrowRight, Clock, ChevronRight, ChevronDown, Hash, Home, LogOut, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Smartphone, Globe, Gift, SplitSquareHorizontal, Ellipsis, QrCode, ArrowLeft, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, Menu as MenuIcon, Repeat, Package, SeparatorHorizontal, Info } from 'lucide-react'
 import { SessionManager } from '../../utils/sessionManager'
 import { clearStaffSession } from '../../utils/pinLoginSession'
 import { getEnrollment } from '../../utils/deviceEnrollment'
 import { getPosSession } from '../../utils/posSession'
+import { translateToArabic } from '../../utils/translate'
 import { apiService, ApiError } from '../../api/apiService'
 import { TableCard, TableGlyph } from '../../components/common/TableCard'
 import { Toast, type ToastKind } from '../../components/common/Toast'
+import { DatePicker } from '../../components/common/DatePicker'
+import { Toggle } from '../../components/common/Toggle'
+import { SearchBar } from '../../components/common/SearchBar'
+import { SearchSelect, type SearchSelectOption } from '../../components/common/SearchSelect'
+import { ArabicInput } from '../../components/common/ArabicInput'
+import { ScrollTable } from '../../components/common/ScrollTable'
+import { GlobalSearch, type GlobalSearchItem } from '../../components/common/GlobalSearch'
+import SalesViewerDialog from './SalesViewerDialog'
+import CounterCloseAllDialog from './CounterCloseAllDialog'
+import TableShapePicker from './TableShapePicker'
 import './posMain.css'
 
-const NAV = ['New Sale', 'Edit', 'Transactions', 'Credit', 'Reports', 'Admin', 'Settings'] as const
+const NAV = ['Creation', 'Edit', 'Transactions', 'Credit', 'Reports', 'Admin', 'Settings'] as const
 
 const NAV_ICON: Record<(typeof NAV)[number], ComponentType<{ size?: number; strokeWidth?: number }>> = {
-  'New Sale': Receipt,
+  Creation: Plus,
   Edit: Pencil,
   Transactions: ArrowLeftRight,
   Credit: CreditCard,
@@ -73,13 +85,13 @@ const PAY_OPTIONS = [
 type NavMenuEntry = string | { label: string; arrow: true } | { label: string; children: readonly NavMenuEntry[] }
 
 const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> = {
-  'New Sale': [
+  Creation: [
+    'Product Entry',
     'Area Entry',
     'Table Entry',
     'Main Group Entry',
     'Group Entry',
     'Sub Group Entry',
-    'Product Entry',
     'Kitchen Message',
     'Combo',
     'Recipe Entry',
@@ -103,18 +115,11 @@ const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> 
     'Mess List',
   ],
   Transactions: [
-    'Stock Adjustment',
-    'Stock Adjust List',
     { label: 'Production', children: ['Entry', 'List'] },
-    'Opening Stock Entry',
-    'Stock report',
-    'Movement Report',
     {
       label: 'Product Transfer/Receive',
       children: ['Product Request', 'Product receipt', 'Product Transfer', 'Transfer List', 'Receipt List'],
     },
-    { label: 'Upload/Download', children: ['Upload To Main Server', 'Download New Item From main server'] },
-    { label: 'Purchase', children: ['SupplierList', 'Purchase entry', 'Purchase List', 'Purchase Return', 'Purchase ReturnList'] },
     'Damage Entry',
     'Damage List',
     'Cash/Cash Out',
@@ -176,7 +181,153 @@ const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> 
       ],
     },
   ],
+  Admin: [
+    'CounterClose -Admin',
+    'DayClose report',
+    'Clear KOT',
+    'Discount Entry',
+    'DiscountList',
+    'Change Settlement',
+    'ProductList Edit',
+    'KDS Refresh',
+    'Change Discount% Button',
+  ],
+  Settings: [
+    'Printer Setup',
+    'User List',
+    'Activate Access Card',
+    'Privillage Setup',
+    'Control Panel',
+    'Password Change',
+    'Lang setup',
+    'Party Order List',
+    'Multi Supplier setup',
+    'Disable VAT',
+    'Utility For Vat Correction',
+  ],
 }
+
+/** Backing config for the generic master-entry modals opened from the
+ * "Creation" side-nav (everything except Product Entry, which reuses the
+ * dedicated Add New Item modal). Header icon + title come from here so the
+ * modal heading always matches the side-menu label that opened it. */
+const ENTRY_DEFS: { key: EntryKey; label: string; icon: ComponentType<{ size?: number; strokeWidth?: number }> }[] = [
+  { key: 'area', label: 'Area Entry', icon: MapPinned },
+  { key: 'table', label: 'Table Entry', icon: Utensils },
+  { key: 'mainGroup', label: 'Main Group Entry', icon: Tag },
+  { key: 'group', label: 'Group Entry', icon: Hash },
+  { key: 'subGroup', label: 'Sub Group Entry', icon: SeparatorHorizontal },
+  { key: 'kitchenMessage', label: 'Kitchen Message', icon: MessageSquare },
+  { key: 'combo', label: 'Combo', icon: Merge },
+  { key: 'recipe', label: 'Recipe Entry', icon: ClipboardList },
+  { key: 'barcode', label: 'Barcode Print Utility', icon: ScanBarcode },
+  { key: 'notes', label: 'Notes Entry', icon: FileText },
+  { key: 'onlineSource', label: 'Online Source Entry', icon: Globe },
+  { key: 'paymentMode', label: 'Payment Mode Entry', icon: Wallet },
+  { key: 'messMaster', label: 'Mess Master Entry', icon: Users },
+  { key: 'addOn', label: 'Add On', icon: Gift },
+  { key: 'booking', label: 'Booking', icon: CircleCheck },
+  { key: 'bookingList', label: 'Booking List', icon: Repeat },
+  { key: 'floorDesign', label: 'Floor Design', icon: SlidersHorizontal },
+  { key: 'stockAdjustment', label: 'Stock Adjustment', icon: RotateCcw },
+  { key: 'stockAdjustList', label: 'Stock Adjust List', icon: ClipboardList },
+  { key: 'productionEntry', label: 'Production Entry', icon: Package },
+  { key: 'openingStock', label: 'Opening Stock Entry', icon: ShoppingBag },
+  { key: 'stockReport', label: 'Stock report', icon: BarChart3 },
+  { key: 'movementReport', label: 'Movement Report', icon: Truck },
+  { key: 'productRequest', label: 'Product Request', icon: ArrowLeftRight },
+  { key: 'productReceipt', label: 'Product receipt', icon: ArrowLeftRight },
+  { key: 'productTransfer', label: 'Product Transfer', icon: Truck },
+  { key: 'transferList', label: 'Transfer List', icon: ClipboardList },
+  { key: 'receiptList', label: 'Receipt List', icon: ClipboardList },
+  { key: 'supplierList', label: 'SupplierList', icon: User },
+  { key: 'purchaseEntry', label: 'Purchase entry', icon: CreditCard },
+  { key: 'purchaseList', label: 'Purchase List', icon: ClipboardList },
+  { key: 'purchaseReturn', label: 'Purchase Return', icon: RotateCcw },
+  { key: 'purchaseReturnList', label: 'Purchase ReturnList', icon: ClipboardList },
+  { key: 'damageEntry', label: 'Damage Entry', icon: Ban },
+  { key: 'damageList', label: 'Damage List', icon: ClipboardList },
+  { key: 'advancePayment', label: 'Advance Payment', icon: Banknote },
+  { key: 'paymentList', label: 'PaymentList', icon: ClipboardList },
+  { key: 'osBalanceList', label: 'Os Balance List', icon: BarChart3 },
+  { key: 'creditReceiptList', label: 'ReceiptList', icon: ClipboardList },
+  { key: 'advanceViewer', label: 'Advance Viewer', icon: Banknote },
+  { key: 'messBillViewer', label: 'Mess Bill Viewer', icon: Users },
+  { key: 'billReprint', label: 'Bill Reprint', icon: Printer },
+  { key: 'areaWiseReportRP', label: 'Area Wise report', icon: MapPinned },
+  { key: 'groupWiseRP', label: 'Group Wise', icon: Tag },
+  { key: 'itemWiseRP', label: 'Item Wise', icon: BarChart3 },
+  { key: 'itemVoidReportRP', label: 'Item Void Report', icon: Ban },
+  { key: 'cancelBillDetails', label: 'Cancel Bill Details', icon: FileText },
+  { key: 'cancelBillSummary', label: 'Cancel Bill Summary', icon: FileText },
+  { key: 'counterCloseReportsRP', label: 'CounterClose Reports', icon: BarChart3 },
+  { key: 'salesBillWiseRP', label: 'Sales BillWise', icon: Receipt },
+  { key: 'dayWiseRP', label: 'DayWise', icon: Receipt },
+  { key: 'pendingOrderList', label: 'Pending Order List', icon: ClipboardList },
+  { key: 'counterWiseA4', label: 'CounterWise', icon: BarChart3 },
+  { key: 'counterWiseTimewise', label: 'CounterWise Timewise', icon: BarChart3 },
+  { key: 'itemwiseSummary', label: 'Summary', icon: BarChart3 },
+  { key: 'itemwiseDetails', label: 'Details', icon: FileText },
+  { key: 'areawiseA4', label: 'Areawise', icon: MapPinned },
+  { key: 'waiterwise', label: 'Waiterwise', icon: Users },
+  { key: 'salesmanWise', label: 'Salesman Wise', icon: User },
+  { key: 'customerAnalysisDetailed', label: 'Detailed', icon: Users },
+  { key: 'customerAnalysisSummary', label: 'Summary', icon: Users },
+  { key: 'counterCloseDetailsA4', label: 'CounterClose Details', icon: BarChart3 },
+  { key: 'incomeExpense', label: 'Income Expense', icon: Wallet },
+  { key: 'productionReport', label: 'Production Report', icon: Package },
+  { key: 'itemVoidA4', label: 'Item Void', icon: Ban },
+  { key: 'graphReport', label: 'Graph Report', icon: BarChart3 },
+  { key: 'itemwiseViewer', label: 'Itemwise Viewer', icon: FileText },
+  { key: 'delBoyCommission', label: 'Del. Boy commission', icon: Truck },
+  { key: 'productMovementFast', label: 'Fast Move', icon: Truck },
+  { key: 'productMovementSlow', label: 'Slow Move', icon: Truck },
+  { key: 'dayCloseReport', label: 'DayClose report', icon: BarChart3 },
+  { key: 'incomeExpenseEntry', label: 'Income or Expenses', icon: Wallet },
+  { key: 'discountEntry', label: 'Discount Entry', icon: Percent },
+  { key: 'discountList', label: 'DiscountList', icon: Percent },
+  { key: 'changeSettlement', label: 'Change Settlement', icon: CreditCard },
+  { key: 'vatActivation', label: 'VAT Activation', icon: ShieldCheck },
+  { key: 'productListEdit', label: 'ProductList Edit', icon: Package },
+  { key: 'changeDiscountPercent', label: 'Change Discount% Button', icon: Percent },
+  { key: 'eventLogs', label: 'Event Logs', icon: FileText },
+  { key: 'printerSetup', label: 'Printer Setup', icon: Printer },
+  { key: 'userList', label: 'User List', icon: User },
+  { key: 'activateAccessCard', label: 'Activate Access Card', icon: ShieldCheck },
+  { key: 'privilegeSetup', label: 'Privillage Setup', icon: ShieldCheck },
+  { key: 'controlPanel', label: 'Control Panel', icon: SettingsIcon },
+  { key: 'passwordChange', label: 'Password Change', icon: ShieldCheck },
+  { key: 'langSetup', label: 'Lang setup', icon: Globe },
+  { key: 'partyOrderList', label: 'Party Order List', icon: ClipboardList },
+  { key: 'multiSupplierSetup', label: 'Multi Supplier setup', icon: Truck },
+  { key: 'vatCorrectionUtility', label: 'Utility For Vat Correction', icon: Percent },
+  { key: 'cashInOut', label: 'Cash/Cash Out', icon: Banknote },
+]
+
+// "Summary" appears twice in the nav tree (Reports A4 > Itemwise > Summary,
+// and Reports A4 > Customer Analysis > Summary) — a plain label lookup can't
+// tell them apart, so it's excluded here and resolved by full path instead
+// (see AMBIGUOUS_LABEL_ROUTES below).
+const AMBIGUOUS_LABELS = new Set(['Summary'])
+
+const LABEL_TO_ENTRY: Partial<Record<string, EntryKey>> = {
+  ...Object.fromEntries(ENTRY_DEFS.filter((d) => !AMBIGUOUS_LABELS.has(d.label)).map((d) => [d.label, d.key])),
+  // The "Production" submenu's child is just "Entry" in the nav tree — the
+  // modal heading reads "Production Entry" (ENTRY_DEFS.label above) for
+  // clarity, but the click target's actual text is the bare word.
+  Entry: 'productionEntry',
+}
+
+/** Resolves an ambiguous leaf label (in AMBIGUOUS_LABELS) using a substring
+ * of its full nav path instead. Checked before the plain LABEL_TO_ENTRY
+ * lookup whenever the label alone isn't enough to know which screen. */
+const AMBIGUOUS_LABEL_ROUTES: { label: string; pathIncludes: string; key: EntryKey }[] = [
+  { label: 'Summary', pathIncludes: 'Itemwise', key: 'itemwiseSummary' },
+  { label: 'Summary', pathIncludes: 'Customer Analysis', key: 'customerAnalysisSummary' },
+]
+const ENTRY_META: Record<EntryKey, (typeof ENTRY_DEFS)[number]> = Object.fromEntries(
+  ENTRY_DEFS.map((d) => [d.key, d]),
+) as Record<EntryKey, (typeof ENTRY_DEFS)[number]>
 
 type Cat = { id: number; name: string; code: string }
 type SubCat = { id: number; name: string; groupId: number }
@@ -267,6 +418,122 @@ type AreaRow = {
   tableCreationType: number
 }
 type TableRow = { id: number; name: string; areaId: number; seats: number; waiterId: number }
+
+/** Nav-menu entries under "Creation"/"Transactions" that open a simple
+ * master-entry modal instead of a bespoke screen. 'product' (Product Entry)
+ * reuses the existing Add New Item modal and isn't part of this generic set. */
+type EntryKey =
+  | 'area'
+  | 'table'
+  | 'mainGroup'
+  | 'group'
+  | 'subGroup'
+  | 'kitchenMessage'
+  | 'combo'
+  | 'recipe'
+  | 'barcode'
+  | 'notes'
+  | 'onlineSource'
+  | 'paymentMode'
+  | 'messMaster'
+  | 'addOn'
+  | 'booking'
+  | 'bookingList'
+  | 'floorDesign'
+  | 'stockAdjustment'
+  | 'stockAdjustList'
+  | 'productionEntry'
+  | 'openingStock'
+  | 'stockReport'
+  | 'movementReport'
+  | 'productRequest'
+  | 'productReceipt'
+  | 'productTransfer'
+  | 'transferList'
+  | 'receiptList'
+  | 'supplierList'
+  | 'purchaseEntry'
+  | 'purchaseList'
+  | 'purchaseReturn'
+  | 'purchaseReturnList'
+  | 'damageEntry'
+  | 'damageList'
+  | 'advancePayment'
+  | 'paymentList'
+  | 'osBalanceList'
+  | 'creditReceiptList'
+  | 'advanceViewer'
+  | 'messBillViewer'
+  | 'billReprint'
+  | 'areaWiseReportRP'
+  | 'groupWiseRP'
+  | 'itemWiseRP'
+  | 'itemVoidReportRP'
+  | 'cancelBillDetails'
+  | 'cancelBillSummary'
+  | 'counterCloseReportsRP'
+  | 'salesBillWiseRP'
+  | 'dayWiseRP'
+  | 'pendingOrderList'
+  | 'counterWiseA4'
+  | 'counterWiseTimewise'
+  | 'itemwiseSummary'
+  | 'itemwiseDetails'
+  | 'areawiseA4'
+  | 'waiterwise'
+  | 'salesmanWise'
+  | 'customerAnalysisDetailed'
+  | 'customerAnalysisSummary'
+  | 'counterCloseDetailsA4'
+  | 'incomeExpense'
+  | 'productionReport'
+  | 'itemVoidA4'
+  | 'graphReport'
+  | 'itemwiseViewer'
+  | 'delBoyCommission'
+  | 'productMovementFast'
+  | 'productMovementSlow'
+  | 'dayCloseReport'
+  | 'incomeExpenseEntry'
+  | 'discountEntry'
+  | 'discountList'
+  | 'changeSettlement'
+  | 'vatActivation'
+  | 'productListEdit'
+  | 'changeDiscountPercent'
+  | 'eventLogs'
+  | 'printerSetup'
+  | 'userList'
+  | 'activateAccessCard'
+  | 'privilegeSetup'
+  | 'controlPanel'
+  | 'passwordChange'
+  | 'langSetup'
+  | 'partyOrderList'
+  | 'multiSupplierSetup'
+  | 'vatCorrectionUtility'
+  | 'cashInOut'
+
+type RecipeLine = {
+  code: string
+  name: string
+  packDetails: string
+  cost: string
+  packQty: string
+  qty: string
+  unit: string
+}
+
+type BookingRow = {
+  id: number
+  area: string
+  customer: string
+  mobile: string
+  partySize: string
+  advance: string
+  date: string
+}
+
 type OrderRow = {
   kotMasterId: number
   kotNo: string
@@ -485,6 +752,14 @@ function errMessage(err: unknown, fallback: string) {
   return fallback
 }
 
+/** Minutes since a KOT was saved, or null when the time can't be read. */
+function kotAgeMinutes(iso: string): number | null {
+  if (!iso) return null
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return null
+  return Math.max(0, Math.floor((Date.now() - t) / 60000))
+}
+
 function formatKotClock(iso: string) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -696,7 +971,7 @@ function NavMenuInline({
   depth: number
   expanded: Set<string>
   onToggle: (path: string) => void
-  onPick: (label: string) => void
+  onPick: (label: string, path: string) => void
 }) {
   return (
     <>
@@ -711,7 +986,7 @@ function NavMenuInline({
               type="button"
               className={`pd-subnav-btn${isOpen ? ' is-open' : ''}`}
               style={{ paddingLeft: 14 + depth * 14 }}
-              onClick={() => (hasChildren ? onToggle(itemPath) : onPick(label))}
+              onClick={() => (hasChildren ? onToggle(itemPath) : onPick(label, itemPath))}
             >
               <span>{label}</span>
               {hasChildren ? (
@@ -779,7 +1054,7 @@ export default function PosMainPage() {
   const lineKey = useRef(1)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
 
-  const [nav, setNav] = useState<(typeof NAV)[number]>('New Sale')
+  const [nav, setNav] = useState<(typeof NAV)[number]>('Creation')
   const [groups, setGroups] = useState<Cat[]>([])
   const [allSubGroups, setAllSubGroups] = useState<SubCat[]>([])
   const [allSubSubGroups, setAllSubSubGroups] = useState<SubSubCat[]>([])
@@ -787,6 +1062,10 @@ export default function PosMainPage() {
   const [notesHint, setNotesHint] = useState<string | null>(null)
   const [notesKind, setNotesKind] = useState<ToastKind>('error')
   const [openNavMenu, setOpenNavMenu] = useState<(typeof NAV)[number] | null>(null)
+  // True while the side-menu search has text — the menu list is swapped for
+  // the search results until it's cleared.
+  const [navSearching, setNavSearching] = useState(false)
+  const navSearchRef = useRef<HTMLInputElement | null>(null)
   const [expandedSubPaths, setExpandedSubPaths] = useState<Set<string>>(() => new Set())
   const [sideNavHidden, setSideNavHidden] = useState(true)
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; key: number } | null>(null)
@@ -843,6 +1122,7 @@ export default function PosMainPage() {
   const [savingKot, setSavingKot] = useState(false)
   const [loadingKot, setLoadingKot] = useState(false)
   const [orderListOpen, setOrderListOpen] = useState(false)
+  const deliveryPickerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [orderListRows, setOrderListRows] = useState<OrderRow[]>([])
   const [orderListState, setOrderListState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [orderListError, setOrderListError] = useState<string | null>(null)
@@ -850,6 +1130,9 @@ export default function PosMainPage() {
   const [orderListSupply, setOrderListSupply] = useState<'ALL' | ServiceKind>('ALL')
   const [areaOpen, setAreaOpen] = useState(false)
   const [moreActionsOpen, setMoreActionsOpen] = useState(false)
+  // True while the More modal plays its zoom-out, before it unmounts.
+  const [moreClosing, setMoreClosing] = useState(false)
+  const moreCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [payOpen, setPayOpen] = useState(false)
 
   // Split Payment — method → amount entry (with an inline, optional tip
@@ -887,10 +1170,118 @@ export default function PosMainPage() {
   const [productOpen, setProductOpen] = useState(false)
   const [productForm, setProductForm] = useState<ProductForm>(BLANK_PRODUCT_FORM)
   const [productSaving, setProductSaving] = useState(false)
-  const [groupPickerFor, setGroupPickerFor] = useState<'group' | 'subgroup' | null>(null)
-  const [groupPickerSearch, setGroupPickerSearch] = useState('')
-  const [groupPickerRows, setGroupPickerRows] = useState<{ id: number; name: string; code: string }[]>([])
-  const [groupPickerState, setGroupPickerState] = useState<'idle' | 'loading'>('idle')
+  // Options for Add New Item's Group / SubGroup search dropdowns.
+  const [groupOptions, setGroupOptions] = useState<SearchSelectOption[]>([])
+  const [subgroupOptions, setSubgroupOptions] = useState<SearchSelectOption[]>([])
+  const [groupOptionsLoading, setGroupOptionsLoading] = useState<'group' | 'subgroup' | null>(null)
+
+  // Generic "Creation" master-entry modals (Area/Table/Group/etc.) — one
+  // shared string|boolean bag keyed by field name, since only one of these
+  // is ever open at a time and each modal only reads its own keys.
+  const [entryModal, setEntryModal] = useState<EntryKey | null>(null)
+  const [entrySaving, setEntrySaving] = useState(false)
+  const [entryForm, setEntryForm] = useState<Record<string, string | boolean>>({})
+  // Live English→Arabic auto-fill bookkeeping — plain refs (not state) since
+  // they're just debounce/ownership tracking, not anything that renders.
+  const arabicAutoTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const arabicAutoLast = useRef<Record<string, string>>({})
+  const translateWarnedAt = useRef(0)
+  const [entryWaiters, setEntryWaiters] = useState<{ id: number; name: string }[]>([])
+  const [kitchenMessages, setKitchenMessages] = useState<{ id: number; message: string; arabic: string }[]>([
+    { id: 1, message: 'LESS SPICY', arabic: 'بدون طحينية' },
+    { id: 2, message: 'LESS OIL', arabic: 'زيادة طحينية' },
+    { id: 3, message: 'SPICY', arabic: '' },
+    { id: 4, message: 'Rare', arabic: '' },
+    { id: 5, message: 'Medium rare', arabic: '' },
+    { id: 6, message: 'NO NEED PLASTIC', arabic: '' },
+    { id: 7, message: 'Medium', arabic: '' },
+    { id: 8, message: 'Medium well', arabic: '' },
+    { id: 9, message: 'Well done', arabic: '' },
+  ])
+  const [kitchenMsgSelected, setKitchenMsgSelected] = useState<number | null>(null)
+  const [comboGroups, setComboGroups] = useState<string[]>([])
+  const [comboGroupInput, setComboGroupInput] = useState('')
+  const [recipeLines, setRecipeLines] = useState<RecipeLine[]>([])
+  const [recipeDraft, setRecipeDraft] = useState({ code: '', name: '', packDetails: '', cost: '', packQty: '', qty: '', unit: 'GM' })
+  const [notesList, setNotesList] = useState<{ id: number; date: string; description: string }[]>([])
+  const [notesSelected, setNotesSelected] = useState<number | null>(null)
+  const [paymentModes, setPaymentModes] = useState<{ name: string; status: string }[]>([
+    { name: 'TALABAT', status: 'ACTIVE' },
+    { name: 'ZOMATO', status: 'ACTIVE' },
+  ])
+  const [messLines, setMessLines] = useState<string[]>([])
+  // Mess Master's searchable item picker — keyed by name (that's what a mess
+  // line stores), so duplicate product names collapse to one option.
+  const messItemOptions = useMemo<SearchSelectOption[]>(() => {
+    const seen = new Set<string>()
+    const out: SearchSelectOption[] = []
+    for (const p of allProducts) {
+      if (seen.has(p.name)) continue
+      seen.add(p.name)
+      out.push({ id: p.name, name: p.name })
+    }
+    return out
+  }, [allProducts])
+  const [addOns, setAddOns] = useState<{ name: string; arabic: string; priceNoVat: string; vatPct: string }[]>([])
+  const [bookings, setBookings] = useState<BookingRow[]>([])
+  const [bookingAreaTab, setBookingAreaTab] = useState<'DINE IN' | 'UPSTAIR' | 'OUTSIDE'>('DINE IN')
+  const [floorAreaId, setFloorAreaId] = useState<number | null>(null)
+  const [floorBusy, setFloorBusy] = useState(false)
+
+  // Reports — these two already have full, real implementations sitting in
+  // their own files (real apiService calls) that just weren't wired to the
+  // side nav yet, so they're opened directly instead of via the generic
+  // entry-modal system.
+  const [salesViewerOpen, setSalesViewerOpen] = useState(false)
+  const [counterCloseOpen, setCounterCloseOpen] = useState(false)
+
+  // Admin submenu's plain alert/confirm popups (Cashier Change, Clear KOT,
+  // ShutDown) — a different shape from the master-entry modals (no header
+  // icon, red/pink alert card, OK or Yes/No only), so they get their own
+  // small piece of state instead of forcing them into the EntryKey system.
+  const [confirmAlert, setConfirmAlert] = useState<{
+    title: string
+    message: string
+    mode: 'ok' | 'yesno'
+    tone?: 'info' | 'danger'
+    confirmLabel?: string
+    onYes?: () => void
+  } | null>(null)
+
+  // Transactions master-entry modals (Stock Adjustment, Production, Purchase,
+  // Damage, etc.) — none of these have a backend endpoint yet, so the "add
+  // row" screens share one generic draft + line-list pair (reset per open)
+  // instead of nine near-identical arrays, and Save/Print/Post just confirm
+  // locally rather than persisting.
+  const [txnLines, setTxnLines] = useState<Record<string, string>[]>([])
+  const [txnDraft, setTxnDraft] = useState<Record<string, string>>({})
+  const [txnSelected, setTxnSelected] = useState<number | null>(null)
+  const [suppliers] = useState<{ code: string; name: string; phone: string; mobile: string; contact: string }[]>([
+    { code: 'SUPP1', name: 'CASH SUPPLIER', phone: '0', mobile: '', contact: '' },
+  ])
+  const [mrSelectedGroups, setMrSelectedGroups] = useState<Set<number>>(new Set())
+
+  // Settings — User List / Activate Access Card share the same staff roster.
+  const [userListRows, setUserListRows] = useState<
+    { code: string; name: string; role: string; login: string; card: string }[]
+  >([
+    { code: '123', name: 'ADMIN', role: 'ADMIN', login: '0', card: 'Not Set' },
+    { code: 'invent', name: 'Invent', role: 'ADMIN', login: '1122', card: 'Not Set' },
+    { code: 'MARIA', name: 'MARIA', role: 'ADMIN', login: '201', card: 'Active' },
+    { code: '351', name: 'CASHIER1', role: 'CASHIER', login: '100', card: 'Not Set' },
+    { code: '352', name: 'CASHIER2', role: 'CASHIER', login: '901', card: 'Not Set' },
+    { code: 'MOI', name: 'MOIF ADMIN', role: 'CASHIER', login: '013', card: 'Not Set' },
+  ])
+  const [userListSelected, setUserListSelected] = useState<string | null>('123')
+  const [langRows, setLangRows] = useState<{ en: string; ar: string }[]>([])
+  const [printerRows, setPrinterRows] = useState<{ counterNo: string; kitchenLoc: string; printerName: string }[]>([])
+  const [controlPanelTab, setControlPanelTab] = useState('Company Details')
+  const [privilegeChecks, setPrivilegeChecks] = useState<Set<string>>(new Set(['Settings', 'Purchase', 'Main Page']))
+
+  // Cash In / Cash Out — real backend (fetchCashInOut/addCashInOut) already
+  // exists for the counter's cash-drawer movements.
+  const [cashMode, setCashMode] = useState<'pick' | 'in' | 'out'>('pick')
+  const [cashRows, setCashRows] = useState<{ desc: string; amount: number }[]>([])
 
   const [isTablePopup, setIsTablePopup] = useState(0)
   const [isTablesBasedOnWaiter, setIsTablesBasedOnWaiter] = useState(0)
@@ -907,6 +1298,23 @@ export default function PosMainPage() {
     const t = window.setInterval(() => setNow(new Date()), 30_000)
     return () => window.clearInterval(t)
   }, [])
+
+  // Ctrl+K (⌘K on Mac) opens the side menu with its search box focused.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSideNavHidden(false)
+        window.setTimeout(() => navSearchRef.current?.focus(), 0)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
+    if (sideNavHidden) setNavSearching(false)
+  }, [sideNavHidden])
 
   useEffect(() => {
     if (!notesHint) return
@@ -951,12 +1359,36 @@ export default function PosMainPage() {
     }
   }, [rowMenu])
 
+  function openMoreActions() {
+    if (moreCloseTimer.current) clearTimeout(moreCloseTimer.current)
+    moreCloseTimer.current = null
+    setMoreClosing(false)
+    setMoreActionsOpen(true)
+  }
+
+  function closeMoreActions() {
+    if (!moreActionsOpen || moreCloseTimer.current) return
+    setMoreClosing(true)
+    // Matches the .pd-more-overlay.is-closing animation duration.
+    moreCloseTimer.current = setTimeout(() => {
+      moreCloseTimer.current = null
+      setMoreActionsOpen(false)
+      setMoreClosing(false)
+    }, 180)
+  }
+
   useEffect(() => {
     if (!moreActionsOpen) return
-    const close = () => setMoreActionsOpen(false)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [moreActionsOpen])
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMoreActions()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  useEffect(() => () => {
+    if (moreCloseTimer.current) clearTimeout(moreCloseTimer.current)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -1789,7 +2221,7 @@ export default function PosMainPage() {
   }
 
   /** btnDelivery_Click / Delivery() — table 0, hide popup. */
-  function deliveryClick(forced?: AreaRow) {
+  function deliveryClick(forced?: AreaRow, askCustomer = true) {
     const match = forced ?? pickAreaForService('DELIVERY')
     if (!match) {
       toast('DELIVERY Area Not Found........')
@@ -1802,8 +2234,10 @@ export default function PosMainPage() {
     setRemarks('')
     hideTablePopup()
     resetOpenKotTicket()
-    setCustomerOpen(true)
-    void loadCustomers()
+    if (askCustomer) {
+      setCustomerOpen(true)
+      void loadCustomers()
+    }
     clearQty()
   }
 
@@ -2501,60 +2935,975 @@ export default function PosMainPage() {
     setProductForm((f) => ({ ...f, code: `ITM${Date.now().toString().slice(-8)}` }))
   }
 
-  async function loadGroupPickerRows(kind: 'group' | 'subgroup', search: string) {
-    setGroupPickerState('loading')
+  // ── Generic "Creation" master-entry modals ────────────────────────────
+
+  function ef(key: string): string {
+    const v = entryForm[key]
+    return typeof v === 'string' ? v : ''
+  }
+  function efBool(key: string): boolean {
+    return entryForm[key] === true
+  }
+  function setEf(key: string, value: string | boolean) {
+    setEntryForm((f) => ({ ...f, [key]: value }))
+  }
+
+  /** Debounced English→Arabic auto-fill, wired on the English field's own
+   * onChange. Never clobbers a manual edit in the Arabic field — it only
+   * overwrites while that field is empty or still holds what auto-fill put
+   * there last (tracked per field in arabicAutoLast). */
+  function notifyTranslateDown() {
+    const now = Date.now()
+    if (now - translateWarnedAt.current < 30000) return
+    translateWarnedAt.current = now
+    toast('Auto-translate unavailable — check the internet connection', 'info')
+  }
+
+  function setEfWithArabicAutoFill(englishKey: string, arabicKey: string, value: string) {
+    setEf(englishKey, value)
+    if (arabicAutoTimers.current[arabicKey]) clearTimeout(arabicAutoTimers.current[arabicKey])
+    const trimmed = value.trim()
+    if (!trimmed) return
+    arabicAutoTimers.current[arabicKey] = setTimeout(() => {
+      translateToArabic(trimmed)
+        .then((translated) => {
+          if (!translated) return
+          setEntryForm((prev) => {
+            const current = prev[arabicKey]
+            const currentStr = typeof current === 'string' ? current : ''
+            if (currentStr && currentStr !== arabicAutoLast.current[arabicKey]) return prev
+            arabicAutoLast.current[arabicKey] = translated
+            return { ...prev, [arabicKey]: translated }
+          })
+        })
+        .catch(notifyTranslateDown)
+    }, 400)
+  }
+
+  async function reloadAreas() {
+    try {
+      setAreas(mapAreas(await apiService.fetchAreas()))
+    } catch {
+      // Keep whatever was already loaded.
+    }
+  }
+
+  async function reloadTables() {
+    try {
+      const rows = await apiService.fetchTables()
+      setTables(
+        rows
+          .map((t) => ({
+            id: Number(t.id) || 0,
+            name: t.label,
+            areaId: Number(t.areaId) || 0,
+            seats: Number(t.seats) || 0,
+            waiterId: Number(t.waiterId) || 0,
+          }))
+          .filter((t) => t.id > 0),
+      )
+    } catch {
+      // Keep whatever was already loaded.
+    }
+  }
+
+  async function reloadGroups() {
+    try {
+      setGroups(mapGroups(await apiService.fetchGroups()))
+    } catch {
+      // Keep whatever was already loaded.
+    }
+  }
+
+  function closeEntryModal() {
+    setEntryModal(null)
+  }
+
+  function openEntryModal(key: EntryKey) {
+    setEntryForm({})
+    setEntryModal(key)
+    setSideNavHidden(true)
+
+    if (key === 'table') {
+      setEf('tableShape', 'SQUARE')
+      void apiService
+        .fetchWaiters()
+        .then((rows) =>
+          setEntryWaiters(
+            rows
+              .map((r) => ({ id: num(r.waiterId ?? r.WaiterID ?? r.id), name: String(r.waiterName ?? r.WaiterName ?? '').trim() }))
+              .filter((w) => w.id > 0 && w.name),
+          ),
+        )
+        .catch(() => setEntryWaiters([]))
+      void apiService
+        .nextTableNumber()
+        .then((row) => {
+          const n = num(asRow(row).tableNo ?? asRow(row).TableNo ?? asRow(row).nextTableNo ?? row)
+          if (n > 0) setEf('tableNo', String(n))
+        })
+        .catch(() => {})
+    }
+    if (key === 'area') {
+      setEf('tableCreationType', 'manual')
+      setEf('showOnTablet', true)
+    }
+    if (key === 'barcode') {
+      const today = isoDate(new Date())
+      setEf('productionDate', today)
+      setEf('expiryDate', today)
+      setEf('printCount', '1')
+    }
+    if (key === 'paymentMode') {
+      setEf('status', 'ACTIVE')
+    }
+    if (key === 'booking') {
+      setBookingAreaTab('DINE IN')
+      setEf('bookingDate', isoDate(new Date()))
+    }
+    if (key === 'bookingList') {
+      const today = isoDate(new Date())
+      setEf('bookingFrom', today)
+      setEf('bookingTo', today)
+    }
+    if (key === 'floorDesign') {
+      setFloorAreaId((prev) => prev ?? areas[0]?.id ?? null)
+    }
+    if (key === 'combo') {
+      setComboGroups([])
+      setComboGroupInput('')
+    }
+    if (key === 'recipe') {
+      setRecipeLines([])
+      setRecipeDraft({ code: '', name: '', packDetails: '', cost: '', packQty: '', qty: '', unit: 'GM' })
+    }
+    if (key === 'messMaster') setMessLines([])
+    if (key === 'kitchenMessage') setKitchenMsgSelected(null)
+    if (key === 'notes') {
+      const today = isoDate(new Date())
+      setNotesSelected(null)
+      setEf('notesFrom', today)
+      setEf('notesTo', today)
+    }
+
+    const lineItemKeys: EntryKey[] = [
+      'stockAdjustment',
+      'productionEntry',
+      'openingStock',
+      'productRequest',
+      'productReceipt',
+      'productTransfer',
+      'purchaseEntry',
+      'purchaseReturn',
+      'damageEntry',
+      'incomeExpenseEntry',
+      'discountEntry',
+      'productListEdit',
+    ]
+    if (lineItemKeys.includes(key)) {
+      setTxnLines([])
+      setTxnDraft({})
+      setTxnSelected(null)
+    }
+    const today = isoDate(new Date())
+    const weekAgo = isoDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
+    if (key === 'stockAdjustment' || key === 'productionEntry' || key === 'openingStock' || key === 'damageEntry') {
+      setEf('txnDate', today)
+      if (key === 'stockAdjustment') setTd('reason', 'Opening Stock')
+      if (key === 'damageEntry') setTd('reason', 'Damage')
+    }
+    if (key === 'productRequest' || key === 'productReceipt' || key === 'productTransfer') {
+      setEf('txnDate', today)
+      setEf('txnFromArea', 'AUH')
+    }
+    if (key === 'purchaseEntry') {
+      setEf('purchaseDate', today)
+      setEf('enteredDate', today)
+      setEf('payMode', 'CREDIT')
+    }
+    if (key === 'purchaseReturn') {
+      setEf('returnDate', today)
+      setEf('enteredDate', today)
+      setEf('payMode', 'CREDIT')
+      setEf('returnType', 'With GRN')
+    }
+    if (
+      key === 'stockAdjustList' ||
+      key === 'damageList' ||
+      key === 'transferList' ||
+      key === 'receiptList' ||
+      key === 'purchaseList' ||
+      key === 'purchaseReturnList'
+    ) {
+      setEf('listFrom', weekAgo)
+      setEf('listTo', today)
+    }
+    if (key === 'movementReport') {
+      setEf('mrFrom', today)
+      setEf('mrTo', today)
+      setMrSelectedGroups(new Set())
+    }
+    if (key === 'advanceViewer' || key === 'creditReceiptList' || key === 'messBillViewer') {
+      setEf('vFrom', today)
+      setEf('vTo', today)
+    }
+    if (key === 'osBalanceList') {
+      setEf('obMode', 'all')
+      setEf('obFrom', isoDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+      setEf('obTo', today)
+    }
+
+    const reportKeys: EntryKey[] = [
+      'areaWiseReportRP', 'groupWiseRP', 'itemWiseRP', 'itemVoidReportRP',
+      'cancelBillDetails', 'cancelBillSummary', 'counterCloseReportsRP',
+      'salesBillWiseRP', 'dayWiseRP', 'pendingOrderList', 'counterWiseA4',
+      'counterWiseTimewise', 'itemwiseSummary', 'itemwiseDetails', 'areawiseA4',
+      'waiterwise', 'salesmanWise', 'customerAnalysisDetailed', 'customerAnalysisSummary',
+      'counterCloseDetailsA4', 'incomeExpense', 'productionReport', 'itemVoidA4',
+      'graphReport', 'itemwiseViewer', 'delBoyCommission', 'productMovementFast', 'productMovementSlow',
+    ]
+    if (reportKeys.includes(key)) {
+      setEf('rFrom', today)
+      setEf('rTo', today)
+      setEf('rMode', 'date')
+      setEf('rDetailMode', 'detailed')
+      if (key === 'productMovementFast' || key === 'productMovementSlow') {
+        setEf('rFrom', isoDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+        setEf('rMin', '0')
+      }
+    }
+    if (key === 'billReprint') {
+      setTxnSelected(null)
+    }
+    if (key === 'dayCloseReport') {
+      setEf('rFrom', today)
+      setEf('rTo', today)
+    }
+    if (key === 'incomeExpenseEntry') {
+      setEf('ieDate', today)
+      setEf('ieTaxRate', '5.00')
+      setEf('iePayType', 'CASH')
+      setEf('ieType', 'INCOME')
+    }
+    if (key === 'discountEntry') {
+      setEf('discFrom', today)
+      setEf('discTo', today)
+    }
+    if (key === 'changeSettlement') {
+      setEf('csDate', today)
+    }
+    if (key === 'eventLogs') {
+      setEf('elFrom', today)
+      setEf('elTo', today)
+      setEf('elAction', 'ALL')
+      setEf('elSource', 'ALL')
+      setEf('elStatus', 'ALL')
+    }
+    if (key === 'changeDiscountPercent') {
+      setEf('cdpTotal', '0.00')
+      setEf('cdpAmount', '0.00')
+      setEf('cdpPercent', '0.00')
+    }
+    if (key === 'controlPanel') {
+      setControlPanelTab('Company Details')
+      setEf('cpHeading2', 'Khalifa st. beside Mediclinic,Abu Dhabi , UAE')
+      setEf('cpHeading3', 'Ph: 024441125, Mob : 0503071522')
+      setEf('cpTaxRegNo', '100233883600003')
+      setEf('cpFooter1', 'Thank You...Visit Again')
+    }
+    if (key === 'privilegeSetup') {
+      setEf('privUser', 'ADMIN')
+    }
+    if (key === 'userList' || key === 'activateAccessCard') {
+      setUserListSelected(userListRows[0]?.code ?? null)
+    }
+    if (key === 'vatCorrectionUtility') {
+      setEf('vcFrom', today)
+      setEf('vcTo', today)
+    }
+    if (key === 'printerSetup' || key === 'langSetup') {
+      setTxnDraft({})
+    }
+    if (key === 'cashInOut') {
+      setCashMode('pick')
+      setCashRows([])
+    }
+  }
+
+  async function saveAreaEntry() {
+    if (!ef('areaName').trim()) {
+      toast('Enter an Area Name')
+      return
+    }
+    setEntrySaving(true)
+    try {
+      await apiService.createArea({
+        areaName: ef('areaName').trim(),
+        areaNameArabic: ef('areaNameArabic').trim(),
+        supplyType: ef('supplyType'),
+        kotPrefix: ef('prefix').trim(),
+        priceType: ef('priceType'),
+        tableCreationType: ef('tableCreationType') === 'automatic' ? 1 : 0,
+        showOnTablet: efBool('showOnTablet'),
+      })
+      toast('Area saved', 'success')
+      void reloadAreas()
+      setEntryForm({})
+    } catch {
+      toast('Could not save the area')
+    } finally {
+      setEntrySaving(false)
+    }
+  }
+
+  async function saveTableEntry() {
+    if (!ef('tableName').trim()) {
+      toast('Enter a Table Name')
+      return
+    }
+    const area = areas.find((a) => a.name === ef('areaName'))
+    setEntrySaving(true)
+    try {
+      await apiService.createTable({
+        areaId: area?.id,
+        tableNo: Number(ef('tableNo')) || undefined,
+        tableName: ef('tableName').trim(),
+        tableNameArabic: ef('tableNameArabic').trim(),
+        noOfChairs: Number(ef('noOfChairs')) || 0,
+        waiterId: Number(ef('waiterId')) || undefined,
+        tableFormat: ef('tableShape') || 'SQUARE',
+      })
+      toast('Table saved', 'success')
+      void reloadTables()
+      setEntryForm({})
+    } catch {
+      toast('Could not save the table')
+    } finally {
+      setEntrySaving(false)
+    }
+  }
+
+  async function saveMainGroupEntry() {
+    if (!ef('mgDescription').trim()) {
+      toast('Enter a Description')
+      return
+    }
+    setEntrySaving(true)
+    try {
+      await apiService.createGroup({
+        groupCode: ef('mgCode').trim() || undefined,
+        groupDescription: ef('mgDescription').trim(),
+        groupDescriptionArabic: ef('mgDescriptionArabic').trim(),
+        applyDiscount: efBool('mgApplyDiscount'),
+      })
+      toast('Main group saved', 'success')
+      void reloadGroups()
+      setEntryForm({})
+    } catch {
+      toast('Could not save the main group')
+    } finally {
+      setEntrySaving(false)
+    }
+  }
+
+  /** Group Entry (sub-group) — tries the REST endpoint first; if the server
+   * doesn't have it yet, keeps the row locally so the sidebar still reflects
+   * it for this session instead of silently doing nothing. */
+  async function saveGroupEntry() {
+    if (!ef('grpName').trim()) {
+      toast('Enter a Group Name')
+      return
+    }
+    const master = groups.find((g) => g.name === ef('grpMaster'))
+    if (!master) {
+      toast('Pick a Master Group')
+      return
+    }
+    setEntrySaving(true)
+    try {
+      const payload = {
+        groupId: master.id,
+        subGroupDescription: ef('grpName').trim(),
+        subGroupDescriptionArabic: ef('grpNameArabic').trim(),
+        showOnlyOnBackOffice: efBool('grpBackOfficeOnly'),
+      }
+      try {
+        await apiService.createSubGroup(payload)
+        toast('Group saved', 'success')
+      } catch {
+        setAllSubGroups((prev) => [
+          ...prev,
+          { id: -Date.now(), name: payload.subGroupDescription, groupId: master.id },
+        ])
+        toast('Server endpoint not available yet — kept locally for this session', 'info')
+      }
+      setEntryForm({})
+    } finally {
+      setEntrySaving(false)
+    }
+  }
+
+  /** Sub Group Entry (sub-sub-group) — same optimistic-then-local fallback
+   * as Group Entry above. */
+  async function saveSubGroupEntry() {
+    if (!ef('sgName').trim()) {
+      toast('Enter a Sub Group Name')
+      return
+    }
+    const master = allSubGroups.find((s) => s.name === ef('sgMaster'))
+    if (!master) {
+      toast('Pick a Group')
+      return
+    }
+    setEntrySaving(true)
+    try {
+      const payload = {
+        subGroupId: master.id,
+        subSubGroupDescription: ef('sgName').trim(),
+        subSubGroupDescriptionArabic: ef('sgNameArabic').trim(),
+      }
+      try {
+        await apiService.createSubSubGroup(payload)
+        toast('Sub group saved', 'success')
+      } catch {
+        setAllSubSubGroups((prev) => [
+          ...prev,
+          { id: -Date.now(), name: payload.subSubGroupDescription, subGroupId: master.id },
+        ])
+        toast('Server endpoint not available yet — kept locally for this session', 'info')
+      }
+      setEntryForm({})
+    } finally {
+      setEntrySaving(false)
+    }
+  }
+
+  function saveKitchenMessage() {
+    const msg = ef('kmMessage').trim()
+    if (!msg) {
+      toast('Enter a Kitchen Message')
+      return
+    }
+    if (kitchenMsgSelected != null) {
+      setKitchenMessages((prev) =>
+        prev.map((m) => (m.id === kitchenMsgSelected ? { ...m, message: msg, arabic: ef('kmArabic').trim() } : m)),
+      )
+    } else {
+      setKitchenMessages((prev) => [...prev, { id: Date.now(), message: msg, arabic: ef('kmArabic').trim() }])
+    }
+    toast('Kitchen message saved', 'success')
+    setEntryForm({})
+    setKitchenMsgSelected(null)
+  }
+
+  function deleteKitchenMessage() {
+    if (kitchenMsgSelected == null) return
+    setKitchenMessages((prev) => prev.filter((m) => m.id !== kitchenMsgSelected))
+    setKitchenMsgSelected(null)
+    setEntryForm({})
+  }
+
+  function saveCombo() {
+    if (!ef('comboName').trim()) {
+      toast('Enter a Combo Name')
+      return
+    }
+    if (comboGroups.length === 0) {
+      toast('Add at least one Group')
+      return
+    }
+    toast('Combo saved', 'success')
+    setEntryForm({})
+    setComboGroups([])
+  }
+
+  function addRecipeLine() {
+    if (!recipeDraft.name.trim()) {
+      toast('Enter a Product Name')
+      return
+    }
+    setRecipeLines((prev) => [...prev, recipeDraft])
+    setRecipeDraft({ code: '', name: '', packDetails: '', cost: '', packQty: '', qty: '', unit: recipeDraft.unit })
+  }
+
+  function recipeUnitCost() {
+    return recipeLines.reduce((sum, l) => sum + (Number(l.cost) || 0) * (Number(l.qty) || 0), 0)
+  }
+
+  function saveRecipe() {
+    if (recipeLines.length === 0) {
+      toast('Add at least one ingredient line')
+      return
+    }
+    toast('Recipe saved', 'success')
+    setEntryForm({})
+    setRecipeLines([])
+  }
+
+  function printBarcode() {
+    if (!ef('barcodeProduct').trim()) {
+      toast('Enter a Product')
+      return
+    }
+    toast(`Sent ${ef('printCount') || '1'} label(s) to the printer`, 'success')
+  }
+
+  function saveNote() {
+    const desc = ef('noteDescription').trim()
+    if (!desc) {
+      toast('Enter a note')
+      return
+    }
+    const today = new Date().toLocaleDateString('en-GB')
+    if (notesSelected != null) {
+      setNotesList((prev) => prev.map((n) => (n.id === notesSelected ? { ...n, description: desc } : n)))
+    } else {
+      setNotesList((prev) => [{ id: Date.now(), date: today, description: desc }, ...prev])
+    }
+    toast('Note saved', 'success')
+  }
+
+  function deleteNote(id: number) {
+    setNotesList((prev) => prev.filter((n) => n.id !== id))
+    if (notesSelected === id) {
+      setNotesSelected(null)
+      setEf('noteDescription', '')
+    }
+    toast('Note deleted', 'success')
+  }
+
+  function saveOnlineSource() {
+    if (!ef('sourceName').trim()) {
+      toast('Enter a Source Name')
+      return
+    }
+    toast('Online source saved', 'success')
+    setEntryForm({})
+  }
+
+  function savePaymentMode() {
+    const name = ef('pmName').trim()
+    if (!name) {
+      toast('Enter a Payment Mode Name')
+      return
+    }
+    setPaymentModes((prev) => {
+      const existing = prev.find((p) => p.name.toUpperCase() === name.toUpperCase())
+      if (existing) return prev.map((p) => (p === existing ? { ...p, status: ef('status') } : p))
+      return [...prev, { name, status: ef('status') || 'ACTIVE' }]
+    })
+    toast('Payment mode saved', 'success')
+    setEf('pmName', '')
+  }
+
+  function addMessLine() {
+    const item = ef('messAddLine').trim()
+    if (!item) return
+    setMessLines((prev) => (prev.includes(item) ? prev : [...prev, item]))
+    setEf('messAddLine', '')
+  }
+
+  function saveMessMaster() {
+    if (!ef('messName').trim()) {
+      toast('Enter a Mess Name')
+      return
+    }
+    toast('Mess saved', 'success')
+    setEntryForm({})
+    setMessLines([])
+  }
+
+  function saveAddOn() {
+    if (!ef('addOnName').trim()) {
+      toast('Enter an Add-on Name')
+      return
+    }
+    setAddOns((prev) => [
+      ...prev,
+      { name: ef('addOnName').trim(), arabic: ef('addOnArabic').trim(), priceNoVat: ef('addOnPrice'), vatPct: ef('addOnVat') },
+    ])
+    toast('Add-on saved', 'success')
+    setEntryForm({})
+  }
+
+  function confirmBooking() {
+    if (!ef('bookCustomer').trim()) {
+      toast('Enter a Customer name')
+      return
+    }
+    setBookings((prev) => [
+      {
+        id: Date.now(),
+        area: bookingAreaTab,
+        customer: ef('bookCustomer').trim(),
+        mobile: ef('bookMobile').trim(),
+        partySize: ef('bookPartySize'),
+        advance: ef('bookAdvance'),
+        date: ef('bookingDate'),
+      },
+      ...prev,
+    ])
+    toast('Booking confirmed', 'success')
+    closeEntryModal()
+  }
+
+  async function loadFloorDesign() {
+    if (floorAreaId == null) return
+    setFloorBusy(true)
+    try {
+      await apiService.fetchFloorDesign(floorAreaId)
+      toast('Floor design loaded', 'success')
+    } catch {
+      toast('No saved floor design for this area yet', 'info')
+    } finally {
+      setFloorBusy(false)
+    }
+  }
+
+  async function saveFloorDesignEntry() {
+    if (floorAreaId == null) {
+      toast('Pick an Area')
+      return
+    }
+    setFloorBusy(true)
+    try {
+      await apiService.saveFloorDesign(floorAreaId, {})
+      toast('Floor design saved', 'success')
+    } catch {
+      toast('Could not save the floor design')
+    } finally {
+      setFloorBusy(false)
+    }
+  }
+
+  // ── Transactions master-entry modals (Stock/Production/Purchase/Damage) ──
+
+  function td(key: string): string {
+    return txnDraft[key] ?? ''
+  }
+  function setTd(key: string, value: string) {
+    setTxnDraft((d) => ({ ...d, [key]: value }))
+  }
+
+  /** Same English→Arabic auto-fill as setEfWithArabicAutoFill, but for the
+   * txnDraft bag (Lang Setup's add-row uses td/setTd, not ef/setEf). */
+  function setTdWithArabicAutoFill(englishKey: string, arabicKey: string, value: string) {
+    setTd(englishKey, value)
+    if (arabicAutoTimers.current[arabicKey]) clearTimeout(arabicAutoTimers.current[arabicKey])
+    const trimmed = value.trim()
+    if (!trimmed) return
+    arabicAutoTimers.current[arabicKey] = setTimeout(() => {
+      translateToArabic(trimmed)
+        .then((translated) => {
+          if (!translated) return
+          setTxnDraft((prev) => {
+            const current = prev[arabicKey] ?? ''
+            if (current && current !== arabicAutoLast.current[arabicKey]) return prev
+            arabicAutoLast.current[arabicKey] = translated
+            return { ...prev, [arabicKey]: translated }
+          })
+        })
+        .catch(notifyTranslateDown)
+    }, 400)
+  }
+
+  function addTxnLine() {
+    if (!td('barcode').trim() && !td('shortDesc').trim()) {
+      toast('Enter a Barcode or Short Description')
+      return
+    }
+    setTxnLines((prev) => [...prev, { ...txnDraft }])
+    setTxnDraft({})
+  }
+
+  function deleteSelectedTxnLine() {
+    if (txnSelected == null) {
+      toast('Select a row first')
+      return
+    }
+    setTxnLines((prev) => prev.filter((_, i) => i !== txnSelected))
+    setTxnSelected(null)
+  }
+
+  function txnLineTotal(l: Record<string, string>) {
+    return (Number(l.qty) || 0) * (Number(l.unitPrice || l.sellingPrice) || 0)
+  }
+
+  function txnGrandTotal() {
+    return txnLines.reduce((sum, l) => sum + txnLineTotal(l), 0)
+  }
+
+  function saveTxn(label: string) {
+    if (txnLines.length === 0) {
+      toast('Add at least one line')
+      return
+    }
+    toast(`${label} saved`, 'success')
+    setEntryForm({})
+    setTxnLines([])
+    setTxnDraft({})
+    setTxnSelected(null)
+  }
+
+  function printTxn() {
+    if (txnLines.length === 0) {
+      toast('Add at least one line before printing')
+      return
+    }
+    toast('Sent to printer', 'success')
+  }
+
+  function postTxn() {
+    if (txnLines.length === 0) {
+      toast('Add at least one line before posting')
+      return
+    }
+    toast('Posted', 'success')
+  }
+
+  function searchTxnList() {
+    toast('No records found for this range', 'info')
+  }
+
+  function selectTxnRow() {
+    toast('No row selected')
+  }
+
+  function saveAdvancePayment() {
+    if (!ef('apCustomer').trim()) {
+      toast('Enter a Customer')
+      return
+    }
+    if (!(Number(ef('apAmount')) > 0)) {
+      toast('Enter an Advance Amount')
+      return
+    }
+    toast('Advance payment saved', 'success')
+    setEntryForm({})
+  }
+
+  function displayCreditList() {
+    toast('No records found for this range', 'info')
+  }
+
+  function printReport() {
+    toast('Sent to printer', 'success')
+  }
+
+  function applyDiscountRange() {
+    if (!(Number(ef('discPercent')) > 0)) {
+      toast('Enter a Discount Percentage')
+      return
+    }
+    toast(`Discount applied ${ef('discFrom')} to ${ef('discTo')}`, 'success')
+  }
+
+  function removeSelectedDiscount() {
+    toast('Pick a discount row first')
+  }
+
+  function setupVat() {
+    toast('VAT setup — coming soon', 'info')
+  }
+
+  function applyDiscountPercentPreset(pct: number) {
+    const total = Number(ef('cdpTotal')) || 0
+    setEf('cdpPercent', pct.toFixed(2))
+    setEf('cdpAmount', (total * (pct / 100)).toFixed(2))
+  }
+
+  function saveDiscountPercent() {
+    toast('Discount percentage saved', 'success')
+    closeEntryModal()
+  }
+
+  function searchEventLogs() {
+    toast('No log entries found for this range', 'info')
+  }
+
+  // ── Settings ────────────────────────────────────────────────────────────
+
+  function addPrinterRow() {
+    if (!td('counterNo').trim()) {
+      toast('Enter a Counter No')
+      return
+    }
+    setPrinterRows((prev) => [...prev, { counterNo: td('counterNo'), kitchenLoc: td('kitchenLoc'), printerName: td('printerName') }])
+    setTxnDraft({})
+  }
+
+  function deleteSelectedUser() {
+    if (!userListSelected) {
+      toast('Select a user first')
+      return
+    }
+    setUserListRows((prev) => prev.filter((u) => u.code !== userListSelected))
+    setUserListSelected(null)
+  }
+
+  function activateSelectedCard() {
+    if (!userListSelected) {
+      toast('Select an ADMIN / CHIEF CASHIER first')
+      return
+    }
+    setUserListRows((prev) => prev.map((u) => (u.code === userListSelected ? { ...u, card: 'Active' } : u)))
+    toast('Tap the access card now', 'info')
+  }
+
+  function clearAccessCard() {
+    if (!userListSelected) {
+      toast('Select a user first')
+      return
+    }
+    setUserListRows((prev) => prev.map((u) => (u.code === userListSelected ? { ...u, card: 'Not Set' } : u)))
+    toast('Card cleared', 'success')
+  }
+
+  function togglePrivilege(name: string) {
+    setPrivilegeChecks((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  function savePrivileges() {
+    toast('Privileges saved', 'success')
+  }
+
+  function addLangRow() {
+    if (!td('enText').trim()) {
+      toast('Enter an English Description')
+      return
+    }
+    setLangRows((prev) => [...prev, { en: td('enText'), ar: td('arText') }])
+    setTxnDraft({})
+  }
+
+  function saveControlPanel() {
+    toast('Settings saved', 'success')
+  }
+
+  function savePassword() {
+    if (!ef('pcLogin').trim()) {
+      toast('Enter a Login Name')
+      return
+    }
+    if (!ef('pcNewPassword').trim() || ef('pcNewPassword') !== ef('pcConfirmPassword')) {
+      toast('New Password and Confirm Password must match')
+      return
+    }
+    toast('Password changed', 'success')
+    closeEntryModal()
+  }
+
+  function saveMultiSupplierSetup() {
+    toast('Multi supplier setup saved', 'success')
+    closeEntryModal()
+  }
+
+  function deliveryZeroClear() {
+    toast('Delivery zero clear — coming soon', 'info')
+  }
+
+  function salesVariationCorrection() {
+    toast('Sales variation correction — coming soon', 'info')
+  }
+
+  // ── Cash In / Cash Out ─────────────────────────────────────────────────
+
+  async function loadCashRows(mode: 'in' | 'out') {
+    try {
+      const rows = await apiService.fetchCashInOut()
+      const wantType = mode === 'in' ? 'CASH_IN' : 'CASH_OUT'
+      setCashRows(
+        rows
+          .filter((r) => String(r.transactionType ?? r.TransactionType ?? '').toUpperCase() === wantType)
+          .map((r) => ({
+            desc: String(r.remarks ?? r.Remarks ?? '').trim(),
+            amount: Number(r.amount ?? r.Amount) || 0,
+          })),
+      )
+    } catch {
+      setCashRows([])
+    }
+  }
+
+  function openCashMode(mode: 'in' | 'out') {
+    setCashMode(mode)
+    setEf('cashDesc', '')
+    setEf('cashAmount', '')
+    void loadCashRows(mode)
+  }
+
+  function onCashKey(k: string) {
+    if (k === 'C') {
+      setEf('cashAmount', ef('cashAmount').slice(0, -1))
+      return
+    }
+    if (k === '.' && ef('cashAmount').includes('.')) return
+    setEf('cashAmount', (ef('cashAmount') + k).slice(0, 10))
+  }
+
+  async function addCashMovement() {
+    if (cashMode === 'pick') return
+    const amt = Number(ef('cashAmount'))
+    if (!(amt > 0)) {
+      toast('Enter an Amount')
+      return
+    }
+    if (!ef('cashDesc').trim()) {
+      toast('Enter a Description')
+      return
+    }
+    try {
+      await apiService.addCashInOut({
+        transactionType: cashMode === 'in' ? 'CASH_IN' : 'CASH_OUT',
+        amount: amt,
+        remarks: ef('cashDesc').trim(),
+      })
+      toast(`Cash ${cashMode === 'in' ? 'In' : 'Out'} saved`, 'success')
+      setEf('cashDesc', '')
+      setEf('cashAmount', '')
+      void loadCashRows(cashMode)
+    } catch {
+      toast('Could not save the cash entry')
+    }
+  }
+
+  async function loadGroupOptions(kind: 'group' | 'subgroup') {
+    setGroupOptionsLoading(kind)
     try {
       if (kind === 'group') {
         const rows = await apiService.fetchGroups()
-        const q = search.trim().toLowerCase()
-        setGroupPickerRows(
+        setGroupOptions(
           rows
             .map((g) => ({
               id: num(g.groupId ?? g.GroupID),
               name: String(g.groupDescription ?? g.GroupDescription ?? g.groupName ?? '').trim(),
               code: String(g.groupCode ?? g.GroupCode ?? '').trim(),
             }))
-            .filter((g) => g.id > 0 && g.name)
-            .filter((g) => !q || g.name.toLowerCase().includes(q) || g.code.toLowerCase().includes(q)),
+            .filter((g) => g.id > 0 && g.name),
         )
       } else {
         const rows = await apiService.fetchSubGroups({ groupId: productForm.groupId || undefined })
-        const q = search.trim().toLowerCase()
-        setGroupPickerRows(
+        setSubgroupOptions(
           rows
-            .map((s) => ({
-              id: num(s.subGroupId ?? s.SubGroupID),
-              name: String(s.subGroupDescription ?? s.SubGroupDescription ?? '').trim(),
-              code: String(s.subGroupCode ?? s.SubGroupCode ?? '').trim(),
+            .map((sg) => ({
+              id: num(sg.subGroupId ?? sg.SubGroupID),
+              name: String(sg.subGroupDescription ?? sg.SubGroupDescription ?? '').trim(),
+              code: String(sg.subGroupCode ?? sg.SubGroupCode ?? '').trim(),
             }))
-            .filter((s) => s.id > 0 && s.name)
-            .filter((s) => !q || s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)),
+            .filter((sg) => sg.id > 0 && sg.name),
         )
       }
     } catch {
-      setGroupPickerRows([])
+      if (kind === 'group') setGroupOptions([])
+      else setSubgroupOptions([])
     } finally {
-      setGroupPickerState('idle')
+      setGroupOptionsLoading(null)
     }
-  }
-
-  function openGroupPicker(kind: 'group' | 'subgroup') {
-    if (kind === 'subgroup' && !productForm.groupId) {
-      toast('Pick a Group first')
-      return
-    }
-    setGroupPickerFor(kind)
-    setGroupPickerSearch('')
-    void loadGroupPickerRows(kind, '')
-  }
-
-  function pickGroupPickerRow(row: { id: number; name: string }) {
-    if (groupPickerFor === 'group') {
-      setProductForm((f) => ({ ...f, groupId: row.id, groupName: row.name, subgroupId: 0, subgroupName: '' }))
-    } else if (groupPickerFor === 'subgroup') {
-      setProductForm((f) => ({ ...f, subgroupId: row.id, subgroupName: row.name }))
-    }
-    setGroupPickerFor(null)
   }
 
   function withVat(base: string, vatPct: string): string {
@@ -2620,6 +3969,182 @@ export default function PosMainPage() {
     })
   }
 
+  /** Opens whatever a side-menu leaf points at. Shared by the menu itself
+   * and the side-menu global search, so both behave identically. */
+  function onNavPick(label: string, path: string) {
+    if (label === 'Product Entry') {
+      openNewProductModal()
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Credit payment Receipt') {
+      setReceiptOpen(true)
+      void loadReceiptCustomers('')
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Counter Close') {
+      setCounterCloseOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Sales Viewer') {
+      setSalesViewerOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'CounterClose -Admin') {
+      setCounterCloseOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Cashier Chgange') {
+      setConfirmAlert({
+        title: 'Change Cashier',
+        message: 'Take the counter reading before changing the cashier.',
+        mode: 'ok',
+        confirmLabel: 'Got it',
+      })
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Clear KOT') {
+      setConfirmAlert({
+        title: 'Clear all KOTs?',
+        message: 'Every open KOT will be cancelled. This action cannot be undone.',
+        mode: 'yesno',
+        tone: 'danger',
+        confirmLabel: 'Clear KOTs',
+        onYes: () => toast('All KOTs cancelled', 'success'),
+      })
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'ShutDown') {
+      setConfirmAlert({
+        title: 'Shut down the system?',
+        message: 'The POS will close. Make sure all open bills are settled first.',
+        mode: 'yesno',
+        tone: 'danger',
+        confirmLabel: 'Shut Down',
+        onYes: () => toast('Shutdown — not wired up in this build', 'info'),
+      })
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'KDS Refresh') {
+      toast('KDS refreshed', 'success')
+      setSideNavHidden(true)
+      return
+    }
+    if (label === 'Disable VAT') {
+      setConfirmAlert({
+        title: 'Disable VAT?',
+        message: 'VAT will no longer be applied to new bills.',
+        mode: 'yesno',
+        confirmLabel: 'Disable VAT',
+        onYes: () => toast('VAT disabled', 'success'),
+      })
+      setSideNavHidden(true)
+      return
+    }
+    const ambiguous = AMBIGUOUS_LABELS.has(label)
+      ? AMBIGUOUS_LABEL_ROUTES.find((r) => r.label === label && path.includes(r.pathIncludes))
+      : undefined
+    const entryKey = ambiguous?.key ?? LABEL_TO_ENTRY[label]
+    if (entryKey) {
+      openEntryModal(entryKey)
+      return
+    }
+    toast(`${label} — coming soon`, 'info')
+  }
+
+  /** Everything the side-menu search can find: every menu screen (with its
+   * menu path), the main quick actions, products, categories and areas. */
+  function buildSearchItems(): GlobalSearchItem[] {
+    const items: GlobalSearchItem[] = []
+
+    const walk = (entries: readonly NavMenuEntry[], path: string, trail: string[], icon: GlobalSearchItem['icon']) => {
+      for (const entry of entries) {
+        const label = typeof entry === 'string' ? entry : entry.label
+        const itemPath = `${path}/${label}`
+        if (typeof entry !== 'string' && 'children' in entry) {
+          walk(entry.children, itemPath, [...trail, label], icon)
+          continue
+        }
+        items.push({
+          id: `menu:${itemPath}`,
+          group: 'Menu',
+          label,
+          hint: trail.join(' › '),
+          icon,
+          onSelect: () => onNavPick(label, itemPath),
+        })
+      }
+    }
+    for (const top of NAV) {
+      const menu = NAV_MENUS[top]
+      if (menu) walk(menu, top, [top], NAV_ICON[top])
+    }
+
+    const actions: [string, GlobalSearchItem['icon'], () => void, string?][] = [
+      ['Area Change', MapPinned, () => setAreaOpen(true), 'table dine in takeaway delivery'],
+      ['Receipt', Receipt, () => {
+        setReceiptOpen(true)
+        void loadReceiptCustomers('')
+      }, 'credit payment'],
+      ['Order List', ClipboardList, onOrderListClick, 'kot open orders'],
+      ['Select Customer', Users, () => {
+        setCustomerOpen(true)
+        void loadCustomers()
+      }, 'customer client guest'],
+      ['Add New Item', Plus, openNewProductModal, 'product create'],
+    ]
+    for (const [label, icon, run, keywords] of actions) {
+      items.push({ id: `action:${label}`, group: 'Actions', label, icon, keywords, onSelect: run })
+    }
+
+    const groupName = new Map(groups.map((g) => [g.id, g.name]))
+    for (const p of allProducts) {
+      items.push({
+        id: `product:${p.id}`,
+        group: 'Products',
+        label: p.name,
+        hint: [`AED ${money(p.price)}`, groupName.get(p.groupId)].filter(Boolean).join(' · '),
+        keywords: p.sub,
+        icon: Package,
+        onSelect: () => onItemClick(p),
+      })
+    }
+
+    for (const g of groups) {
+      items.push({
+        id: `group:${g.id}`,
+        group: 'Categories',
+        label: g.name,
+        hint: 'Show items',
+        icon: categoryIcon(g.name),
+        onSelect: () => {
+          setQuery('')
+          onGroupClick(g.id)
+        },
+      })
+    }
+
+    for (const a of areas) {
+      items.push({
+        id: `area:${a.id}`,
+        group: 'Areas',
+        label: a.name,
+        hint: a.supplyType || undefined,
+        icon: MapPinned,
+        onSelect: () => areaButtonClick(a),
+      })
+    }
+
+    return items
+  }
+
   /** One sidebar nav item — icon + label, expanding its submenu inline
    * (indented underneath, accordion-style) rather than a flyout. */
   function renderNavItem(item: (typeof NAV)[number]) {
@@ -2629,7 +4154,7 @@ export default function PosMainPage() {
     const button = (
       <button
         type="button"
-        className={`pd-side-nav-btn${item === nav ? ' is-active' : ''}`}
+        className={`pd-side-nav-btn${item === nav ? ' is-active' : ''}${isOpen && item !== nav ? ' is-open' : ''}`}
         onClick={() => {
           if (menu) setOpenNavMenu((open) => (open === item ? null : item))
           setNav(item)
@@ -2658,14 +4183,693 @@ export default function PosMainPage() {
               depth={0}
               expanded={expandedSubPaths}
               onToggle={toggleSubPath}
-              onPick={(label) => {
-                toast(`${label} — coming soon`, 'info')
-              }}
+              onPick={onNavPick}
             />
           </div>
         ) : null}
       </div>
     )
+  }
+
+  /** Shared barcode-add-row + running grid + remarks + total, reused as-is
+   * by Product Request / Product Receipt / Product Transfer — the three
+   * screens only differ in the header fields rendered above this block. */
+  function renderTxnItemBlock() {
+    return (
+      <>
+        <div className="pd-recipe-line-row">
+          <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
+          <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
+          <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', e.target.value.replace(/[^\d.]/g, ''))} />
+          <input placeholder="Unit Cost" value={td('unitCost')} onChange={(e) => setTd('unitCost', e.target.value.replace(/[^\d.]/g, ''))} />
+          <input placeholder="Unit Price" value={td('unitPrice')} onChange={(e) => setTd('unitPrice', e.target.value.replace(/[^\d.]/g, ''))} />
+          <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
+            Add
+          </button>
+        </div>
+        <div className="pd-grid-wrap">
+          <table className="pd-grid">
+            <thead>
+              <tr>
+                <th>Barcode</th>
+                <th>Short Description</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>Unit Price</th>
+                <th>Line Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {txnLines.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No lines added</td>
+                </tr>
+              ) : (
+                txnLines.map((l, i) => (
+                  <tr
+                    key={i}
+                    className={txnSelected === i ? 'is-selected' : undefined}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setTxnSelected(i)}
+                  >
+                    <td>{l.barcode}</td>
+                    <td>{l.shortDesc}</td>
+                    <td>{l.qty}</td>
+                    <td>{l.unitCost}</td>
+                    <td>{l.unitPrice}</td>
+                    <td>AED {money(txnLineTotal(l))}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="pd-form-row">
+          <label>Remarks</label>
+          <textarea rows={2} value={ef('txnRemarks')} onChange={(e) => setEf('txnRemarks', e.target.value)} />
+        </div>
+        <div className="pd-form-row">
+          <label>Total Amount</label>
+          <div className="pd-form-computed">AED {money(txnGrandTotal())}</div>
+        </div>
+      </>
+    )
+  }
+
+  /** Shared From/To + Display header + empty-state grid, reused as-is by
+   * Advance Viewer / ReceiptList / Mess Bill Viewer — all three are report
+   * viewers with the same shape and only differ in their grid columns. */
+  function renderDisplayListBody(columns: string[]) {
+    return (
+      <>
+        <div className="pd-txn-search-row">
+          <div className="pd-form-row">
+            <label>From</label>
+            <DatePicker value={ef('vFrom')} onChange={(v) => setEf('vFrom', v)} max={ef('vTo')} />
+          </div>
+          <div className="pd-form-row">
+            <label>To</label>
+            <DatePicker value={ef('vTo')} onChange={(v) => setEf('vTo', v)} min={ef('vFrom')} />
+          </div>
+          <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={displayCreditList}>
+            Display
+          </button>
+        </div>
+        <div className="pd-grid-wrap">
+          <table className="pd-grid">
+            <thead>
+              <tr>
+                {columns.map((c) => (
+                  <th key={c}>{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colSpan={columns.length}>No records found</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </>
+    )
+  }
+
+  /** Footer buttons for the generic "Creation" master-entry modal — varies
+   * per screen (New/Save/Close, Save/Close, Confirm/Close, etc.) to match
+   * what each legacy screen actually offered. */
+  function renderEntryFooter() {
+    if (!entryModal) return null
+    switch (entryModal) {
+      case 'area':
+        return (
+          <div className="pd-mod-foot-center">
+            <button type="button" className="pd-mod-foot-btn is-ok" disabled={entrySaving} onClick={() => void saveAreaEntry()}>
+              {entrySaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )
+      case 'table':
+        return (
+          <div className="pd-mod-foot-center">
+            <button type="button" className="pd-mod-foot-btn is-ok" disabled={entrySaving} onClick={() => void saveTableEntry()}>
+              {entrySaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )
+      case 'mainGroup':
+        return (
+          <div className="pd-mod-foot-center">
+            <button type="button" className="pd-mod-foot-btn is-ok" disabled={entrySaving} onClick={() => void saveMainGroupEntry()}>
+              {entrySaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )
+      case 'group':
+        return (
+          <div className="pd-mod-foot-center">
+            <button type="button" className="pd-mod-foot-btn is-ok" disabled={entrySaving} onClick={() => void saveGroupEntry()}>
+              {entrySaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )
+      case 'subGroup':
+        return (
+          <div className="pd-mod-foot-center">
+            <button type="button" className="pd-mod-foot-btn is-ok" disabled={entrySaving} onClick={() => void saveSubGroupEntry()}>
+              {entrySaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )
+      case 'kitchenMessage':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" disabled={kitchenMsgSelected == null} onClick={deleteKitchenMessage}>
+              Delete
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveKitchenMessage}>
+              Save
+            </button>
+          </>
+        )
+      case 'combo':
+        return (
+          <>
+            <button
+              type="button"
+              className="pd-mod-foot-btn"
+              disabled={comboGroups.length === 0}
+              onClick={() => {
+                setComboGroups([])
+                setComboGroupInput('')
+              }}
+            >
+              Remove from list
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveCombo}>
+              Save
+            </button>
+          </>
+        )
+      case 'recipe':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveRecipe}>
+              Save
+            </button>
+          </>
+        )
+      case 'barcode':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={printBarcode}>
+              Print
+            </button>
+          </>
+        )
+      case 'notes':
+        return null
+      case 'onlineSource':
+        return (
+          <div className="pd-mod-foot-center">
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveOnlineSource}>
+              Save
+            </button>
+          </div>
+        )
+      case 'paymentMode':
+        return (
+          <div className="pd-mod-foot-center">
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={savePaymentMode}>
+              Save
+            </button>
+          </div>
+        )
+      case 'messMaster':
+        return (
+          <>
+            <button
+              type="button"
+              className="pd-mod-foot-btn"
+              disabled={messLines.length === 0}
+              onClick={() => {
+                setMessLines([])
+                setEf('messAddLine', '')
+              }}
+            >
+              Remove from list
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveMessMaster}>
+              Save
+            </button>
+          </>
+        )
+      case 'addOn':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => setEntryForm({})}>
+              Add New
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveAddOn}>
+              Save
+            </button>
+          </>
+        )
+      case 'booking':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={confirmBooking}>
+              Confirm
+            </button>
+          </>
+        )
+      case 'bookingList':
+        return null
+      case 'floorDesign':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" disabled={floorBusy} onClick={() => void saveFloorDesignEntry()}>
+              {floorBusy ? 'Saving…' : 'Save'}
+            </button>
+          </>
+        )
+      case 'stockAdjustment':
+      case 'openingStock':
+      case 'damageEntry':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={deleteSelectedTxnLine}>
+              Delete Raw
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn(ENTRY_META[entryModal].label)}>
+              Save
+            </button>
+          </>
+        )
+      case 'productionEntry':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn('Production Entry')}>
+              Save
+            </button>
+          </>
+        )
+      case 'stockReport':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => toast('Report shown below (mock data)', 'success')}>
+              Show Report
+            </button>
+          </>
+        )
+      case 'movementReport':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => toast('Report shown below (mock data)', 'success')}>
+              Show
+            </button>
+          </>
+        )
+      case 'productRequest':
+      case 'productReceipt':
+      case 'productTransfer':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={printTxn}>
+              Print
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn(ENTRY_META[entryModal].label)}>
+              Save
+            </button>
+          </>
+        )
+      case 'stockAdjustList':
+      case 'transferList':
+      case 'receiptList':
+      case 'damageList':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={selectTxnRow}>
+              Select
+            </button>
+          </>
+        )
+      case 'supplierList':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Pick a supplier row first')}>
+              Delete
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Add supplier — coming soon', 'info')}>
+              New
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={selectTxnRow}>
+              Select
+            </button>
+          </>
+        )
+      case 'purchaseEntry':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Switched to Edit mode', 'info')}>
+              EDIT
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={postTxn}>
+              Post
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Posted to temp account', 'info')}>
+              Acc Post Temp
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={printTxn}>
+              Print
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn('Purchase Entry')}>
+              Save
+            </button>
+          </>
+        )
+      case 'purchaseReturn':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={postTxn}>
+              Post
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Posted to temp account', 'info')}>
+              Acc Post Temp
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={printTxn}>
+              Print
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn('Purchase Return')}>
+              Save
+            </button>
+          </>
+        )
+      case 'purchaseList':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Pick a purchase row first')}>
+              Delete
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Opens a blank Purchase Entry — use the side menu', 'info')}>
+              New
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={selectTxnRow}>
+              Select
+            </button>
+          </>
+        )
+      case 'purchaseReturnList':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Pick a return row first')}>
+              Delete
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={selectTxnRow}>
+              Select
+            </button>
+          </>
+        )
+      case 'advancePayment':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-close" onClick={closeEntryModal}>
+              Cancel
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveAdvancePayment}>
+              Save
+            </button>
+          </>
+        )
+      case 'paymentList':
+      case 'osBalanceList':
+      case 'advanceViewer':
+      case 'creditReceiptList':
+      case 'messBillViewer':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
+              Print
+            </button>
+            <span className="pd-mod-foot-spacer" />
+          </>
+        )
+      case 'billReprint':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
+              1 Print
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Other Bill — coming soon', 'info')}>
+              2 Other Bill
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('KOT Print — coming soon', 'info')}>
+              3 KOT Print
+            </button>
+          </>
+        )
+      case 'counterCloseReportsRP':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
+              Print
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={selectTxnRow}>
+              Select
+            </button>
+            <span className="pd-mod-foot-spacer" />
+          </>
+        )
+      case 'delBoyCommission':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('All groups checked', 'success')}>
+              Check All
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
+              Print
+            </button>
+          </>
+        )
+      case 'areawiseA4':
+      case 'waiterwise':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Report shown below (mock data)', 'success')}>
+              Show
+            </button>
+            <span className="pd-mod-foot-spacer" />
+          </>
+        )
+      case 'areaWiseReportRP':
+      case 'groupWiseRP':
+      case 'itemWiseRP':
+      case 'itemVoidReportRP':
+      case 'cancelBillDetails':
+      case 'cancelBillSummary':
+      case 'salesBillWiseRP':
+      case 'dayWiseRP':
+      case 'pendingOrderList':
+      case 'counterWiseA4':
+      case 'counterWiseTimewise':
+      case 'itemwiseSummary':
+      case 'itemwiseDetails':
+      case 'salesmanWise':
+      case 'customerAnalysisDetailed':
+      case 'customerAnalysisSummary':
+      case 'counterCloseDetailsA4':
+      case 'incomeExpense':
+      case 'productionReport':
+      case 'itemVoidA4':
+      case 'graphReport':
+      case 'itemwiseViewer':
+      case 'productMovementFast':
+      case 'productMovementSlow':
+      case 'dayCloseReport':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
+              Print
+            </button>
+            <span className="pd-mod-foot-spacer" />
+          </>
+        )
+      case 'incomeExpenseEntry':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={deleteSelectedTxnLine}>
+              Delete Raw
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn('Income/Expense entry')}>
+              Save
+            </button>
+          </>
+        )
+      case 'discountEntry':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={deleteSelectedTxnLine}>
+              Delete Raw
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn('Discount')}>
+              Save
+            </button>
+          </>
+        )
+      case 'discountList':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={removeSelectedDiscount}>
+              Remove Discount
+            </button>
+            <span className="pd-mod-foot-spacer" />
+          </>
+        )
+      case 'changeSettlement':
+        return null
+      case 'vatActivation':
+        return null
+      case 'productListEdit':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={selectTxnRow}>
+              Select
+            </button>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn('Product list')}>
+              Save
+            </button>
+          </>
+        )
+      case 'changeDiscountPercent':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-close" onClick={closeEntryModal}>
+              Cancel
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveDiscountPercent}>
+              Save
+            </button>
+          </>
+        )
+      case 'eventLogs':
+        return null
+      case 'printerSetup':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => toast('Printer setup saved', 'success')}>
+              Save
+            </button>
+          </>
+        )
+      case 'userList':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={deleteSelectedUser}>
+              Delete
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn" onClick={closeEntryModal}>
+              Select
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Add user — coming soon', 'info')}>
+              New
+            </button>
+          </>
+        )
+      case 'activateAccessCard':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={activateSelectedCard}>
+              Activate
+            </button>
+            <button type="button" className="pd-mod-foot-btn is-close" onClick={clearAccessCard}>
+              Clear Card
+            </button>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Refreshed', 'success')}>
+              Refresh
+            </button>
+            <span className="pd-mod-foot-spacer" />
+          </>
+        )
+      case 'privilegeSetup':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={savePrivileges}>
+              Save
+            </button>
+          </>
+        )
+      case 'controlPanel':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('More Settings — coming soon', 'info')}>
+              More Settings
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveControlPanel}>
+              Save
+            </button>
+          </>
+        )
+      case 'passwordChange':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={savePassword}>
+              Save
+            </button>
+          </>
+        )
+      case 'langSetup':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => toast('Language settings saved', 'success')}>
+              Save
+            </button>
+          </>
+        )
+      case 'partyOrderList':
+        return null
+      case 'multiSupplierSetup':
+        return (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveMultiSupplierSetup}>
+              Save
+            </button>
+          </>
+        )
+      case 'vatCorrectionUtility':
+        return null
+      case 'cashInOut':
+        return cashMode === 'pick' ? (
+          <button type="button" className="pd-mod-foot-btn is-close pd-cash-cancel" onClick={closeEntryModal}>
+            Cancel
+          </button>
+        ) : (
+          <>
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void addCashMovement()}>
+              Save
+            </button>
+          </>
+        )
+      default:
+        return null
+    }
   }
 
   const emptyHint =
@@ -2682,18 +4886,18 @@ export default function PosMainPage() {
   return (
     <div className="pos-main">
       <header className="pd-header pd-header-slim">
-        <div className="pd-logo">
-          <img src="/logo-white.png" alt="Deyno" className="pd-logo-img" />
-          <span>PRO</span>
-        </div>
         <button
           type="button"
           className="pd-nav-toggle"
           title={sideNavHidden ? 'Show menu' : 'Hide menu'}
           onClick={() => setSideNavHidden((v) => !v)}
         >
-          {sideNavHidden ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          {sideNavHidden ? <MenuIcon size={18} /> : <X size={18} />}
         </button>
+        <div className="pd-logo">
+          <img src="/logo-white.png" alt="Deyno" className="pd-logo-img" />
+          <span>PRO</span>
+        </div>
         <div className="pd-header-right">
           <div className="pd-user">
             <strong>{waiter.toUpperCase()}</strong>
@@ -2717,8 +4921,36 @@ export default function PosMainPage() {
         {sideNavHidden ? null : (
           <>
             <div className="pd-side-nav-backdrop" onClick={() => setSideNavHidden(true)} />
-            <nav className="pd-side-nav">
-              {NAV.map((item) => renderNavItem(item))}
+            <nav className={`pd-side-nav${navSearching ? ' is-searching' : ''}`}>
+              <GlobalSearch
+                className="pd-side-search"
+                inputRef={navSearchRef}
+                items={buildSearchItems()}
+                placeholder="Search"
+                limits={{ Menu: 8, Products: 8 }}
+                onQueryChange={(q) => setNavSearching(Boolean(q.trim()))}
+                onPicked={() => {
+                  setNavSearching(false)
+                  setSideNavHidden(true)
+                }}
+              />
+              {navSearching ? null : NAV.map((item) => renderNavItem(item))}
+              {navSearching ? null : <div className="pd-side-spacer" aria-hidden />}
+              {navSearching ? null : (
+                <div className="pd-side-nav-wrap pd-side-logout-wrap">
+                  <button
+                    type="button"
+                    className="pd-side-nav-btn pd-side-logout"
+                    onClick={() => {
+                      clearStaffSession()
+                      navigate('/')
+                    }}
+                  >
+                    <LogOut size={18} strokeWidth={2} />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              )}
             </nav>
           </>
         )}
@@ -2730,37 +4962,43 @@ export default function PosMainPage() {
             <div className="pd-meta">
               <button
                 type="button"
-                className="pd-meta-btn"
+                className="pd-meta-btn is-table"
+                title={`Table ${tableName || (tableId > 0 ? String(tableId) : '—')}${chairNo > 0 ? ` / CH ${chairNo}` : ''}`}
                 onClick={() => {
                   if (currentArea) void areaClickToPopulationTable(currentArea)
                   else setAreaOpen(true)
                 }}
               >
                 <span className="pd-pill-icon"><TableGlyph size={10} /></span>
-                Table {tableName || (tableId > 0 ? String(tableId) : '—')}
-                {chairNo > 0 ? ` / CH ${chairNo}` : ''}
+                <span className="pd-meta-text">
+                  Table {tableName || (tableId > 0 ? String(tableId) : '—')}
+                  {chairNo > 0 ? ` / CH ${chairNo}` : ''}
+                </span>
                 <ChevronDown size={11} className="pd-pill-chevron" />
               </button>
               <button
                 type="button"
-                className="pd-meta-btn"
+                className="pd-meta-btn is-covers"
                 onClick={() => setCovers((n) => (n >= 12 ? 1 : n + 1))}
                 title="Number of persons"
               >
                 <span className="pd-pill-icon"><Users size={10} /></span>
-                {covers} {covers === 1 ? 'Cover' : 'Covers'}
+                <span className="pd-meta-text">
+                  {covers} {covers === 1 ? 'Cover' : 'Covers'}
+                </span>
                 <ChevronDown size={11} className="pd-pill-chevron" />
               </button>
               <button
                 type="button"
-                className="pd-meta-btn"
+                className="pd-meta-btn is-customer"
+                title={customerName || 'Cash Customer'}
                 onClick={() => {
                   setCustomerOpen(true)
                   void loadCustomers()
                 }}
               >
                 <span className="pd-pill-icon"><User size={10} /></span>
-                {customerName || 'Cash Customer'}
+                <span className="pd-meta-text">{customerName || 'Cash Customer'}</span>
                 <ChevronDown size={11} className="pd-pill-chevron" />
               </button>
             </div>
@@ -2970,11 +5208,39 @@ export default function PosMainPage() {
                   key={s.id}
                   type="button"
                   className={`pd-service-btn${service === s.id ? ' is-active' : ''}`}
-                  onClick={() => onServiceClick(s.id)}
+                  onClick={(e) => {
+                    if (s.id !== 'DELIVERY') {
+                      onServiceClick(s.id)
+                      return
+                    }
+                    // Second click of a double-click — the dblclick handler takes over.
+                    if (e.detail > 1) return
+                    // Delivery's customer picker would cover this button and swallow
+                    // the second click of a double-click, so open it after a short
+                    // pause that a double-click cancels.
+                    deliveryClick(undefined, false)
+                    if (deliveryPickerTimer.current) clearTimeout(deliveryPickerTimer.current)
+                    deliveryPickerTimer.current = setTimeout(() => {
+                      deliveryPickerTimer.current = null
+                      setCustomerOpen(true)
+                      void loadCustomers()
+                    }, 280)
+                  }}
                   onDoubleClick={() => {
                     if (s.id === 'TAKEAWAY') openOrderListFor('TAKEAWAY')
+                    if (s.id === 'DELIVERY') {
+                      if (deliveryPickerTimer.current) clearTimeout(deliveryPickerTimer.current)
+                      deliveryPickerTimer.current = null
+                      openOrderListFor('DELIVERY')
+                    }
                   }}
-                  title={s.id === 'TAKEAWAY' ? 'Double-click for the Takeaway list' : undefined}
+                  title={
+                    s.id === 'TAKEAWAY'
+                      ? 'Double-click for the Takeaway list'
+                      : s.id === 'DELIVERY'
+                        ? 'Double-click for the Delivery list'
+                        : undefined
+                  }
                 >
                   <BtnIcon icon={s.icon} />
                   <span className="pd-service-label">{s.id}</span>
@@ -3002,25 +5268,13 @@ export default function PosMainPage() {
               <span className="pd-crumb-count">{products.length} items</span>
             </div>
           ) : null}
-          <label className="pd-search">
-            <Search size={14} color="var(--text-3)" />
-            <input
-              ref={searchInputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search item / barcode"
-            />
-            {query ? (
-              <button
-                type="button"
-                className="pd-search-clear"
-                aria-label="Clear search"
-                onClick={() => setQuery('')}
-              >
-                <X size={12} />
-              </button>
-            ) : null}
-          </label>
+          <SearchBar
+            ref={searchInputRef}
+            size="sm"
+            value={query}
+            onValueChange={setQuery}
+            placeholder="Search item / barcode"
+          />
           <button
             type="button"
             className="pd-barcode-btn"
@@ -3308,20 +5562,21 @@ export default function PosMainPage() {
                   <div className="pd-more-wrap">
                     <button
                       type="button"
-                      className={`pd-act pd-more-btn${moreActionsOpen ? ' is-active' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setMoreActionsOpen((v) => !v)
-                      }}
+                      className={`pd-act pd-more-btn${moreActionsOpen && !moreClosing ? ' is-active' : ''}`}
+                      onClick={() => (moreActionsOpen ? closeMoreActions() : openMoreActions())}
                     >
                       <BtnIcon icon={MoreHorizontal} /> <span>More</span>
                     </button>
 
-                    {moreActionsOpen ? (
-                      // No stopPropagation here — a click on any item (or the
-                      // menu background) should bubble to the window listener
-                      // below and close the menu, same as an outside click.
-                      <div className="pd-more-menu">
+                    {moreActionsOpen ? createPortal(
+                      // Centered modal. Any click inside — an item or the
+                      // backdrop — closes it with the zoom-out animation.
+                      <div
+                        className={`pd-more-overlay${moreClosing ? ' is-closing' : ''}`}
+                        role="presentation"
+                        onClick={closeMoreActions}
+                      >
+                      <div className="pd-more-menu" role="dialog" aria-modal="true" aria-label="More actions">
                         <button type="button" className="pd-more-item">
                           <BtnIcon icon={Repeat} /> <span>KOT Reprint</span>
                         </button>
@@ -3347,9 +5602,54 @@ export default function PosMainPage() {
                           <BtnIcon icon={MinusCircle} /> <span>Item Cancel</span>
                         </button>
                       </div>
+                      </div>,
+                      document.body,
                     ) : null}
                   </div>
                 </div>
+
+            {/* Corner strip — the 4 buttons used constantly mid-service,
+               sharing the quick-actions box so they never hide behind "More". */}
+            <div className="pd-corner-actions">
+              <button
+                type="button"
+                className="pd-corner-btn is-primary"
+                onClick={() => void onSaveKot()}
+                disabled={savingKot}
+              >
+                <BtnIcon icon={Save} />
+                <span className="pd-corner-text">
+                  <span>{savingKot ? 'Saving…' : 'Save KOT'}</span>
+                  <small>Send to kitchen</small>
+                </span>
+              </button>
+              <button type="button" className="pd-corner-btn">
+                <BtnIcon icon={Percent} />
+                <span className="pd-corner-text">
+                  <span>Discount</span>
+                  <small>Bill or item</small>
+                </span>
+              </button>
+              <button type="button" className="pd-corner-btn is-danger">
+                <BtnIcon icon={Ban} />
+                <span className="pd-corner-text">
+                  <span>Cancel Bill</span>
+                  <small>Void this order</small>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="pd-corner-btn"
+                onClick={() => void onSaveKot()}
+                disabled={savingKot}
+              >
+                <BtnIcon icon={Banknote} />
+                <span className="pd-corner-text">
+                  <span>Quick Cash</span>
+                  <small>Settle in cash</small>
+                </span>
+              </button>
+            </div>
               </div>
             </div>
 
@@ -3362,37 +5662,6 @@ export default function PosMainPage() {
               <BtnIcon icon={CreditCard} size={16} />
               PAY <em>AED {money(summary.total)}</em>
             </button>
-            </div>
-
-            {/* Corner strip — the 4 buttons used constantly mid-service,
-               pinned as a full-height column so they never hide behind "More". */}
-            <div className="pd-corner-actions">
-              <button
-                type="button"
-                className="pd-corner-btn"
-                onClick={() => void onSaveKot()}
-                disabled={savingKot}
-              >
-                <BtnIcon icon={Save} />
-                <span>{savingKot ? 'Saving…' : 'Save KOT'}</span>
-              </button>
-              <button
-                type="button"
-                className="pd-corner-btn"
-                onClick={() => void onSaveKot()}
-                disabled={savingKot}
-              >
-                <BtnIcon icon={Banknote} />
-                <span>Quick Cash</span>
-              </button>
-              <button type="button" className="pd-corner-btn">
-                <BtnIcon icon={Percent} />
-                <span>Discount</span>
-              </button>
-              <button type="button" className="pd-corner-btn is-danger">
-                <BtnIcon icon={Ban} />
-                <span>Cancel Bill</span>
-              </button>
             </div>
           </div>
         </div>
@@ -3761,9 +6030,6 @@ export default function PosMainPage() {
                 }}
               >
                 Ok
-              </button>
-              <button type="button" className="pd-mod-foot-btn is-close" onClick={() => setCommentsOpen(false)}>
-                Close
               </button>
             </div>
           </div>
@@ -4214,30 +6480,14 @@ export default function PosMainPage() {
               </button>
             </div>
             <div className="pd-ol-body">
-              <label className="pd-search">
-                <Search size={14} color="var(--text-3)" />
-                <input
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void loadCustomers(e.currentTarget.value)
-                  }}
-                  placeholder="Search name / mobile"
-                />
-                {customerSearch ? (
-                  <button
-                    type="button"
-                    className="pd-search-clear"
-                    aria-label="Clear search"
-                    onClick={() => {
-                      setCustomerSearch('')
-                      void loadCustomers('')
-                    }}
-                  >
-                    <X size={12} />
-                  </button>
-                ) : null}
-              </label>
+              <SearchBar
+                size="sm"
+                value={customerSearch}
+                onValueChange={setCustomerSearch}
+                onSubmit={(v) => void loadCustomers(v)}
+                onClear={() => void loadCustomers('')}
+                placeholder="Search name / mobile"
+              />
               <div className="pd-ol-list">
                 {customerState === 'loading' ? <p className="pd-cat-msg">Loading…</p> : null}
                 {customerRows.map((c) => (
@@ -4286,30 +6536,14 @@ export default function PosMainPage() {
             </div>
             <div className="pd-receipt-body">
               <div className="pd-receipt-list-col">
-                <label className="pd-search">
-                  <Search size={14} color="var(--text-3)" />
-                  <input
-                    value={receiptSearch}
-                    onChange={(e) => setReceiptSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void loadReceiptCustomers(e.currentTarget.value)
-                    }}
-                    placeholder="Search customer / code"
-                  />
-                  {receiptSearch ? (
-                    <button
-                      type="button"
-                      className="pd-search-clear"
-                      aria-label="Clear search"
-                      onClick={() => {
-                        setReceiptSearch('')
-                        void loadReceiptCustomers('')
-                      }}
-                    >
-                      <X size={12} />
-                    </button>
-                  ) : null}
-                </label>
+                <SearchBar
+                  size="sm"
+                  value={receiptSearch}
+                  onValueChange={setReceiptSearch}
+                  onSubmit={(v) => void loadReceiptCustomers(v)}
+                  onClear={() => void loadReceiptCustomers('')}
+                  placeholder="Search customer / code"
+                />
                 <div className="pd-ol-list">
                   {receiptCustomersState === 'loading' ? <p className="pd-cat-msg">Loading…</p> : null}
                   {receiptCustomersState === 'idle' && receiptCustomers.length === 0 ? (
@@ -4396,10 +6630,78 @@ export default function PosMainPage() {
                       >
                         Receipt Summary
                       </button>
+                      <button
+                        type="button"
+                        className="pd-mod-foot-btn"
+                        onClick={() => toast('Receipt Details — coming soon', 'info')}
+                      >
+                        Receipt Details
+                      </button>
                     </div>
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {salesViewerOpen ? <SalesViewerDialog areas={areas} onClose={() => setSalesViewerOpen(false)} /> : null}
+
+      {counterCloseOpen ? <CounterCloseAllDialog onClose={() => setCounterCloseOpen(false)} /> : null}
+
+      {confirmAlert ? (
+        <div
+          className="pd-alert-overlay"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfirmAlert(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setConfirmAlert(null)
+          }}
+        >
+          <div
+            className={`pd-alert-box${confirmAlert.tone === 'danger' ? ' is-danger' : ''}`}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="pd-alert-title"
+            aria-describedby="pd-alert-msg"
+          >
+            <button type="button" className="pd-alert-x" onClick={() => setConfirmAlert(null)} aria-label="Close">
+              <X size={16} />
+            </button>
+            <div className="pd-alert-body">
+              <span className="pd-alert-icon" aria-hidden="true">
+                {confirmAlert.tone === 'danger' ? <AlertTriangle size={22} /> : <Info size={22} />}
+              </span>
+              <div className="pd-alert-text">
+                <h2 id="pd-alert-title" className="pd-alert-title">{confirmAlert.title}</h2>
+                <p id="pd-alert-msg" className="pd-alert-msg">{confirmAlert.message}</p>
+              </div>
+            </div>
+            <div className="pd-alert-actions">
+              {confirmAlert.mode === 'yesno' ? (
+                <button
+                  type="button"
+                  className="pd-alert-btn"
+                  autoFocus={confirmAlert.tone === 'danger'}
+                  onClick={() => setConfirmAlert(null)}
+                >
+                  Cancel
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="pd-alert-btn is-primary"
+                autoFocus={confirmAlert.tone !== 'danger'}
+                onClick={() => {
+                  confirmAlert.onYes?.()
+                  setConfirmAlert(null)
+                }}
+              >
+                {confirmAlert.confirmLabel ?? (confirmAlert.mode === 'ok' ? 'OK' : 'Confirm')}
+              </button>
             </div>
           </div>
         </div>
@@ -4448,34 +6750,83 @@ export default function PosMainPage() {
                 <label>Description</label>
                 <input
                   value={productForm.description}
-                  onChange={(e) => setProductForm((f) => ({ ...f, description: e.target.value }))}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setProductForm((f) => ({ ...f, description: value }))
+                    const key = 'productDescriptionArabic'
+                    if (arabicAutoTimers.current[key]) clearTimeout(arabicAutoTimers.current[key])
+                    const trimmed = value.trim()
+                    if (!trimmed) return
+                    arabicAutoTimers.current[key] = setTimeout(() => {
+                      translateToArabic(trimmed)
+                        .then((translated) => {
+                          if (!translated) return
+                          setProductForm((prev) => {
+                            if (prev.arabicDescription && prev.arabicDescription !== arabicAutoLast.current[key]) return prev
+                            arabicAutoLast.current[key] = translated
+                            return { ...prev, arabicDescription: translated }
+                          })
+                        })
+                        .catch(notifyTranslateDown)
+                    }, 400)
+                  }}
                   placeholder="Item name"
                 />
               </div>
 
               <div className="pd-form-row">
                 <label>Arabic Description</label>
-                <input
-                  dir="rtl"
+                <ArabicInput
                   value={productForm.arabicDescription}
-                  onChange={(e) => setProductForm((f) => ({ ...f, arabicDescription: e.target.value }))}
+                  onValueChange={(v) => setProductForm((f) => ({ ...f, arabicDescription: v }))}
+                  source={productForm.description}
+                  onTranslateError={notifyTranslateDown}
                 />
               </div>
 
               <div className="pd-form-grid-2">
                 <div className="pd-form-row">
                   <label>Group</label>
-                  <button type="button" className="pd-form-picker" onClick={() => openGroupPicker('group')}>
-                    <span>{productForm.groupName || 'Select group'}</span>
-                    <Search size={13} />
-                  </button>
+                  <SearchSelect
+                    id="pd-product-group"
+                    value={productForm.groupId || null}
+                    valueLabel={productForm.groupName}
+                    options={groupOptions}
+                    loading={groupOptionsLoading === 'group'}
+                    onOpen={() => void loadGroupOptions('group')}
+                    onChange={(o) => {
+                      if (o.id === productForm.groupId) return
+                      setSubgroupOptions([])
+                      setProductForm((f) => ({
+                        ...f,
+                        groupId: Number(o.id),
+                        groupName: o.name,
+                        subgroupId: 0,
+                        subgroupName: '',
+                      }))
+                    }}
+                    placeholder="Select group"
+                    searchPlaceholder="Search group"
+                  />
                 </div>
                 <div className="pd-form-row">
                   <label>SubGroup</label>
-                  <button type="button" className="pd-form-picker" onClick={() => openGroupPicker('subgroup')}>
-                    <span>{productForm.subgroupName || 'Select subgroup'}</span>
-                    <Search size={13} />
-                  </button>
+                  <SearchSelect
+                    id="pd-product-subgroup"
+                    value={productForm.subgroupId || null}
+                    valueLabel={productForm.subgroupName}
+                    options={subgroupOptions}
+                    loading={groupOptionsLoading === 'subgroup'}
+                    onOpen={() => void loadGroupOptions('subgroup')}
+                    onChange={(o) =>
+                      setProductForm((f) => ({ ...f, subgroupId: Number(o.id), subgroupName: o.name }))
+                    }
+                    disabled={!productForm.groupId}
+                    disabledHint="Pick a group first"
+                    placeholder="Select subgroup"
+                    searchPlaceholder="Search subgroup"
+                    emptyText="No subgroups in this group"
+                  />
                 </div>
               </div>
 
@@ -4605,9 +6956,6 @@ export default function PosMainPage() {
             </div>
 
             <div className="pd-product-modal-foot">
-              <button type="button" className="pd-mod-foot-btn" onClick={() => setProductOpen(false)}>
-                Close
-              </button>
               <button
                 type="button"
                 className="pd-mod-foot-btn is-ok"
@@ -4621,69 +6969,3606 @@ export default function PosMainPage() {
         </div>
       ) : null}
 
-      {groupPickerFor ? (
+      {entryModal ? (
         <div
           className="pd-mod-overlay"
           role="presentation"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setGroupPickerFor(null)
+            if (e.target === e.currentTarget) closeEntryModal()
           }}
         >
-          <div className="pd-ol-dialog pd-ol-narrow" role="dialog" aria-modal="true">
+          <div
+            className={`pd-ol-dialog ${
+              (
+                [
+                  'recipe', 'addOn', 'floorDesign',
+                  'stockAdjustment', 'productionEntry', 'openingStock',
+                  'productRequest', 'productReceipt', 'productTransfer',
+                  'transferList', 'receiptList', 'supplierList',
+                  'purchaseEntry', 'purchaseList', 'purchaseReturn', 'purchaseReturnList',
+                  'movementReport', 'osBalanceList',
+                  'billReprint', 'counterCloseReportsRP', 'pendingOrderList',
+                  'itemwiseViewer', 'delBoyCommission',
+                  'incomeExpenseEntry', 'discountEntry', 'discountList',
+                  'productListEdit', 'eventLogs',
+                  'privilegeSetup', 'controlPanel', 'partyOrderList', 'printerSetup',
+                  'cashInOut',
+                ] as EntryKey[]
+              ).includes(entryModal)
+                ? 'pd-ol-wide'
+                : entryModal === 'damageEntry'
+                  ? 'pd-ol-damage'
+                : entryModal === 'table' || entryModal === 'combo' || entryModal === 'messMaster' || entryModal === 'bookingList'
+                  ? 'pd-ol-table'
+                  : (['area', 'onlineSource', 'advancePayment', 'booking'] as EntryKey[]).includes(entryModal)
+                  ? 'pd-ol-narrow'
+                  : ''
+            }${entryModal === 'booking' || entryModal === 'bookingList' ? ' pd-ol-booking' : ''}`}
+            role="dialog"
+            aria-modal="true"
+          >
             <div className="pd-mod-header">
               <div className="pd-mod-header-left">
                 <div className="pd-mod-header-icon">
-                  <Search size={15} color="#fff" />
+                  {(() => {
+                    const EntryIcon = ENTRY_META[entryModal].icon
+                    return <EntryIcon size={15} strokeWidth={2} />
+                  })()}
                 </div>
                 <div>
-                  <p className="pd-mod-kicker">Search</p>
-                  <h2 className="pd-mod-item-name">
-                    {groupPickerFor === 'group' ? 'Select Group' : 'Select SubGroup'}
-                  </h2>
+                  <p className="pd-mod-kicker">Creation</p>
+                  <h2 className="pd-mod-item-name">{ENTRY_META[entryModal].label}</h2>
                 </div>
               </div>
-              <button type="button" className="pd-mod-x" onClick={() => setGroupPickerFor(null)} aria-label="Close">
+              <button type="button" className="pd-mod-x" onClick={closeEntryModal} aria-label="Close">
                 <X size={13} />
               </button>
             </div>
+
             <div className="pd-ol-body">
-              <label className="pd-search">
-                <Search size={14} color="var(--text-3)" />
-                <input
-                  value={groupPickerSearch}
-                  onChange={(e) => setGroupPickerSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && groupPickerFor) void loadGroupPickerRows(groupPickerFor, e.currentTarget.value)
-                  }}
-                  placeholder="Search description / code"
+              {entryModal === 'area' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Area Name</label>
+                    <input
+                      value={ef('areaName')}
+                      onChange={(e) => setEfWithArabicAutoFill('areaName', 'areaNameArabic', e.target.value)}
+                      placeholder="e.g. DINE IN"
+                    />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Area Name Arabic</label>
+                    <ArabicInput value={ef('areaNameArabic')} onValueChange={(v) => setEf('areaNameArabic', v)} source={ef('areaName')} onTranslateError={notifyTranslateDown} />
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Supply Type</label>
+                      <select value={ef('supplyType')} onChange={(e) => setEf('supplyType', e.target.value)}>
+                        <option value="">Select…</option>
+                        <option value="DINE IN">DINE IN</option>
+                        <option value="TAKEAWAY">TAKEAWAY</option>
+                        <option value="DELIVERY">DELIVERY</option>
+                        <option value="PARCEL">PARCEL</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Prefix</label>
+                      <input value={ef('prefix')} onChange={(e) => setEf('prefix', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Price Type</label>
+                    <select value={ef('priceType')} onChange={(e) => setEf('priceType', e.target.value)}>
+                      <option value="">Select…</option>
+                      <option value="RETAIL">RETAIL</option>
+                      <option value="WHOLESALE">WHOLESALE</option>
+                    </select>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Table Creation Type</label>
+                    <div className="pd-entry-radio-row">
+                      <label className="pd-entry-radio">
+                        <input
+                          type="radio"
+                          name="tableCreationType"
+                          checked={ef('tableCreationType') === 'manual'}
+                          onChange={() => setEf('tableCreationType', 'manual')}
+                        />
+                        Manual
+                      </label>
+                      <label className="pd-entry-radio">
+                        <input
+                          type="radio"
+                          name="tableCreationType"
+                          checked={ef('tableCreationType') === 'automatic'}
+                          onChange={() => setEf('tableCreationType', 'automatic')}
+                        />
+                        Automatic
+                      </label>
+                    </div>
+                  </div>
+                  <Toggle checked={efBool('showOnTablet')} onChange={(v) => setEf('showOnTablet', v)} label="Show on Tablet" />
+                </>
+              ) : null}
+
+              {entryModal === 'table' ? (
+                <div className="pd-te-grid">
+                <div className="pd-te-fields">
+                  <div className="pd-form-row">
+                    <label>Area</label>
+                    <select value={ef('areaName')} onChange={(e) => setEf('areaName', e.target.value)}>
+                      <option value="">Select…</option>
+                      {areas.map((a) => (
+                        <option key={a.id} value={a.name}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Table No</label>
+                      <input value={ef('tableNo')} onChange={(e) => setEf('tableNo', e.target.value.replace(/[^\d]/g, ''))} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>No. of Chair</label>
+                      <input value={ef('noOfChairs')} onChange={(e) => setEf('noOfChairs', e.target.value.replace(/[^\d]/g, ''))} />
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Table Name</label>
+                    <input value={ef('tableName')} onChange={(e) => setEfWithArabicAutoFill('tableName', 'tableNameArabic', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Table Name Arabic</label>
+                    <ArabicInput value={ef('tableNameArabic')} onValueChange={(v) => setEf('tableNameArabic', v)} source={ef('tableName')} onTranslateError={notifyTranslateDown} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Waiter Name</label>
+                    <select value={ef('waiterId')} onChange={(e) => setEf('waiterId', e.target.value)}>
+                      <option value="">Select…</option>
+                      {entryWaiters.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <TableShapePicker
+                  value={ef('tableShape')}
+                  onChange={(shape) => setEf('tableShape', shape)}
+                  chairs={Number(ef('noOfChairs')) || 0}
                 />
-                {groupPickerSearch ? (
-                  <button
-                    type="button"
-                    className="pd-search-clear"
-                    aria-label="Clear search"
-                    onClick={() => {
-                      setGroupPickerSearch('')
-                      if (groupPickerFor) void loadGroupPickerRows(groupPickerFor, '')
-                    }}
-                  >
-                    <X size={12} />
+                </div>
+              ) : null}
+
+              {entryModal === 'mainGroup' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Main Group Code</label>
+                    <input value={ef('mgCode')} onChange={(e) => setEf('mgCode', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Description</label>
+                    <input
+                      value={ef('mgDescription')}
+                      onChange={(e) => setEfWithArabicAutoFill('mgDescription', 'mgDescriptionArabic', e.target.value)}
+                    />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Description Arabic</label>
+                    <ArabicInput value={ef('mgDescriptionArabic')} onValueChange={(v) => setEf('mgDescriptionArabic', v)} source={ef('mgDescription')} onTranslateError={notifyTranslateDown} />
+                  </div>
+                  <Toggle checked={efBool('mgApplyDiscount')} onChange={(v) => setEf('mgApplyDiscount', v)} label="Apply Discount" />
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Code</th>
+                          <th>Description</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groups.length === 0 ? (
+                          <tr>
+                            <td colSpan={2}>No main groups yet</td>
+                          </tr>
+                        ) : (
+                          groups.map((g) => (
+                            <tr key={g.id}>
+                              <td>{g.code}</td>
+                              <td>{g.name}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'group' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Master Group</label>
+                    <select value={ef('grpMaster')} onChange={(e) => setEf('grpMaster', e.target.value)}>
+                      <option value="">Select…</option>
+                      {groups.map((g) => (
+                        <option key={g.id} value={g.name}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Group Name</label>
+                    <input value={ef('grpName')} onChange={(e) => setEfWithArabicAutoFill('grpName', 'grpNameArabic', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Group Name Arabic</label>
+                    <ArabicInput value={ef('grpNameArabic')} onValueChange={(v) => setEf('grpNameArabic', v)} source={ef('grpName')} onTranslateError={notifyTranslateDown} />
+                  </div>
+                  <Toggle
+                    checked={efBool('grpBackOfficeOnly')}
+                    onChange={(v) => setEf('grpBackOfficeOnly', v)}
+                    label="Show only on BackOffice"
+                  />
+                </>
+              ) : null}
+
+              {entryModal === 'subGroup' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Group</label>
+                    <select value={ef('sgMaster')} onChange={(e) => setEf('sgMaster', e.target.value)}>
+                      <option value="">Select…</option>
+                      {allSubGroups.map((s) => (
+                        <option key={s.id} value={s.name}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Sub Group Name</label>
+                    <input value={ef('sgName')} onChange={(e) => setEfWithArabicAutoFill('sgName', 'sgNameArabic', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Sub Group Name Arabic</label>
+                    <ArabicInput value={ef('sgNameArabic')} onValueChange={(v) => setEf('sgNameArabic', v)} source={ef('sgName')} onTranslateError={notifyTranslateDown} />
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'kitchenMessage' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Kitchen Message</label>
+                    <input value={ef('kmMessage')} onChange={(e) => setEfWithArabicAutoFill('kmMessage', 'kmArabic', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Message Arabic</label>
+                    <ArabicInput value={ef('kmArabic')} onValueChange={(v) => setEf('kmArabic', v)} source={ef('kmMessage')} onTranslateError={notifyTranslateDown} />
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Message</th>
+                          <th>Message Arabic</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {kitchenMessages.map((m) => (
+                          <tr
+                            key={m.id}
+                            className={kitchenMsgSelected === m.id ? 'is-selected' : undefined}
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => {
+                              setKitchenMsgSelected(m.id)
+                              setEf('kmMessage', m.message)
+                              setEf('kmArabic', m.arabic)
+                            }}
+                          >
+                            <td>{m.message}</td>
+                            <td dir="rtl">{m.arabic}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'combo' ? (
+                <div className="pd-te-grid pd-combo-grid">
+                <div className="pd-te-fields">
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Combo Name</label>
+                      <input value={ef('comboName')} onChange={(e) => setEf('comboName', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Price</label>
+                      <input value={ef('comboPrice')} onChange={(e) => setEf('comboPrice', e.target.value.replace(/[^\d.]/g, ''))} />
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Group Name</label>
+                    <div className="pd-combo-pick">
+                      <span className="pd-combo-select">
+                        <select value={comboGroupInput} onChange={(e) => setComboGroupInput(e.target.value)}>
+                          <option value="">Select…</option>
+                          {groups.map((g) => (
+                            <option key={g.id} value={g.name}>
+                              {g.name}
+                            </option>
+                          ))}
+                        </select>
+                        {comboGroupInput ? (
+                          <button
+                            type="button"
+                            className="pd-combo-clear"
+                            aria-label="Clear group"
+                            title="Clear"
+                            onClick={() => setComboGroupInput('')}
+                          >
+                            <X size={12} strokeWidth={2.6} />
+                          </button>
+                        ) : null}
+                      </span>
+                      <button
+                        type="button"
+                        className="pd-combo-add"
+                        aria-label="Add group"
+                        title="Add group"
+                        disabled={!comboGroupInput || comboGroups.includes(comboGroupInput)}
+                        onClick={() => {
+                          if (comboGroupInput && !comboGroups.includes(comboGroupInput)) {
+                            setComboGroups((prev) => [...prev, comboGroupInput])
+                          }
+                        }}
+                      >
+                        <Plus size={16} strokeWidth={2.6} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                  <ScrollTable
+                    columns={[{ key: 'name', header: 'Group Name', render: (g: string) => g }]}
+                    rows={comboGroups}
+                    rowKey={(g) => g}
+                    height={240}
+                    emptyText="No groups added"
+                    isSelected={(g) => comboGroupInput === g}
+                    onRowClick={(g) => setComboGroupInput(g)}
+                  />
+                </div>
+              ) : null}
+
+              {entryModal === 'recipe' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Finished Product</label>
+                    <input value={ef('recipeProduct')} onChange={(e) => setEf('recipeProduct', e.target.value)} />
+                  </div>
+                  <div className="pd-recipe-line-row">
+                    <input
+                      placeholder="Product Code"
+                      value={recipeDraft.code}
+                      onChange={(e) => setRecipeDraft((d) => ({ ...d, code: e.target.value }))}
+                    />
+                    <input
+                      placeholder="Product Name"
+                      value={recipeDraft.name}
+                      onChange={(e) => setRecipeDraft((d) => ({ ...d, name: e.target.value }))}
+                    />
+                    <input
+                      placeholder="Pack Details"
+                      value={recipeDraft.packDetails}
+                      onChange={(e) => setRecipeDraft((d) => ({ ...d, packDetails: e.target.value }))}
+                    />
+                    <input
+                      placeholder="Cost"
+                      value={recipeDraft.cost}
+                      onChange={(e) => setRecipeDraft((d) => ({ ...d, cost: e.target.value.replace(/[^\d.]/g, '') }))}
+                    />
+                    <input
+                      placeholder="Pack Qty"
+                      value={recipeDraft.packQty}
+                      onChange={(e) => setRecipeDraft((d) => ({ ...d, packQty: e.target.value.replace(/[^\d.]/g, '') }))}
+                    />
+                    <input
+                      placeholder="Qty"
+                      value={recipeDraft.qty}
+                      onChange={(e) => setRecipeDraft((d) => ({ ...d, qty: e.target.value.replace(/[^\d.]/g, '') }))}
+                    />
+                    <select value={recipeDraft.unit} onChange={(e) => setRecipeDraft((d) => ({ ...d, unit: e.target.value }))}>
+                      <option value="GM">GM</option>
+                      <option value="KG">KG</option>
+                      <option value="ML">ML</option>
+                      <option value="LTR">LTR</option>
+                      <option value="PCS">PCS</option>
+                    </select>
+                    <button type="button" className="pd-form-code-btn" onClick={addRecipeLine}>
+                      ADD
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Product Code</th>
+                          <th>Product Name</th>
+                          <th>Pack Details</th>
+                          <th>Pack Qty</th>
+                          <th>Qty</th>
+                          <th>Cost</th>
+                          <th>Unit</th>
+                          <th>Line Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recipeLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={8}>No ingredients added</td>
+                          </tr>
+                        ) : (
+                          recipeLines.map((l, i) => (
+                            <tr key={i}>
+                              <td>{l.code}</td>
+                              <td>{l.name}</td>
+                              <td>{l.packDetails}</td>
+                              <td>{l.packQty}</td>
+                              <td>{l.qty}</td>
+                              <td>{l.cost}</td>
+                              <td>{l.unit}</td>
+                              <td>AED {money((Number(l.cost) || 0) * (Number(l.qty) || 0))}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Remarks</label>
+                    <textarea rows={2} value={ef('recipeRemarks')} onChange={(e) => setEf('recipeRemarks', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Unit Cost</label>
+                    <div className="pd-form-computed">AED {money(recipeUnitCost())}</div>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'barcode' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Product</label>
+                    <input value={ef('barcodeProduct')} onChange={(e) => setEf('barcodeProduct', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Text1</label>
+                    <input value={ef('barcodeText1')} onChange={(e) => setEf('barcodeText1', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Text2</label>
+                    <input value={ef('barcodeText2')} onChange={(e) => setEf('barcodeText2', e.target.value)} />
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Production Date</label>
+                      <DatePicker value={ef('productionDate')} onChange={(v) => setEf('productionDate', v)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Expiry Date</label>
+                      <DatePicker value={ef('expiryDate')} onChange={(v) => setEf('expiryDate', v)} min={ef('productionDate')} />
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Print Count</label>
+                    <input value={ef('printCount')} onChange={(e) => setEf('printCount', e.target.value.replace(/[^\d]/g, ''))} />
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'notes' ? (
+                <div className="pd-nt">
+                  <div className={`pd-nt-pad${notesSelected != null ? ' is-editing' : ''}`}>
+                    <div className="pd-nt-pad-top">
+                      <span>
+                        <StickyNote size={14} />
+                        {notesSelected != null ? 'Editing note' : 'New note'}
+                      </span>
+                      {notesSelected != null ? (
+                        <span className="pd-nt-pad-actions">
+                          <button
+                            type="button"
+                            className="pd-nt-new is-danger"
+                            onClick={() => deleteNote(notesSelected)}
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                          <button
+                            type="button"
+                            className="pd-nt-new"
+                            onClick={() => {
+                              setNotesSelected(null)
+                              setEf('noteDescription', '')
+                            }}
+                          >
+                            <Plus size={13} /> New
+                          </button>
+                        </span>
+                      ) : null}
+                    </div>
+                    <textarea
+                      rows={4}
+                      placeholder="Write a note…"
+                      value={ef('noteDescription')}
+                      onChange={(e) => setEf('noteDescription', e.target.value)}
+                    />
+                    <div className="pd-nt-pad-foot">
+                      <small>{ef('noteDescription').trim().length} characters</small>
+                      <button
+                        type="button"
+                        className="pd-nt-save"
+                        disabled={!ef('noteDescription').trim()}
+                        onClick={() => {
+                          saveNote()
+                          setNotesSelected(null)
+                          setEf('noteDescription', '')
+                        }}
+                      >
+                        <Check size={14} strokeWidth={2.6} /> {notesSelected != null ? 'Update' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pd-nt-bar">
+                    <b>
+                      Notes <em>{notesList.length}</em>
+                    </b>
+                    <div className="pd-nt-dates">
+                      <DatePicker value={ef('notesFrom')} onChange={(v) => setEf('notesFrom', v)} max={ef('notesTo')} />
+                      <span>to</span>
+                      <DatePicker value={ef('notesTo')} onChange={(v) => setEf('notesTo', v)} min={ef('notesFrom')} />
+                    </div>
+                  </div>
+
+                  <div className="pd-nt-board">
+                    {notesList.length === 0 ? (
+                      <div className="pd-nt-empty">
+                        <StickyNote size={26} strokeWidth={1.6} />
+                        <span>No notes yet — write your first one above.</span>
+                      </div>
+                    ) : (
+                      notesList.map((n) => (
+                        <div
+                          key={n.id}
+                          role="button"
+                          tabIndex={0}
+                          className={`pd-nt-card${notesSelected === n.id ? ' is-on' : ''}`}
+                          onClick={() => {
+                            setNotesSelected(n.id)
+                            setEf('noteDescription', n.description)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              setNotesSelected(n.id)
+                              setEf('noteDescription', n.description)
+                            }
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="pd-nt-del"
+                            aria-label="Delete note"
+                            title="Delete note"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteNote(n.id)
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                          <span className="pd-nt-text">{n.description}</span>
+                          <span className="pd-nt-date">
+                            {n.date}
+                            <PenLine size={11} />
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'onlineSource' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Source Name</label>
+                    <input
+                      value={ef('sourceName')}
+                      onChange={(e) => setEfWithArabicAutoFill('sourceName', 'sourceNameArabic', e.target.value)}
+                    />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Source Name Arabic</label>
+                    <ArabicInput value={ef('sourceNameArabic')} onValueChange={(v) => setEf('sourceNameArabic', v)} source={ef('sourceName')} onTranslateError={notifyTranslateDown} />
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'paymentMode' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Payment Mode Name</label>
+                      <input value={ef('pmName')} onChange={(e) => setEf('pmName', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Status</label>
+                      <select value={ef('status')} onChange={(e) => setEf('status', e.target.value)}>
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="INACTIVE">INACTIVE</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Payment Mode</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paymentModes.map((p) => (
+                          <tr
+                            key={p.name}
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => {
+                              setEf('pmName', p.name)
+                              setEf('status', p.status)
+                            }}
+                          >
+                            <td>{p.name}</td>
+                            <td>{p.status}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'messMaster' ? (
+                <div className="pd-te-grid pd-combo-grid">
+                <div className="pd-te-fields">
+                  <div className="pd-form-row">
+                    <label>Mess Name</label>
+                    <input value={ef('messName')} onChange={(e) => setEf('messName', e.target.value)} />
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>No Of Time</label>
+                      <select value={ef('messTimes')} onChange={(e) => setEf('messTimes', e.target.value)}>
+                        <option value="">Select…</option>
+                        {[1, 2, 3, 4].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Mess Amount</label>
+                      <input value={ef('messAmount')} onChange={(e) => setEf('messAmount', e.target.value.replace(/[^\d.]/g, ''))} />
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Item</label>
+                    <div className="pd-combo-pick">
+                      <span className="pd-combo-select">
+                        <SearchSelect
+                          id="pd-mess-item"
+                          value={ef('messAddLine') || null}
+                          options={messItemOptions}
+                          onChange={(o) => setEf('messAddLine', o.name)}
+                          placeholder="Select…"
+                          searchPlaceholder="Search item"
+                          emptyText="No products loaded"
+                        />
+                        {ef('messAddLine') ? (
+                          <button
+                            type="button"
+                            className="pd-combo-clear"
+                            aria-label="Clear item"
+                            title="Clear"
+                            onClick={() => setEf('messAddLine', '')}
+                          >
+                            <X size={12} strokeWidth={2.6} />
+                          </button>
+                        ) : null}
+                      </span>
+                      <button
+                        type="button"
+                        className="pd-combo-add"
+                        aria-label="Add item"
+                        title="Add item"
+                        disabled={!ef('messAddLine') || messLines.includes(ef('messAddLine'))}
+                        onClick={addMessLine}
+                      >
+                        <Plus size={16} strokeWidth={2.6} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                  <ScrollTable
+                    columns={[{ key: 'name', header: 'Description', render: (l: string) => l }]}
+                    rows={messLines}
+                    rowKey={(l) => l}
+                    height={240}
+                    emptyText="No items added"
+                  />
+                </div>
+              ) : null}
+
+              {entryModal === 'addOn' ? (
+                <div className="pd-addon-body">
+                  <div className="pd-addon-form">
+                    <div className="pd-form-row">
+                      <label>Add-on Name</label>
+                      <input
+                        value={ef('addOnName')}
+                        onChange={(e) => setEfWithArabicAutoFill('addOnName', 'addOnArabic', e.target.value)}
+                      />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Add On Arabic</label>
+                      <ArabicInput value={ef('addOnArabic')} onValueChange={(v) => setEf('addOnArabic', v)} source={ef('addOnName')} onTranslateError={notifyTranslateDown} />
+                    </div>
+                    <div className="pd-form-grid-2">
+                      <div className="pd-form-row">
+                        <label>Price Without Vat</label>
+                        <input value={ef('addOnPrice')} onChange={(e) => setEf('addOnPrice', e.target.value.replace(/[^\d.]/g, ''))} />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Vat %</label>
+                        <input value={ef('addOnVat')} onChange={(e) => setEf('addOnVat', e.target.value.replace(/[^\d.]/g, ''))} />
+                      </div>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Price With Vat</label>
+                      <div className="pd-form-computed">AED {withVat(ef('addOnPrice'), ef('addOnVat'))}</div>
+                    </div>
+                    <div className="pd-grid-wrap">
+                      <table className="pd-grid">
+                        <thead>
+                          <tr>
+                            <th>Add-on</th>
+                            <th>Price</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {addOns.length === 0 ? (
+                            <tr>
+                              <td colSpan={2}>No add-ons saved yet</td>
+                            </tr>
+                          ) : (
+                            addOns.map((a, i) => (
+                              <tr key={i}>
+                                <td>{a.name}</td>
+                                <td>AED {withVat(a.priceNoVat, a.vatPct)}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="pd-addon-tree">
+                    {groups.length === 0 ? (
+                      <p className="pd-cat-msg">No categories loaded</p>
+                    ) : (
+                      groups.map((g) => (
+                        <div key={g.id} className="pd-addon-tree-group">
+                          {g.name.toLowerCase()}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'booking' ? (
+                <>
+                  <div className="pd-booking-tabs">
+                    {(['DINE IN', 'UPSTAIR', 'OUTSIDE'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`pd-booking-tab${bookingAreaTab === t ? ' is-on' : ''}`}
+                        onClick={() => setBookingAreaTab(t)}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Booking Date</label>
+                    <DatePicker value={ef('bookingDate')} onChange={(v) => setEf('bookingDate', v)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Customer</label>
+                    <input value={ef('bookCustomer')} onChange={(e) => setEf('bookCustomer', e.target.value)} />
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Mobile</label>
+                      <input value={ef('bookMobile')} onChange={(e) => setEf('bookMobile', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Party Size</label>
+                      <input value={ef('bookPartySize')} onChange={(e) => setEf('bookPartySize', e.target.value.replace(/[^\d]/g, ''))} />
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Advance Amount</label>
+                    <input value={ef('bookAdvance')} onChange={(e) => setEf('bookAdvance', e.target.value.replace(/[^\d.]/g, ''))} />
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'bookingList' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>From</label>
+                      <DatePicker value={ef('bookingFrom')} onChange={(v) => setEf('bookingFrom', v)} max={ef('bookingTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('bookingTo')} onChange={(v) => setEf('bookingTo', v)} min={ef('bookingFrom')} />
+                    </div>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Booking Date</th>
+                          <th>Party Size</th>
+                          <th>Customer</th>
+                          <th>Mobile</th>
+                          <th>Area</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bookings.length === 0 ? (
+                          <tr>
+                            <td colSpan={5}>No bookings recorded this session</td>
+                          </tr>
+                        ) : (
+                          bookings.map((b) => (
+                            <tr key={b.id}>
+                              <td>{b.date ? new Date(b.date).toLocaleDateString('en-GB') : '—'}</td>
+                              <td>{b.partySize}</td>
+                              <td>{b.customer}</td>
+                              <td>{b.mobile}</td>
+                              <td>{b.area}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'floorDesign' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Area</label>
+                    <select value={floorAreaId ?? ''} onChange={(e) => setFloorAreaId(Number(e.target.value) || null)}>
+                      <option value="">Select…</option>
+                      {areas.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-floor-toolbar">
+                    <button type="button" className="pd-form-code-btn" disabled={floorBusy} onClick={() => void loadFloorDesign()}>
+                      Load
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={() => toast('Border tool not available yet', 'info')}>
+                      Start Border
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={() => toast('Border tool not available yet', 'info')}>
+                      Clear Border
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={() => toast('Border tool not available yet', 'info')}>
+                      Finish Border
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={() => toast('Label tool not available yet', 'info')}>
+                      Add Label
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={() => toast('Zone tool not available yet', 'info')}>
+                      Add Zone
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={() => toast('Wall/Block tool not available yet', 'info')}>
+                      Add Wall/Block
+                    </button>
+                  </div>
+                  <div className="pd-floor-canvas">
+                    {floorAreaId ? (
+                      <div className="pd-table-grid is-floor">
+                        {tables
+                          .filter((t) => t.areaId === floorAreaId)
+                          .map((t) => (
+                            <TableCard key={t.id} label={t.name} seats={t.seats} status="free" />
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="pd-cat-msg">Pick an Area to load its floor layout</p>
+                    )}
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'stockAdjustment' ? (
+                <>
+                  <div className="pd-txn-head">
+                    <div className="pd-txn-head-fields">
+                      <div className="pd-form-grid-2">
+                        <div className="pd-form-row">
+                          <label>Stock Adj. No.</label>
+                          <input value={ef('txnNo')} readOnly placeholder="Auto" />
+                        </div>
+                        <div className="pd-form-row">
+                          <label>Date</label>
+                          <DatePicker value={ef('txnDate')} onChange={(v) => setEf('txnDate', v)} />
+                        </div>
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Remarks</label>
+                        <input value={ef('txnRemarks')} onChange={(e) => setEf('txnRemarks', e.target.value)} />
+                      </div>
+                    </div>
+                    <p className="pd-txn-status">Status : New Stock Entry</p>
+                  </div>
+                  <div className="pd-recipe-line-row">
+                    <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
+                    <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
+                    <input placeholder="Pkt Qty" value={td('pktQty')} onChange={(e) => setTd('pktQty', e.target.value)} />
+                    <input placeholder="Pkt. details" value={td('pktDetails')} onChange={(e) => setTd('pktDetails', e.target.value)} />
+                    <input placeholder="System Qty" value={td('systemQty')} onChange={(e) => setTd('systemQty', e.target.value)} />
+                    <input placeholder="Adj. Qty" value={td('adjQty')} onChange={(e) => setTd('adjQty', e.target.value)} />
+                    <input placeholder="Entered Qty" value={td('enteredQty')} onChange={(e) => setTd('enteredQty', e.target.value)} />
+                    <input placeholder="Physical Qty" value={td('physicalQty')} onChange={(e) => setTd('physicalQty', e.target.value)} />
+                    <select value={td('reason')} onChange={(e) => setTd('reason', e.target.value)}>
+                      <option value="Opening Stock">Opening Stock</option>
+                      <option value="Stock Count">Stock Count</option>
+                      <option value="Wastage">Wastage</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
+                      ADD
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Barcode</th>
+                          <th>Short Description</th>
+                          <th>Packet Details</th>
+                          <th>Present Qty</th>
+                          <th>AdjustQty</th>
+                          <th>EnteredQty</th>
+                          <th>PhysicalQty</th>
+                          <th>Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {txnLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={8}>No lines added</td>
+                          </tr>
+                        ) : (
+                          txnLines.map((l, i) => (
+                            <tr
+                              key={i}
+                              className={txnSelected === i ? 'is-selected' : undefined}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => setTxnSelected(i)}
+                            >
+                              <td>{l.barcode}</td>
+                              <td>{l.shortDesc}</td>
+                              <td>{l.pktDetails}</td>
+                              <td>{l.systemQty}</td>
+                              <td>{l.adjQty}</td>
+                              <td>{l.enteredQty}</td>
+                              <td>{l.physicalQty}</td>
+                              <td>{l.reason}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'stockAdjustList' || entryModal === 'damageList' ? (
+                <>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>From</label>
+                      <DatePicker value={ef('listFrom')} onChange={(v) => setEf('listFrom', v)} max={ef('listTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('listTo')} onChange={(v) => setEf('listTo', v)} min={ef('listFrom')} />
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
+                      Search
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Stock Adj No</th>
+                          <th>Post Status</th>
+                          <th>Reason</th>
+                          <th>Remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={4}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'productionEntry' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Production No</label>
+                      <input value={ef('txnNo')} onChange={(e) => setEf('txnNo', e.target.value)} placeholder="Auto" />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Production Date</label>
+                      <DatePicker value={ef('txnDate')} onChange={(v) => setEf('txnDate', v)} />
+                    </div>
+                  </div>
+                  <div className="pd-recipe-line-row">
+                    <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
+                    <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
+                    <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
+                      Add
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={deleteSelectedTxnLine}>
+                      Del
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Item Code</th>
+                          <th>Item Name</th>
+                          <th>Present Qty</th>
+                          <th>Qty</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {txnLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={4}>No items added</td>
+                          </tr>
+                        ) : (
+                          txnLines.map((l, i) => (
+                            <tr
+                              key={i}
+                              className={txnSelected === i ? 'is-selected' : undefined}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => setTxnSelected(i)}
+                            >
+                              <td>{l.barcode}</td>
+                              <td>{l.shortDesc}</td>
+                              <td>—</td>
+                              <td>{l.qty}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'openingStock' ? (
+                <>
+                  <h3 className="pd-txn-title">Opening Stock Entry</h3>
+                  <div className="pd-recipe-line-row">
+                    <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
+                    <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
+                    <input placeholder="Pkt Qty" value={td('pktQty')} onChange={(e) => setTd('pktQty', e.target.value)} />
+                    <input placeholder="Pkt. details" value={td('pktDetails')} onChange={(e) => setTd('pktDetails', e.target.value)} />
+                    <input
+                      placeholder="Opening Stock"
+                      value={td('openingStockQty')}
+                      onChange={(e) => setTd('openingStockQty', e.target.value)}
+                    />
+                    <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
+                      ADD
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Barcode</th>
+                          <th>Short Description</th>
+                          <th>Packet Details</th>
+                          <th>Opening Stock</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {txnLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={4}>No lines added</td>
+                          </tr>
+                        ) : (
+                          txnLines.map((l, i) => (
+                            <tr
+                              key={i}
+                              className={txnSelected === i ? 'is-selected' : undefined}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => setTxnSelected(i)}
+                            >
+                              <td>{l.barcode}</td>
+                              <td>{l.shortDesc}</td>
+                              <td>{l.pktDetails}</td>
+                              <td>{l.openingStockQty}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'stockReport' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Group</label>
+                    <select value={ef('srGroup')} onChange={(e) => setEf('srGroup', e.target.value)}>
+                      <option value="">All Groups</option>
+                      {groups.map((g) => (
+                        <option key={g.id} value={g.name}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>SubGroup</label>
+                    <select value={ef('srSubGroup')} onChange={(e) => setEf('srSubGroup', e.target.value)}>
+                      <option value="">All Sub Groups</option>
+                      {allSubGroups.map((s) => (
+                        <option key={s.id} value={s.name}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Product Type</label>
+                    <select value={ef('srProductType')} onChange={(e) => setEf('srProductType', e.target.value)}>
+                      <option value="">All</option>
+                      <option value="NORMAL">NORMAL</option>
+                      <option value="COMBO">COMBO</option>
+                    </select>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'movementReport' ? (
+                <div className="pd-mr-body">
+                  <div className="pd-mr-groups">
+                    {groups.length === 0 ? (
+                      <p className="pd-cat-msg">No groups loaded</p>
+                    ) : (
+                      groups.map((g) => (
+                        <label key={g.id} className="pd-mr-group-row">
+                          <input
+                            type="checkbox"
+                            checked={mrSelectedGroups.has(g.id)}
+                            onChange={() =>
+                              setMrSelectedGroups((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(g.id)) next.delete(g.id)
+                                else next.add(g.id)
+                                return next
+                              })
+                            }
+                          />
+                          {g.name}
+                        </label>
+                      ))
+                    )}
+                  </div>
+                  <div className="pd-mr-filters">
+                    <div className="pd-form-row">
+                      <label>Item Name</label>
+                      <input value={ef('mrItem')} onChange={(e) => setEf('mrItem', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Invoice Date From</label>
+                      <DatePicker value={ef('mrFrom')} onChange={(v) => setEf('mrFrom', v)} max={ef('mrTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('mrTo')} onChange={(v) => setEf('mrTo', v)} min={ef('mrFrom')} />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'productRequest' ? (
+                <>
+                  <div className="pd-form-grid-3">
+                    <div className="pd-form-row">
+                      <label>Request No</label>
+                      <input value={ef('txnNo')} onChange={(e) => setEf('txnNo', e.target.value)} placeholder="Auto" />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Request Date</label>
+                      <DatePicker value={ef('txnDate')} onChange={(v) => setEf('txnDate', v)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Request To</label>
+                      <select value={ef('txnToArea')} onChange={(e) => setEf('txnToArea', e.target.value)}>
+                        <option value="">Select…</option>
+                        {areas.map((a) => (
+                          <option key={a.id} value={a.name}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Request From</label>
+                    <input value={ef('txnFromArea')} readOnly />
+                  </div>
+                  {renderTxnItemBlock()}
+                </>
+              ) : null}
+
+              {entryModal === 'productReceipt' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Receipt No</label>
+                      <input value={ef('txnNo')} onChange={(e) => setEf('txnNo', e.target.value)} placeholder="Auto" />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Receipt Date</label>
+                      <DatePicker value={ef('txnDate')} onChange={(v) => setEf('txnDate', v)} />
+                    </div>
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Receipt From</label>
+                      <select value={ef('txnFromArea')} onChange={(e) => setEf('txnFromArea', e.target.value)}>
+                        <option value="">Select…</option>
+                        {areas.map((a) => (
+                          <option key={a.id} value={a.name}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Receipt To</label>
+                      <select value={ef('txnToArea')} onChange={(e) => setEf('txnToArea', e.target.value)}>
+                        <option value="">Select…</option>
+                        {areas.map((a) => (
+                          <option key={a.id} value={a.name}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Transfer No</label>
+                    <input value={ef('txnRefNo')} onChange={(e) => setEf('txnRefNo', e.target.value)} />
+                  </div>
+                  {renderTxnItemBlock()}
+                </>
+              ) : null}
+
+              {entryModal === 'productTransfer' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Transfer No</label>
+                      <input value={ef('txnNo')} onChange={(e) => setEf('txnNo', e.target.value)} placeholder="Auto" />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Transfer Date</label>
+                      <DatePicker value={ef('txnDate')} onChange={(v) => setEf('txnDate', v)} />
+                    </div>
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Transfer From</label>
+                      <input value={ef('txnFromArea')} readOnly />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Transfer To</label>
+                      <select value={ef('txnToArea')} onChange={(e) => setEf('txnToArea', e.target.value)}>
+                        <option value="">Select…</option>
+                        {areas.map((a) => (
+                          <option key={a.id} value={a.name}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Request No</label>
+                    <input value={ef('txnRefNo')} onChange={(e) => setEf('txnRefNo', e.target.value)} />
+                  </div>
+                  {renderTxnItemBlock()}
+                </>
+              ) : null}
+
+              {entryModal === 'transferList' || entryModal === 'receiptList' ? (
+                <>
+                  <div className="pd-form-grid-3">
+                    <div className="pd-form-row">
+                      <label>Search Column</label>
+                      <select value={ef('searchColumn')} onChange={(e) => setEf('searchColumn', e.target.value)}>
+                        <option>Transfer No</option>
+                        <option>Remarks</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Status</label>
+                      <select value={ef('postStatus')} onChange={(e) => setEf('postStatus', e.target.value)}>
+                        <option value="">All</option>
+                        <option value="POSTED">POSTED</option>
+                        <option value="PENDING">PENDING</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Search Value</label>
+                      <input value={ef('searchValue')} onChange={(e) => setEf('searchValue', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>Transfer Date From</label>
+                      <DatePicker value={ef('listFrom')} onChange={(v) => setEf('listFrom', v)} max={ef('listTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('listTo')} onChange={(v) => setEf('listTo', v)} min={ef('listFrom')} />
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
+                      Search
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        {entryModal === 'receiptList' ? (
+                          <tr>
+                            <th>Transfer No</th>
+                            <th>Transfer From</th>
+                            <th>Transfer To</th>
+                            <th>Transfer Date</th>
+                            <th>Total Amount</th>
+                            <th>Status</th>
+                          </tr>
+                        ) : (
+                          <tr>
+                            <th>Transfer No</th>
+                            <th>Remarks</th>
+                            <th>Transfer Date</th>
+                            <th>Total Amount</th>
+                            <th>Status</th>
+                          </tr>
+                        )}
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={entryModal === 'receiptList' ? 6 : 5}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'supplierList' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Search Column</label>
+                      <select value={ef('searchColumn')} onChange={(e) => setEf('searchColumn', e.target.value)}>
+                        <option>Supplier Name</option>
+                        <option>Supplier Code</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Search Value</label>
+                      <input value={ef('searchValue')} onChange={(e) => setEf('searchValue', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>SupplierCode</th>
+                          <th>SupplierName</th>
+                          <th>Telephone</th>
+                          <th>MobileNo</th>
+                          <th>ContactPerson</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {suppliers.map((s) => (
+                          <tr
+                            key={s.code}
+                            className={ef('supplierPick') === s.code ? 'is-selected' : undefined}
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => setEf('supplierPick', s.code)}
+                          >
+                            <td>{s.code}</td>
+                            <td>{s.name}</td>
+                            <td>{s.phone}</td>
+                            <td>{s.mobile}</td>
+                            <td>{s.contact}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'purchaseEntry' ? (
+                <>
+                  <div className="pd-txn-head">
+                    <div className="pd-txn-head-fields">
+                      <div className="pd-form-row">
+                        <label>Purchase #</label>
+                        <input value={ef('txnNo')} readOnly placeholder="Auto" />
+                      </div>
+                      <div className="pd-form-grid-2">
+                        <div className="pd-form-row">
+                          <label>Supplier Name</label>
+                          <select value={ef('supplierName')} onChange={(e) => setEf('supplierName', e.target.value)}>
+                            <option value="">Select…</option>
+                            {suppliers.map((s) => (
+                              <option key={s.code} value={s.name}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ alignSelf: 'end', height: 33, display: 'flex', alignItems: 'center' }}>
+                          <Toggle
+                            checked={efBool('itemWithSupplier')}
+                            onChange={(v) => setEf('itemWithSupplier', v)}
+                            label="Item With Supplier"
+                          />
+                        </div>
+                      </div>
+                      <div className="pd-form-grid-3">
+                        <div className="pd-form-row">
+                          <label>Purchase Date</label>
+                          <DatePicker value={ef('purchaseDate')} onChange={(v) => setEf('purchaseDate', v)} />
+                        </div>
+                        <div className="pd-form-row">
+                          <label>Pay Mode</label>
+                          <select value={ef('payMode')} onChange={(e) => setEf('payMode', e.target.value)}>
+                            <option value="CREDIT">CREDIT</option>
+                            <option value="CASH">CASH</option>
+                          </select>
+                        </div>
+                        <div className="pd-form-row">
+                          <label>Entered Date</label>
+                          <input value={ef('enteredDate')} readOnly />
+                        </div>
+                      </div>
+                      <div className="pd-form-grid-2">
+                        <div className="pd-form-row">
+                          <label>Sup Inv #.</label>
+                          <input value={ef('supInvNo')} onChange={(e) => setEf('supInvNo', e.target.value)} />
+                        </div>
+                        <div className="pd-form-row">
+                          <label>LPO No.</label>
+                          <input value={ef('lpoNo')} onChange={(e) => setEf('lpoNo', e.target.value)} />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="pd-txn-status">NEW PURCHASE</p>
+                  </div>
+                  <div className="pd-recipe-line-row">
+                    <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
+                    <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
+                    <input placeholder="Pack Qty" value={td('packQty')} onChange={(e) => setTd('packQty', e.target.value)} />
+                    <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <input placeholder="Unit Cost" value={td('unitCost')} onChange={(e) => setTd('unitCost', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <input
+                      placeholder="Selling Price"
+                      value={td('sellingPrice')}
+                      onChange={(e) => setTd('sellingPrice', e.target.value.replace(/[^\d.]/g, ''))}
+                    />
+                    <input placeholder="Disc." value={td('disc')} onChange={(e) => setTd('disc', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <select value={td('vatPct')} onChange={(e) => setTd('vatPct', e.target.value)}>
+                      <option value="0">0%</option>
+                      <option value="5">5%</option>
+                    </select>
+                    <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
+                      Add
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Barcode</th>
+                          <th>Short Description</th>
+                          <th>Pack Qty</th>
+                          <th>Qty</th>
+                          <th>Unit Cost</th>
+                          <th>Selling Price</th>
+                          <th>Disc</th>
+                          <th>VAT%</th>
+                          <th>Line Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {txnLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={9}>No lines added</td>
+                          </tr>
+                        ) : (
+                          txnLines.map((l, i) => (
+                            <tr
+                              key={i}
+                              className={txnSelected === i ? 'is-selected' : undefined}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => setTxnSelected(i)}
+                            >
+                              <td>{l.barcode}</td>
+                              <td>{l.shortDesc}</td>
+                              <td>{l.packQty}</td>
+                              <td>{l.qty}</td>
+                              <td>{l.unitCost}</td>
+                              <td>{l.sellingPrice}</td>
+                              <td>{l.disc}</td>
+                              <td>{l.vatPct}</td>
+                              <td>AED {money(txnLineTotal(l))}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Remark</label>
+                    <textarea rows={2} value={ef('txnRemarks')} onChange={(e) => setEf('txnRemarks', e.target.value)} />
+                  </div>
+                  <div className="pd-form-grid-3">
+                    <div className="pd-form-row">
+                      <label>Total</label>
+                      <div className="pd-form-computed">AED {money(txnGrandTotal())}</div>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Round Off Adjustment</label>
+                      <input value={ef('roundOff')} onChange={(e) => setEf('roundOff', e.target.value.replace(/[^\d.-]/g, ''))} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Net Amount</label>
+                      <div className="pd-form-computed">AED {money(txnGrandTotal() + (Number(ef('roundOff')) || 0))}</div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'purchaseList' || entryModal === 'purchaseReturnList' ? (
+                <>
+                  <div className="pd-form-grid-3">
+                    <div className="pd-form-row">
+                      <label>Search Column</label>
+                      <select value={ef('searchColumn')} onChange={(e) => setEf('searchColumn', e.target.value)}>
+                        <option>Purchase No</option>
+                        <option>Supplier Name</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Post Status</label>
+                      <select value={ef('postStatus')} onChange={(e) => setEf('postStatus', e.target.value)}>
+                        <option value="">All</option>
+                        <option value="POSTED">POSTED</option>
+                        <option value="DRAFT">DRAFT</option>
+                      </select>
+                    </div>
+                    {entryModal === 'purchaseList' ? (
+                      <div className="pd-form-row">
+                        <label>Payment Mode</label>
+                        <select value={ef('paymentModeFilter')} onChange={(e) => setEf('paymentModeFilter', e.target.value)}>
+                          <option value="">All</option>
+                          <option value="CREDIT">CREDIT</option>
+                          <option value="CASH">CASH</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="pd-form-row">
+                        <label>Value</label>
+                        <input value={ef('searchValue')} onChange={(e) => setEf('searchValue', e.target.value)} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="pd-form-grid-2">
+                    {entryModal === 'purchaseList' ? (
+                      <div className="pd-form-row">
+                        <label>Value</label>
+                        <input value={ef('searchValue')} onChange={(e) => setEf('searchValue', e.target.value)} />
+                      </div>
+                    ) : null}
+                    <div className="pd-form-row">
+                      <label>Supplier</label>
+                      <select value={ef('supplierFilter')} onChange={(e) => setEf('supplierFilter', e.target.value)}>
+                        <option value="">All</option>
+                        {suppliers.map((s) => (
+                          <option key={s.code} value={s.name}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>{entryModal === 'purchaseList' ? 'Purchase' : 'Return'} Date From</label>
+                      <DatePicker value={ef('listFrom')} onChange={(v) => setEf('listFrom', v)} max={ef('listTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('listTo')} onChange={(v) => setEf('listTo', v)} min={ef('listFrom')} />
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
+                      Search
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        {entryModal === 'purchaseList' ? (
+                          <tr>
+                            <th>Purchase No</th>
+                            <th>Purchase Date</th>
+                            <th>Supplier Name</th>
+                            <th>Supplier Inv No</th>
+                            <th>Invoice Amount</th>
+                            <th>Payment Mode</th>
+                            <th>Status</th>
+                          </tr>
+                        ) : (
+                          <tr>
+                            <th>Return No</th>
+                            <th>Return Date</th>
+                            <th>Purchase No</th>
+                            <th>Supplier Inv No</th>
+                            <th>Supplier Name</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                          </tr>
+                        )}
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={7}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="pd-txn-count">COUNT : 0 &nbsp; TOTAL AMOUNT : 0.00</p>
+                </>
+              ) : null}
+
+              {entryModal === 'purchaseReturn' ? (
+                <>
+                  <div className="pd-txn-head">
+                    <div className="pd-txn-head-fields">
+                      <div className="pd-form-grid-2">
+                        <div className="pd-form-row">
+                          <label>Return No.</label>
+                          <input value={ef('txnNo')} readOnly placeholder="Auto" />
+                        </div>
+                        <div className="pd-form-row">
+                          <label>Supplier Name</label>
+                          <select value={ef('supplierName')} onChange={(e) => setEf('supplierName', e.target.value)}>
+                            <option value="">Select…</option>
+                            {suppliers.map((s) => (
+                              <option key={s.code} value={s.name}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="pd-form-grid-2">
+                        <div className="pd-form-row">
+                          <label>Purchase No.</label>
+                          <input value={ef('purchaseRefNo')} onChange={(e) => setEf('purchaseRefNo', e.target.value)} />
+                        </div>
+                        <div className="pd-form-row">
+                          <label>Return Type</label>
+                          <select value={ef('returnType')} onChange={(e) => setEf('returnType', e.target.value)}>
+                            <option value="With GRN">With GRN</option>
+                            <option value="Without GRN">Without GRN</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="pd-form-grid-3">
+                        <div className="pd-form-row">
+                          <label>Return Date</label>
+                          <DatePicker value={ef('returnDate')} onChange={(v) => setEf('returnDate', v)} />
+                        </div>
+                        <div className="pd-form-row">
+                          <label>Payment Mode</label>
+                          <select value={ef('payMode')} onChange={(e) => setEf('payMode', e.target.value)}>
+                            <option value="CREDIT">CREDIT</option>
+                            <option value="CASH">CASH</option>
+                          </select>
+                        </div>
+                        <div className="pd-form-row">
+                          <label>Entered Date</label>
+                          <input value={ef('enteredDate')} readOnly />
+                        </div>
+                      </div>
+                      <div className="pd-form-grid-2">
+                        <div className="pd-form-row">
+                          <label>Sup Inv No.</label>
+                          <input value={ef('supInvNo')} onChange={(e) => setEf('supInvNo', e.target.value)} />
+                        </div>
+                        <div style={{ alignSelf: 'end', height: 33, display: 'flex', alignItems: 'center' }}>
+                          <Toggle
+                            checked={efBool('itemWithSupplier')}
+                            onChange={(v) => setEf('itemWithSupplier', v)}
+                            label="Item With Supplier"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="pd-txn-status">PURCHASE RETURN</p>
+                  </div>
+                  <div className="pd-recipe-line-row">
+                    <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
+                    <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
+                    <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <input
+                      placeholder="Return Qty"
+                      value={td('returnQty')}
+                      onChange={(e) => setTd('returnQty', e.target.value.replace(/[^\d.]/g, ''))}
+                    />
+                    <input
+                      placeholder="Actual Cost"
+                      value={td('unitCost')}
+                      onChange={(e) => setTd('unitCost', e.target.value.replace(/[^\d.]/g, ''))}
+                    />
+                    <input
+                      placeholder="Selling Price"
+                      value={td('sellingPrice')}
+                      onChange={(e) => setTd('sellingPrice', e.target.value.replace(/[^\d.]/g, ''))}
+                    />
+                    <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
+                      Add
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Barcode</th>
+                          <th>Short Description</th>
+                          <th>Qty</th>
+                          <th>Return Qty</th>
+                          <th>Actual Cost</th>
+                          <th>Selling Price</th>
+                          <th>Return Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {txnLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={7}>No lines added</td>
+                          </tr>
+                        ) : (
+                          txnLines.map((l, i) => (
+                            <tr
+                              key={i}
+                              className={txnSelected === i ? 'is-selected' : undefined}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => setTxnSelected(i)}
+                            >
+                              <td>{l.barcode}</td>
+                              <td>{l.shortDesc}</td>
+                              <td>{l.qty}</td>
+                              <td>{l.returnQty}</td>
+                              <td>{l.unitCost}</td>
+                              <td>{l.sellingPrice}</td>
+                              <td>AED {money((Number(l.returnQty) || 0) * (Number(l.sellingPrice) || 0))}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Remark</label>
+                    <textarea rows={2} value={ef('txnRemarks')} onChange={(e) => setEf('txnRemarks', e.target.value)} />
+                  </div>
+                  <p className="pd-txn-count">Purchase Bill Total : AED {money(txnGrandTotal())}</p>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>RoundOff Adj.</label>
+                      <input value={ef('roundOff')} onChange={(e) => setEf('roundOff', e.target.value.replace(/[^\d.-]/g, ''))} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Net Amount</label>
+                      <div className="pd-form-computed">AED {money(txnGrandTotal() + (Number(ef('roundOff')) || 0))}</div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'damageEntry' ? (
+                <div className="pd-dmg">
+                  <div className="pd-dmg-head">
+                    <div className="pd-form-row">
+                      <label>Damage No.</label>
+                      <input value={ef('txnNo')} readOnly placeholder="Auto" />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Date</label>
+                      <DatePicker value={ef('txnDate')} onChange={(v) => setEf('txnDate', v)} />
+                    </div>
+                    <div className="pd-form-row pd-dmg-remarks">
+                      <label>Remarks</label>
+                      <input value={ef('txnRemarks')} onChange={(e) => setEf('txnRemarks', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="pd-dmg-line">
+                    <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
+                    <input
+                      className="pd-dmg-desc"
+                      placeholder="Item"
+                      value={td('shortDesc')}
+                      onChange={(e) => setTd('shortDesc', e.target.value)}
+                    />
+                    <input
+                      className="pd-dmg-qty"
+                      placeholder="Qty"
+                      inputMode="decimal"
+                      value={td('adjQty')}
+                      onChange={(e) => setTd('adjQty', e.target.value.replace(/[^\d.]/g, ''))}
+                    />
+                    <select value={td('reason')} onChange={(e) => setTd('reason', e.target.value)}>
+                      <option value="Damage">Damage</option>
+                      <option value="Expiry">Expiry</option>
+                      <option value="Breakage">Breakage</option>
+                    </select>
+                    <button type="button" className="pd-dmg-add" onClick={addTxnLine}>
+                      Add
+                    </button>
+                  </div>
+                  <div className="pd-dmg-list">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Barcode</th>
+                          <th>Item</th>
+                          <th className="is-num">Qty</th>
+                          <th>Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {txnLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="pd-dmg-empty">No items added</td>
+                          </tr>
+                        ) : (
+                          txnLines.map((l, i) => (
+                            <tr
+                              key={i}
+                              className={txnSelected === i ? 'is-selected' : undefined}
+                              onClick={() => setTxnSelected(i)}
+                            >
+                              <td>{l.barcode}</td>
+                              <td>{l.shortDesc}</td>
+                              <td className="is-num">{l.adjQty}</td>
+                              <td>{l.reason}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'advancePayment' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Customer</label>
+                    <input value={ef('apCustomer')} onChange={(e) => setEf('apCustomer', e.target.value)} placeholder="Customer name or code" />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Advance Amount</label>
+                    <input value={ef('apAmount')} onChange={(e) => setEf('apAmount', e.target.value.replace(/[^\d.]/g, ''))} />
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'paymentList' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Customer Code</label>
+                      <input value={ef('pvCustomerCode')} readOnly placeholder="—" />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Customer Name</label>
+                      <input value={ef('pvCustomerName')} readOnly placeholder="—" />
+                    </div>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Customer Code</th>
+                          <th>Customer Name</th>
+                          <th>Advance</th>
+                          <th>Payment Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={4}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'osBalanceList' ? (
+                <>
+                  <div className="pd-entry-radio-row">
+                    <label className="pd-entry-radio">
+                      <input type="radio" name="obMode" checked={ef('obMode') === 'all'} onChange={() => setEf('obMode', 'all')} />
+                      All
+                    </label>
+                    <label className="pd-entry-radio">
+                      <input type="radio" name="obMode" checked={ef('obMode') === 'filter'} onChange={() => setEf('obMode', 'filter')} />
+                      Filter
+                    </label>
+                  </div>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>From</label>
+                      <DatePicker value={ef('obFrom')} onChange={(v) => setEf('obFrom', v)} max={ef('obTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('obTo')} onChange={(v) => setEf('obTo', v)} min={ef('obFrom')} />
+                    </div>
+                    <div className="pd-form-row" style={{ flex: 2 }}>
+                      <label>Customer Name</label>
+                      <input value={ef('obCustomerName')} onChange={(e) => setEf('obCustomerName', e.target.value)} />
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={displayCreditList}>
+                      Select
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Customer Name</th>
+                          <th>Bill Count</th>
+                          <th>Bill Total</th>
+                          <th>O/S Amount</th>
+                          <th>0 - 30</th>
+                          <th>30 - 60</th>
+                          <th>60 - 120</th>
+                          <th>120 and above</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={8}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'creditReceiptList'
+                ? renderDisplayListBody(['Sl No', 'TransactionDate', 'CustomerCode', 'CustomerName', 'PreviousOSBalance', 'Paid Amount', 'NewOsBalance'])
+                : null}
+
+              {entryModal === 'advanceViewer'
+                ? renderDisplayListBody(['Sl No', 'TransactionDate', 'CustomerCode', 'CustomerName', 'Cust Pay.Mode', 'EnteredBy', 'Amount'])
+                : null}
+
+              {entryModal === 'messBillViewer'
+                ? renderDisplayListBody(['Sl No', 'MessBillDate', 'CustomerCode', 'CustomerName', 'MessItemName'])
+                : null}
+
+              {entryModal === 'billReprint' ? (
+                <div className="pd-bill-reprint-body">
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Bill No</th>
+                          <th>KOT No</th>
+                          <th>BillTime</th>
+                          <th>Payment Mode</th>
+                          <th>TotalAmount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={5}>No bills found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>SL</th>
+                          <th>BarCode</th>
+                          <th>Short Description</th>
+                          <th>Qty</th>
+                          <th>Unit Price</th>
+                          <th>Line Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={6}>Select a bill</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'areaWiseReportRP' || entryModal === 'groupWiseRP' || entryModal === 'itemWiseRP' ? (
+                <>
+                  {entryModal === 'itemWiseRP' ? (
+                    <div className="pd-form-grid-2">
+                      <div className="pd-form-row">
+                        <label>Counter No</label>
+                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Group</label>
+                        <select value={ef('rGroup')} onChange={(e) => setEf('rGroup', e.target.value)}>
+                          <option value="">All Groups</option>
+                          {groups.map((g) => (
+                            <option key={g.id} value={g.name}>
+                              {g.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="pd-form-row">
+                    <label>Report with</label>
+                    <div className="pd-entry-radio-row">
+                      <label className="pd-entry-radio">
+                        <input type="radio" name="rMode" checked={ef('rMode') === 'date'} onChange={() => setEf('rMode', 'date')} />
+                        Date
+                      </label>
+                      <label className="pd-entry-radio">
+                        <input
+                          type="radio"
+                          name="rMode"
+                          checked={ef('rMode') === 'counterClose'}
+                          onChange={() => setEf('rMode', 'counterClose')}
+                        />
+                        Counter Close No.
+                      </label>
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Counter Close No</label>
+                    <input
+                      value={ef('rCounterCloseNo')}
+                      onChange={(e) => setEf('rCounterCloseNo', e.target.value)}
+                      disabled={ef('rMode') !== 'counterClose'}
+                    />
+                  </div>
+                  <Toggle checked={efBool('rCounterCloseWise')} onChange={(v) => setEf('rCounterCloseWise', v)} label="Counter Close Wise" />
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Report Date From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Report Date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'itemVoidReportRP' || entryModal === 'itemVoidA4' || entryModal === 'salesmanWise' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    {entryModal === 'salesmanWise' ? (
+                      <div className="pd-form-row">
+                        <label>Counter No</label>
+                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                      </div>
+                    ) : null}
+                    <div className="pd-form-row">
+                      <label>{entryModal === 'salesmanWise' ? 'SalesMan Name' : 'Cashier Name'}</label>
+                      <input
+                        value={ef('rCashierName')}
+                        onChange={(e) => setEf('rCashierName', e.target.value)}
+                        placeholder={entryModal === 'salesmanWise' ? undefined : 'All'}
+                      />
+                    </div>
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>{entryModal === 'salesmanWise' ? 'Reoprt Date From' : 'Report Date From'}</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Report Date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'cancelBillDetails' ? (
+                <>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>Report From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Report To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
+                      Search
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Kot</th>
+                          <th>Cashier Name</th>
+                          <th>Waiter Name</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={3}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'cancelBillSummary' ||
+              entryModal === 'salesBillWiseRP' ||
+              entryModal === 'dayWiseRP' ||
+              entryModal === 'counterCloseDetailsA4' ||
+              entryModal === 'incomeExpense' ||
+              entryModal === 'productionReport' ? (
+                <>
+                  {entryModal === 'counterCloseDetailsA4' || entryModal === 'incomeExpense' || entryModal === 'productionReport' ? (
+                    <div className="pd-form-grid-2">
+                      <div className="pd-form-row">
+                        <label>Counter No</label>
+                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Cashier Name</label>
+                        <input value={ef('rCashierName')} onChange={(e) => setEf('rCashierName', e.target.value)} />
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Report Date From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Report Date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'counterCloseReportsRP' ? (
+                <>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>Counter No</label>
+                      <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
+                      Search
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>CounterNo</th>
+                          <th>CloseDate</th>
+                          <th>CloseTime</th>
+                          <th>BillCount</th>
+                          <th>CashSale</th>
+                          <th>CreditSale</th>
+                          <th>TotalOnline</th>
+                          <th>TotalDiscount</th>
+                          <th>TotalSale</th>
+                          <th>CashToBeCollected</th>
+                          <th>CollectedCash</th>
+                          <th>CashDifference</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={12}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'pendingOrderList' ? (
+                <>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Order Status</label>
+                      <select value={ef('rOrderStatus') || 'PENDING'} onChange={(e) => setEf('rOrderStatus', e.target.value)}>
+                        <option value="PENDING">PENDING</option>
+                        <option value="COMPLETED">COMPLETED</option>
+                        <option value="ALL">ALL</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Area</label>
+                      <select value={ef('rArea') || 'ALL'} onChange={(e) => setEf('rArea', e.target.value)}>
+                        <option value="ALL">ALL</option>
+                        {areas.map((a) => (
+                          <option key={a.id} value={a.name}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
+                      Search
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Order No</th>
+                          <th>Order Time</th>
+                          <th>Table</th>
+                          <th>Area</th>
+                          <th>Waiter</th>
+                          <th>Guests</th>
+                          <th>SubTotal</th>
+                          <th>Discount</th>
+                          <th>Tax</th>
+                          <th>Amount</th>
+                          <th>Order Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={11}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'counterWiseA4' || entryModal === 'counterWiseTimewise' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Counter No</label>
+                    <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Sales Date From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Sales Date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                  {entryModal === 'counterWiseTimewise' ? (
+                    <div className="pd-form-grid-2">
+                      <div className="pd-form-row">
+                        <label>From Time</label>
+                        <input value={ef('rFromTime') || '5:00:00 AM'} onChange={(e) => setEf('rFromTime', e.target.value)} />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>To Time</label>
+                        <input value={ef('rToTime') || '5:00:00 AM'} onChange={(e) => setEf('rToTime', e.target.value)} />
+                      </div>
+                    </div>
+                  ) : null}
+                  <Toggle checked={efBool('rSummaryOnly')} onChange={(v) => setEf('rSummaryOnly', v)} label="Sales Summary Only" />
+                  <Toggle checked={efBool('rCashierWise')} onChange={(v) => setEf('rCashierWise', v)} label="Cashier Wise" />
+                  <Toggle checked={efBool('rCounterOnly')} onChange={(v) => setEf('rCounterOnly', v)} label="Counter Only" />
+                </>
+              ) : null}
+
+              {entryModal === 'itemwiseSummary' || entryModal === 'itemwiseDetails' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Group</label>
+                    <select value={ef('rGroup')} onChange={(e) => setEf('rGroup', e.target.value)}>
+                      <option value="">All Groups</option>
+                      {groups.map((g) => (
+                        <option key={g.id} value={g.name}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>SubGroup</label>
+                    <select value={ef('rSubGroup')} onChange={(e) => setEf('rSubGroup', e.target.value)}>
+                      <option value="">All Sub Groups</option>
+                      {allSubGroups.map((s) => (
+                        <option key={s.id} value={s.name}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Report Date From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Report Date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                  <Toggle checked={efBool('rCashierWise')} onChange={(v) => setEf('rCashierWise', v)} label="Cashier Wise" />
+                  <Toggle checked={efBool('rReceiptPrinter')} onChange={(v) => setEf('rReceiptPrinter', v)} label="Receipt Printer" />
+                </>
+              ) : null}
+
+              {entryModal === 'areawiseA4' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Location</label>
+                    <select value={ef('rArea') || 'ALL'} onChange={(e) => setEf('rArea', e.target.value)}>
+                      <option value="ALL">ALL</option>
+                      {areas.map((a) => (
+                        <option key={a.id} value={a.name}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Report Date from</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Report Date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                  <Toggle checked={efBool('rSummaryOnly')} onChange={(v) => setEf('rSummaryOnly', v)} label="Summary" />
+                </>
+              ) : null}
+
+              {entryModal === 'waiterwise' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Waiter</label>
+                    <input value={ef('rWaiterName')} onChange={(e) => setEf('rWaiterName', e.target.value)} />
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Report Date From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Report date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                  <div className="pd-entry-radio-row">
+                    <label className="pd-entry-radio">
+                      <input
+                        type="radio"
+                        name="rDetailMode"
+                        checked={ef('rDetailMode') === 'detailed'}
+                        onChange={() => setEf('rDetailMode', 'detailed')}
+                      />
+                      Detailed
+                    </label>
+                    <label className="pd-entry-radio">
+                      <input
+                        type="radio"
+                        name="rDetailMode"
+                        checked={ef('rDetailMode') === 'summary'}
+                        onChange={() => setEf('rDetailMode', 'summary')}
+                      />
+                      Summary
+                    </label>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'customerAnalysisDetailed' || entryModal === 'customerAnalysisSummary' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Area</label>
+                    <select value={ef('rArea')} onChange={(e) => setEf('rArea', e.target.value)}>
+                      <option value="">Select…</option>
+                      {areas.map((a) => (
+                        <option key={a.id} value={a.name}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Date From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                  {entryModal === 'customerAnalysisSummary' ? (
+                    <Toggle checked={efBool('rSummaryOnly')} onChange={(v) => setEf('rSummaryOnly', v)} label="Summary" />
+                  ) : null}
+                </>
+              ) : null}
+
+              {entryModal === 'graphReport' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Counter No</label>
+                    <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Sales Date From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Sales Date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Report by</label>
+                    <div className="pd-entry-radio-row">
+                      {(['Hour', 'Day', 'Month'] as const).map((m) => (
+                        <label key={m} className="pd-entry-radio">
+                          <input
+                            type="radio"
+                            name="rReportBy"
+                            checked={(ef('rReportBy') || 'Hour') === m}
+                            onChange={() => setEf('rReportBy', m)}
+                          />
+                          {m}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'itemwiseViewer' ? (
+                <>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>Counter No</label>
+                      <select value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)}>
+                        <option value="">All</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={displayCreditList}>
+                      Display
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Sl No</th>
+                          <th>Barcode</th>
+                          <th>Item Name</th>
+                          <th>Group</th>
+                          <th>SaleQty</th>
+                          <th>TotalUnitPrice</th>
+                          <th>Discount</th>
+                          <th>SubTotal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={8}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'delBoyCommission' ? (
+                <div className="pd-mr-body">
+                  <div className="pd-mr-groups">
+                    {groups.length === 0 ? (
+                      <p className="pd-cat-msg">No groups loaded</p>
+                    ) : (
+                      groups.map((g) => (
+                        <label key={g.id} className="pd-mr-group-row">
+                          <input
+                            type="checkbox"
+                            checked={mrSelectedGroups.has(g.id)}
+                            onChange={() =>
+                              setMrSelectedGroups((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(g.id)) next.delete(g.id)
+                                else next.add(g.id)
+                                return next
+                              })
+                            }
+                          />
+                          {g.name}
+                        </label>
+                      ))
+                    )}
+                  </div>
+                  <div className="pd-mr-filters">
+                    <div className="pd-form-row">
+                      <label>Commission %</label>
+                      <div className="pd-form-computed">{ef('rCommission') || '3.5'}</div>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Delivery Boy</label>
+                      <select value={ef('rDeliveryBoy')} onChange={(e) => setEf('rDeliveryBoy', e.target.value)}>
+                        <option value="">Select…</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Sales Date From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Sales Date To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'productMovementFast' || entryModal === 'productMovementSlow' ? (
+                <>
+                  <div className="pd-txn-search-row">
+                    <div className="pd-form-row">
+                      <label>From</label>
+                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To</label>
+                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Min</label>
+                      <input value={ef('rMin')} onChange={(e) => setEf('rMin', e.target.value.replace(/[^\d]/g, ''))} />
+                    </div>
+                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
+                      Search
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Group</th>
+                          <th>Item Description</th>
+                          <th>Unit Price</th>
+                          <th>Total Qty Sold</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={4}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'dayCloseReport' ? (
+                <div className="pd-form-grid-2">
+                  <div className="pd-form-row">
+                    <label>Report Date From</label>
+                    <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Report Date To</label>
+                    <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'incomeExpenseEntry' ? (
+                <>
+                  <div className="pd-recipe-line-row">
+                    <input placeholder="Account Name" value={td('accountName')} onChange={(e) => setTd('accountName', e.target.value)} />
+                    <input placeholder="Remarks" value={td('remarks')} onChange={(e) => setTd('remarks', e.target.value)} />
+                    <input placeholder="Taxable Amount" value={td('taxableAmount')} onChange={(e) => setTd('taxableAmount', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <select value={ef('ieTaxRate')} onChange={(e) => setEf('ieTaxRate', e.target.value)}>
+                      <option value="0.00">0.00</option>
+                      <option value="5.00">5.00</option>
+                    </select>
+                    <select value={ef('iePayType')} onChange={(e) => setEf('iePayType', e.target.value)}>
+                      <option value="CASH">CASH</option>
+                      <option value="CREDIT">CREDIT</option>
+                    </select>
+                    <select value={ef('ieType')} onChange={(e) => setEf('ieType', e.target.value)}>
+                      <option value="INCOME">INCOME</option>
+                      <option value="EXPENSE">EXPENSE</option>
+                    </select>
+                    <DatePicker value={ef('ieDate')} onChange={(v) => setEf('ieDate', v)} />
+                    <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
+                      Add
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Account Name</th>
+                          <th>Remarks</th>
+                          <th>Date</th>
+                          <th>Pay Type</th>
+                          <th>Taxable Amount</th>
+                          <th>Tax Amt</th>
+                          <th>{ef('ieType') === 'EXPENSE' ? 'Expence' : 'Income'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {txnLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={7}>No entries added</td>
+                          </tr>
+                        ) : (
+                          txnLines.map((l, i) => {
+                            const taxAmt = (Number(l.taxableAmount) || 0) * (Number(ef('ieTaxRate')) / 100)
+                            return (
+                              <tr
+                                key={i}
+                                className={txnSelected === i ? 'is-selected' : undefined}
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => setTxnSelected(i)}
+                              >
+                                <td>{l.accountName}</td>
+                                <td>{l.remarks}</td>
+                                <td>{ef('ieDate')}</td>
+                                <td>{ef('iePayType')}</td>
+                                <td>{l.taxableAmount}</td>
+                                <td>{money(taxAmt)}</td>
+                                <td>{money((Number(l.taxableAmount) || 0) + taxAmt)}</td>
+                              </tr>
+                            )
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Total</label>
+                    <div className="pd-form-computed">
+                      AED {money(txnLines.reduce((sum, l) => sum + (Number(l.taxableAmount) || 0), 0))}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'discountEntry' || entryModal === 'discountList' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Supplier</label>
+                      <input value={ef('discSupplier')} onChange={(e) => setEf('discSupplier', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Product Brand</label>
+                      <input value={ef('discBrand')} onChange={(e) => setEf('discBrand', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Group</label>
+                      <select value={ef('discGroup')} onChange={(e) => setEf('discGroup', e.target.value)}>
+                        <option value="">All Groups</option>
+                        {groups.map((g) => (
+                          <option key={g.id} value={g.name}>
+                            {g.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>SubGroup</label>
+                      <select value={ef('discSubGroup')} onChange={(e) => setEf('discSubGroup', e.target.value)}>
+                        <option value="">All Sub Groups</option>
+                        {allSubGroups.map((s) => (
+                          <option key={s.id} value={s.name}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {entryModal === 'discountEntry' ? (
+                    <div className="pd-form-grid-2">
+                      <div className="pd-form-row">
+                        <label>Discount Date From</label>
+                        <DatePicker value={ef('discFrom')} onChange={(v) => setEf('discFrom', v)} max={ef('discTo')} />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Discount Date To</label>
+                        <DatePicker value={ef('discTo')} onChange={(v) => setEf('discTo', v)} min={ef('discFrom')} />
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="pd-form-code">
+                    {entryModal === 'discountEntry' ? (
+                      <input
+                        placeholder="Discount Percentage"
+                        value={ef('discPercent')}
+                        onChange={(e) => setEf('discPercent', e.target.value.replace(/[^\d.]/g, ''))}
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      className="pd-form-code-btn"
+                      onClick={entryModal === 'discountEntry' ? applyDiscountRange : searchTxnList}
+                    >
+                      {entryModal === 'discountEntry' ? 'Apply' : 'Search'}
+                    </button>
+                  </div>
+                  {entryModal === 'discountEntry' ? (
+                    <div className="pd-recipe-line-row">
+                      <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
+                      <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
+                      <input placeholder="Pack Qty" value={td('packQty')} onChange={(e) => setTd('packQty', e.target.value)} />
+                      <input placeholder="Selling Price" value={td('sellingPrice')} onChange={(e) => setTd('sellingPrice', e.target.value.replace(/[^\d.]/g, ''))} />
+                      <input placeholder="Dis. Amt" value={td('disAmt')} onChange={(e) => setTd('disAmt', e.target.value.replace(/[^\d.]/g, ''))} />
+                      <input placeholder="Disc. %" value={td('discPct')} onChange={(e) => setTd('discPct', e.target.value.replace(/[^\d.]/g, ''))} />
+                      <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
+                        Add
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Barcode</th>
+                          <th>Short Description</th>
+                          <th>Sell Price</th>
+                          <th>Dis. Amt</th>
+                          <th>Disc. %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entryModal === 'discountList' || txnLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={5}>No discounts found</td>
+                          </tr>
+                        ) : (
+                          txnLines.map((l, i) => (
+                            <tr
+                              key={i}
+                              className={txnSelected === i ? 'is-selected' : undefined}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => setTxnSelected(i)}
+                            >
+                              <td>{l.barcode}</td>
+                              <td>{l.shortDesc}</td>
+                              <td>{l.sellingPrice}</td>
+                              <td>{l.disAmt}</td>
+                              <td>{l.discPct}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'changeSettlement' ? (
+                <>
+                  <div className="pd-form-grid-3">
+                    <div className="pd-form-row">
+                      <label>Bill No</label>
+                      <input value={ef('csBillNo')} onChange={(e) => setEf('csBillNo', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Payment Mode</label>
+                      <select value={ef('csPaymentMode')} onChange={(e) => setEf('csPaymentMode', e.target.value)}>
+                        <option value="">Select…</option>
+                        <option value="CASH">CASH</option>
+                        <option value="CREDIT CARD">CREDIT CARD</option>
+                        <option value="CREDIT">CREDIT</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Bill Date</label>
+                      <DatePicker value={ef('csDate')} onChange={(v) => setEf('csDate', v)} />
+                    </div>
+                  </div>
+                  <button type="button" className="pd-form-code-btn" onClick={searchTxnList}>
+                    Search
                   </button>
-                ) : null}
-              </label>
-              <div className="pd-ol-list">
-                {groupPickerState === 'loading' ? <p className="pd-cat-msg">Loading…</p> : null}
-                {groupPickerState === 'idle' && groupPickerRows.length === 0 ? (
-                  <p className="pd-cat-msg">No matches</p>
-                ) : null}
-                {groupPickerRows.map((row) => (
-                  <button key={row.id} type="button" className="pd-ol-row" onClick={() => pickGroupPickerRow(row)}>
-                    <strong>{row.name}</strong>
-                    <span>{row.code || '—'}</span>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Bill No</th>
+                          <th>Bill Date</th>
+                          <th>Bill Time</th>
+                          <th>Payment Mode</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={4}>No records found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'vatActivation' ? (
+                <div className="pd-vat-body">
+                  <p className="pd-cat-msg">Click Setup VAT button to start VAT service</p>
+                  <button type="button" className="pd-mod-foot-btn is-ok" onClick={setupVat}>
+                    Setup VAT
                   </button>
-                ))}
-              </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'productListEdit' ? (
+                <>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Group</label>
+                      <select value={ef('pleGroup')} onChange={(e) => setEf('pleGroup', e.target.value)}>
+                        <option value="">All Groups</option>
+                        {groups.map((g) => (
+                          <option key={g.id} value={g.name}>
+                            {g.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Sub Group</label>
+                      <select value={ef('pleSubGroup')} onChange={(e) => setEf('pleSubGroup', e.target.value)}>
+                        <option value="">All Sub Groups</option>
+                        {allSubGroups.map((s) => (
+                          <option key={s.id} value={s.name}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="pd-form-grid-2">
+                    <div className="pd-form-row">
+                      <label>Search Column</label>
+                      <select value={ef('searchColumn')} onChange={(e) => setEf('searchColumn', e.target.value)}>
+                        <option>Short Description</option>
+                        <option>Barcode</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Search Value</label>
+                      <input value={ef('searchValue')} onChange={(e) => setEf('searchValue', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Bar Code</th>
+                          <th>Short Description</th>
+                          <th>Qty on Hand</th>
+                          <th>Unit Price</th>
+                          <th>VAT (5%)</th>
+                          <th>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allProducts
+                          .filter((p) => !ef('pleGroup') || groups.find((g) => g.name === ef('pleGroup'))?.id === p.groupId)
+                          .filter((p) => !ef('searchValue') || p.name.toLowerCase().includes(ef('searchValue').toLowerCase()))
+                          .slice(0, 100)
+                          .map((p) => (
+                            <tr
+                              key={p.id}
+                              className={txnSelected === p.id ? 'is-selected' : undefined}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => setTxnSelected(p.id)}
+                            >
+                              <td>—</td>
+                              <td>{p.name}</td>
+                              <td>—</td>
+                              <td>{money(p.price)}</td>
+                              <td>{money(p.taxAmount)}</td>
+                              <td>{money(p.price + p.taxAmount)}</td>
+                            </tr>
+                          ))}
+                        {allProducts.length === 0 ? (
+                          <tr>
+                            <td colSpan={6}>No products loaded</td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'changeDiscountPercent' ? (
+                <div className="pd-cdp-body">
+                  <div className="pd-cdp-fields">
+                    <div className="pd-form-row">
+                      <label>Total Amount</label>
+                      <input value={ef('cdpTotal')} onChange={(e) => setEf('cdpTotal', e.target.value.replace(/[^\d.]/g, ''))} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Discount Amount</label>
+                      <input value={ef('cdpAmount')} readOnly />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Disc Percentage</label>
+                      <input value={ef('cdpPercent')} onChange={(e) => setEf('cdpPercent', e.target.value.replace(/[^\d.]/g, ''))} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Net Amount</label>
+                      <div className="pd-form-computed">
+                        AED {money((Number(ef('cdpTotal')) || 0) - (Number(ef('cdpAmount')) || 0))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pd-cdp-presets">
+                    {[5, 10, 25].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        className={`pd-cdp-preset${Number(ef('cdpPercent')) === pct ? ' is-on' : ''}`}
+                        onClick={() => applyDiscountPercentPreset(pct)}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'eventLogs' ? (
+                <>
+                  <div className="pd-el-stats">
+                    <div className="pd-el-stat">
+                      <span>Total Logs</span>
+                      <strong>0</strong>
+                    </div>
+                    <div className="pd-el-stat">
+                      <span>Success</span>
+                      <strong>0</strong>
+                    </div>
+                    <div className="pd-el-stat">
+                      <span>Failed</span>
+                      <strong>0</strong>
+                    </div>
+                    <div className="pd-el-stat">
+                      <span>Today</span>
+                      <strong>0</strong>
+                    </div>
+                  </div>
+                  <div className="pd-form-grid-3">
+                    <div className="pd-form-row">
+                      <label>From Date</label>
+                      <DatePicker value={ef('elFrom')} onChange={(v) => setEf('elFrom', v)} max={ef('elTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>To Date</label>
+                      <DatePicker value={ef('elTo')} onChange={(v) => setEf('elTo', v)} min={ef('elFrom')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Staff</label>
+                      <input value={ef('elStaff')} onChange={(e) => setEf('elStaff', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="pd-form-grid-3">
+                    <div className="pd-form-row">
+                      <label>Action</label>
+                      <select value={ef('elAction')} onChange={(e) => setEf('elAction', e.target.value)}>
+                        <option value="ALL">ALL</option>
+                        <option value="CREATE">CREATE</option>
+                        <option value="UPDATE">UPDATE</option>
+                        <option value="DELETE">DELETE</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Source</label>
+                      <select value={ef('elSource')} onChange={(e) => setEf('elSource', e.target.value)}>
+                        <option value="ALL">ALL</option>
+                        <option value="POS">POS</option>
+                        <option value="BACKOFFICE">BACKOFFICE</option>
+                      </select>
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Status</label>
+                      <select value={ef('elStatus')} onChange={(e) => setEf('elStatus', e.target.value)}>
+                        <option value="ALL">ALL</option>
+                        <option value="SUCCESS">SUCCESS</option>
+                        <option value="FAILED">FAILED</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="pd-form-code">
+                    <SearchBar
+                      size="sm"
+                      placeholder="Search logs"
+                      value={ef('elSearch')}
+                      onValueChange={(v) => setEf('elSearch', v)}
+                      onSubmit={() => searchEventLogs()}
+                    />
+                    <button type="button" className="pd-form-code-btn" onClick={searchEventLogs}>
+                      Search
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={() => setEntryForm({})}>
+                      Clear
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={() => toast('Logs refreshed', 'success')}>
+                      Refresh
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={() => toast('Exported', 'success')}>
+                      Export
+                    </button>
+                    <button type="button" className="pd-form-code-btn" onClick={printReport}>
+                      Print
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>LogID</th>
+                          <th>LoggedAt</th>
+                          <th>ActionCode</th>
+                          <th>ActionLabel</th>
+                          <th>EntityType</th>
+                          <th>CounterNo</th>
+                          <th>StaffName</th>
+                          <th>Success</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={8}>No log entries found</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'printerSetup' ? (
+                <>
+                  <div className="pd-recipe-line-row">
+                    <input placeholder="Counter No" value={td('counterNo')} onChange={(e) => setTd('counterNo', e.target.value)} />
+                    <input placeholder="Kitchen Loc Name" value={td('kitchenLoc')} onChange={(e) => setTd('kitchenLoc', e.target.value)} />
+                    <input placeholder="Printer Name" value={td('printerName')} onChange={(e) => setTd('printerName', e.target.value)} />
+                    <button type="button" className="pd-form-code-btn" onClick={addPrinterRow}>
+                      Add
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>Counter No</th>
+                          <th>Kitchen Loc Name</th>
+                          <th>Printer Name</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {printerRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={3}>No printers configured</td>
+                          </tr>
+                        ) : (
+                          printerRows.map((r, i) => (
+                            <tr key={i}>
+                              <td>{r.counterNo}</td>
+                              <td>{r.kitchenLoc}</td>
+                              <td>{r.printerName}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="pd-txn-count">
+                    NOPRINTER—ID Will be (99)
+                    <br />
+                    SEPERATE KOT PRINTER FOR DELIVERY—ID Will be (98)
+                    <br />
+                    DUPLICATE KOT PRINTER—ID Will be (97)
+                    <br />
+                    Seperate KOT PRINTER for TakeAway—ID Will be (96)
+                  </p>
+                </>
+              ) : null}
+
+              {entryModal === 'userList' || entryModal === 'activateAccessCard' ? (
+                <div className="pd-grid-wrap">
+                  <table className="pd-grid">
+                    <thead>
+                      {entryModal === 'activateAccessCard' ? (
+                        <tr>
+                          <th>Code</th>
+                          <th>Name</th>
+                          <th>Role</th>
+                          <th>Login</th>
+                          <th>Card</th>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th>User Code</th>
+                          <th>User Name</th>
+                          <th>User Role</th>
+                          <th>Login Name</th>
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody>
+                      {(entryModal === 'activateAccessCard' ? userListRows.filter((u) => u.role === 'ADMIN') : userListRows).map(
+                        (u) => (
+                          <tr
+                            key={u.code}
+                            className={userListSelected === u.code ? 'is-selected' : undefined}
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => setUserListSelected(u.code)}
+                          >
+                            <td>{u.code}</td>
+                            <td>{u.name}</td>
+                            <td>{u.role}</td>
+                            <td>{u.login}</td>
+                            {entryModal === 'activateAccessCard' ? <td>{u.card}</td> : null}
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                  </table>
+                  {entryModal === 'activateAccessCard' ? (
+                    <p className="pd-txn-count">
+                      Select an ADMIN / CHIEF CASHIER, then tap the access card. Card number is never shown.
+                      <br />
+                      Selected: {userListRows.find((u) => u.code === userListSelected)?.name ?? '—'} — Card:{' '}
+                      {userListRows.find((u) => u.code === userListSelected)?.card ?? '—'}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {entryModal === 'privilegeSetup' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>User Name</label>
+                    <select value={ef('privUser')} onChange={(e) => setEf('privUser', e.target.value)}>
+                      {userListRows.map((u) => (
+                        <option key={u.code} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pd-priv-tree">
+                    {[
+                      'Masters', 'Amentment', 'Transaction', 'Reprint', 'Credit',
+                      'Reports', 'ReportsA4', 'Admin', 'Settings', 'Purchase',
+                    ].map((page) => (
+                      <label key={page} className="pd-priv-row">
+                        <input type="checkbox" checked={privilegeChecks.has(page)} onChange={() => togglePrivilege(page)} />
+                        Menu Page - {page}
+                      </label>
+                    ))}
+                    <label className="pd-priv-row">
+                      <input type="checkbox" checked={privilegeChecks.has('Main Page')} onChange={() => togglePrivilege('Main Page')} />
+                      Main Page
+                    </label>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'controlPanel' ? (
+                <>
+                  <div className="pd-cp-tabs">
+                    {['Company Details', 'Main Form', 'KOT', 'Bill', 'Mail Sending', 'General', 'Game Zone', 'Tax Settings'].map(
+                      (tab) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          className={`pd-cp-tab${controlPanelTab === tab ? ' is-on' : ''}`}
+                          onClick={() => setControlPanelTab(tab)}
+                        >
+                          {tab}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                  {controlPanelTab === 'Company Details' ? (
+                    <>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <div className="pd-form-row" key={n}>
+                          <label>Heading{n}</label>
+                          <input value={ef(`cpHeading${n}`)} onChange={(e) => setEf(`cpHeading${n}`, e.target.value)} />
+                        </div>
+                      ))}
+                      <div className="pd-form-row">
+                        <label>Tax Reg. No</label>
+                        <input value={ef('cpTaxRegNo')} onChange={(e) => setEf('cpTaxRegNo', e.target.value)} />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Footer1</label>
+                        <input value={ef('cpFooter1')} onChange={(e) => setEf('cpFooter1', e.target.value)} />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Footer2</label>
+                        <input value={ef('cpFooter2')} onChange={(e) => setEf('cpFooter2', e.target.value)} />
+                      </div>
+                    </>
+                  ) : (
+                    <p className="pd-cat-msg">{controlPanelTab} settings — coming soon</p>
+                  )}
+                </>
+              ) : null}
+
+              {entryModal === 'passwordChange' ? (
+                <>
+                  <div className="pd-form-row">
+                    <label>Login Name</label>
+                    <input value={ef('pcLogin')} onChange={(e) => setEf('pcLogin', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Password</label>
+                    <input type="password" value={ef('pcPassword')} onChange={(e) => setEf('pcPassword', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>New Password</label>
+                    <input type="password" value={ef('pcNewPassword')} onChange={(e) => setEf('pcNewPassword', e.target.value)} />
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Confirm Password</label>
+                    <input
+                      type="password"
+                      value={ef('pcConfirmPassword')}
+                      onChange={(e) => setEf('pcConfirmPassword', e.target.value)}
+                    />
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'langSetup' ? (
+                <>
+                  <div className="pd-recipe-line-row">
+                    <input
+                      placeholder="English Description"
+                      value={td('enText')}
+                      onChange={(e) => setTdWithArabicAutoFill('enText', 'arText', e.target.value)}
+                    />
+                    <ArabicInput placeholder="Arabic Description" value={td('arText')} onValueChange={(v) => setTd('arText', v)} source={td('enText')} onTranslateError={notifyTranslateDown} />
+                    <button type="button" className="pd-form-code-btn" onClick={addLangRow}>
+                      Add
+                    </button>
+                  </div>
+                  <div className="pd-grid-wrap">
+                    <table className="pd-grid">
+                      <thead>
+                        <tr>
+                          <th>English Description</th>
+                          <th>Arabic Description</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {langRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={2}>No entries added</td>
+                          </tr>
+                        ) : (
+                          langRows.map((r, i) => (
+                            <tr key={i}>
+                              <td>{r.en}</td>
+                              <td dir="rtl">{r.ar}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+
+              {entryModal === 'partyOrderList' ? (
+                <div className="pd-poi-body">
+                  <div className="pd-poi-main">
+                    <div className="pd-grid-wrap">
+                      <table className="pd-grid">
+                        <thead>
+                          <tr>
+                            <th>Order No.</th>
+                            <th>Order Date</th>
+                            <th>Customer Name</th>
+                            <th>Amount</th>
+                            <th>Advance Paid</th>
+                            <th>Balance Amount</th>
+                            <th>Delivery Date</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td colSpan={8}>No party orders found</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="pd-txn-search-row">
+                      <button type="button" className="pd-form-code-btn" onClick={() => toast('Refreshed', 'success')}>
+                        Refresh
+                      </button>
+                      <div className="pd-form-row">
+                        <label>Order Status</label>
+                        <select value={ef('poiStatus')} onChange={(e) => setEf('poiStatus', e.target.value)}>
+                          <option value="">All</option>
+                          <option value="PENDING">PENDING</option>
+                          <option value="READY">READY</option>
+                        </select>
+                      </div>
+                      <button type="button" className="pd-form-code-btn" onClick={searchTxnList}>
+                        Search
+                      </button>
+                    </div>
+                  </div>
+                  <div className="pd-poi-side">
+                    <p className="pd-poi-title">Customer Details</p>
+                    <div className="pd-form-row">
+                      <label>Name</label>
+                      <input value={ef('poiName')} onChange={(e) => setEf('poiName', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Address</label>
+                      <input value={ef('poiAddress')} onChange={(e) => setEf('poiAddress', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Area</label>
+                      <input value={ef('poiArea')} onChange={(e) => setEf('poiArea', e.target.value)} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Phone No</label>
+                      <input value={ef('poiPhone')} onChange={(e) => setEf('poiPhone', e.target.value)} />
+                    </div>
+                    <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => toast('Order marked ready', 'success')}>
+                      Order Ready
+                    </button>
+                    <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => toast('Settlement — coming soon', 'info')}>
+                      Settlement
+                    </button>
+                    <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
+                      Bill Reprint
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'multiSupplierSetup' ? (
+                <p className="pd-cat-msg">No additional suppliers configured yet</p>
+              ) : null}
+
+              {entryModal === 'vatCorrectionUtility' ? (
+                <div className="pd-vcu-body">
+                  <div className="pd-vcu-fields">
+                    <div className="pd-form-row">
+                      <label>Date From</label>
+                      <DatePicker value={ef('vcFrom')} onChange={(v) => setEf('vcFrom', v)} max={ef('vcTo')} />
+                    </div>
+                    <div className="pd-form-row">
+                      <label>Date To</label>
+                      <DatePicker value={ef('vcTo')} onChange={(v) => setEf('vcTo', v)} min={ef('vcFrom')} />
+                    </div>
+                    <p className="pd-vcu-warn">Delete Trigger From Sales Child And purchase Child</p>
+                  </div>
+                  <div className="pd-vcu-actions">
+                    <button type="button" className="pd-mod-foot-btn is-ok" onClick={deliveryZeroClear}>
+                      Delivery Zero Clear
+                    </button>
+                    <button type="button" className="pd-mod-foot-btn is-ok" onClick={salesVariationCorrection}>
+                      Sales Variation Correction
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {entryModal === 'cashInOut' && cashMode === 'pick' ? (
+                <div className="pd-cash-pick">
+                  <button type="button" className="pd-cash-pick-btn" onClick={() => openCashMode('in')}>
+                    CASH IN
+                  </button>
+                  <button type="button" className="pd-cash-pick-btn" onClick={() => openCashMode('out')}>
+                    CASH OUT
+                  </button>
+                </div>
+              ) : null}
+
+              {entryModal === 'cashInOut' && cashMode !== 'pick' ? (
+                <div className="pd-cash-entry">
+                  <h3 className="pd-cash-entry-title">{cashMode === 'in' ? 'Cash IN Entry' : 'Cash Out Entry'}</h3>
+                  <div className="pd-cash-entry-top">
+                    <div className="pd-form-row" style={{ flex: 1 }}>
+                      <label>Type Description</label>
+                      <input value={ef('cashDesc')} onChange={(e) => setEf('cashDesc', e.target.value)} />
+                    </div>
+                    <span className="pd-cash-tag">Cash</span>
+                  </div>
+                  <div className="pd-cash-entry-body">
+                    <div className="pd-grid-wrap pd-cash-list">
+                      <table className="pd-grid">
+                        <thead>
+                          <tr>
+                            <th>Account Name</th>
+                            <th>{cashMode === 'in' ? 'Cash In Amount' : 'CashOut Amount'}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cashRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={2}>No entries yet</td>
+                            </tr>
+                          ) : (
+                            cashRows.map((r, i) => (
+                              <tr key={i}>
+                                <td>{r.desc || '—'}</td>
+                                <td>{money(r.amount)}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="pd-cash-quick">
+                      {Array.from(new Set(cashRows.map((r) => r.desc).filter(Boolean)))
+                        .slice(0, 8)
+                        .map((d) => (
+                          <button key={d} type="button" className="pd-cash-quick-btn" onClick={() => setEf('cashDesc', d)}>
+                            {d}
+                          </button>
+                        ))}
+                      {cashRows.length === 0 ? <p className="pd-cat-msg">No recent descriptions yet</p> : null}
+                    </div>
+                    <div className="pd-cash-keys">
+                      <input className="pd-cash-amount-display" value={ef('cashAmount')} readOnly placeholder="0" />
+                      <NumberKeypad className="pd-keys" onKey={onCashKey} />
+                      <button type="button" className="pd-cash-enter" onClick={() => void addCashMovement()}>
+                        Enter
+                      </button>
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Total Amount</label>
+                    <div className="pd-form-computed">AED {money(cashRows.reduce((sum, r) => sum + r.amount, 0))}</div>
+                  </div>
+                </div>
+              ) : null}
             </div>
+
+            {(() => {
+              const foot = renderEntryFooter()
+              return foot ? <div className="pd-mod-foot">{foot}</div> : null
+            })()}
           </div>
         </div>
       ) : null}
@@ -4712,73 +10597,124 @@ export default function PosMainPage() {
               </button>
             </div>
             <div className="pd-ol-body">
-              <div className="pd-ol-filters">
-                {(['ALL', 'DINE IN', 'TAKEAWAY', 'DELIVERY'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`pd-ol-filter${orderListSupply === s ? ' is-on' : ''}`}
-                    onClick={() => {
-                      setOrderListSupply(s)
-                      void loadOrderList(s, orderListSearch)
-                    }}
-                  >
-                    {s === 'ALL' ? 'All Orders' : s}
-                  </button>
-                ))}
-              </div>
-              <label className="pd-search">
-                <Search size={14} color="var(--text-3)" />
-                <input
+              <div className="pd-ord-toolbar">
+                <div className="pd-ord-tabs" role="tablist" aria-label="Order type">
+                  {([
+                    ['ALL', 'All Orders', ClipboardList],
+                    ['DINE IN', 'Dine In', Utensils],
+                    ['TAKEAWAY', 'Takeaway', ShoppingBag],
+                    ['DELIVERY', 'Delivery', Truck],
+                  ] as const).map(([s, label, Icon]) => (
+                    <button
+                      key={s}
+                      type="button"
+                      role="tab"
+                      aria-selected={orderListSupply === s}
+                      className={`pd-ord-tab${orderListSupply === s ? ' is-on' : ''}`}
+                      onClick={() => {
+                        setOrderListSupply(s)
+                        void loadOrderList(s, orderListSearch)
+                      }}
+                    >
+                      <Icon size={14} strokeWidth={2.2} />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <SearchBar
+                  size="sm"
+                  className="pd-ord-search"
                   value={orderListSearch}
-                  onChange={(e) => setOrderListSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void loadOrderList(orderListSupply, e.currentTarget.value)
-                  }}
-                  placeholder="KOT number"
+                  onValueChange={setOrderListSearch}
+                  onSubmit={(v) => void loadOrderList(orderListSupply, v)}
+                  onClear={() => void loadOrderList(orderListSupply, '')}
+                  placeholder="Search KOT number"
                 />
-                {orderListSearch ? (
-                  <button
-                    type="button"
-                    className="pd-search-clear"
-                    aria-label="Clear search"
-                    onClick={() => {
-                      setOrderListSearch('')
-                      void loadOrderList(orderListSupply, '')
-                    }}
-                  >
-                    <X size={12} />
-                  </button>
-                ) : null}
-              </label>
-              <div className="pd-ol-cards">
-                {orderListState === 'loading' ? <p className="pd-cat-msg">Loading orders…</p> : null}
-                {orderListState === 'error' ? <p className="pd-cat-msg">{orderListError}</p> : null}
+              </div>
+
+              {orderListState === 'idle' && orderListRows.length > 0 ? (
+                <div className="pd-ord-summary">
+                  <span>
+                    <b>{orderListRows.length}</b> open {orderListRows.length === 1 ? 'order' : 'orders'}
+                  </span>
+                  <span>
+                    Total <b>AED {money(orderListRows.reduce((sum, r) => sum + r.amount, 0))}</b>
+                  </span>
+                </div>
+              ) : null}
+
+              <div className="pd-ord-grid">
+                {orderListState === 'loading' ? <p className="pd-ord-empty">Loading orders…</p> : null}
+                {orderListState === 'error' ? <p className="pd-ord-empty is-error">{orderListError}</p> : null}
                 {orderListState === 'idle' && orderListRows.length === 0 ? (
-                  <p className="pd-cat-msg">No open KOTs</p>
+                  <div className="pd-ord-empty">
+                    <ClipboardList size={28} strokeWidth={1.6} />
+                    <b>No open orders</b>
+                    <span>{orderListSearch.trim() ? 'Nothing matches that KOT number.' : 'Saved KOTs will show up here.'}</span>
+                  </div>
                 ) : null}
-                {orderListRows.map((row) => (
-                  <button
-                    key={row.kotMasterId}
-                    type="button"
-                    className="pd-ol-card"
-                    disabled={loadingKot}
-                    onClick={() => void takeOrder(row.kotMasterId, false)}
-                  >
-                    <span className="pd-ol-card-area">
-                      {row.supplyType} · {row.areaName || 'Area'}
-                    </span>
-                    <span className="pd-ol-card-time">{formatKotClock(row.kotTime)}</span>
-                    <span className="pd-ol-card-table">
-                      Table: {row.tableName || 'N/A'}
-                    </span>
-                    <span className="pd-ol-card-pax">PAX: {row.pax || 0}</span>
-                    <span className="pd-ol-card-waiter">{row.waiterName || waiter}</span>
-                    {row.remarks ? <span className="pd-ol-card-note">{row.remarks}</span> : null}
-                    <span className="pd-ol-card-amt">AED {money(row.amount)}</span>
-                    <span className="pd-ol-card-kot">KOT No: {row.kotNo}</span>
-                  </button>
-                ))}
+                {orderListRows.map((row) => {
+                  const mins = kotAgeMinutes(row.kotTime)
+                  const SupplyIcon = row.supplyType === 'DELIVERY' ? Truck : row.supplyType === 'TAKEAWAY' ? ShoppingBag : Utensils
+                  return (
+                    <button
+                      key={row.kotMasterId}
+                      type="button"
+                      className={`pd-ord-card${mins != null && mins >= 30 ? ' is-late' : ''}`}
+                      disabled={loadingKot}
+                      onClick={() => void takeOrder(row.kotMasterId, false)}
+                    >
+                      <span className="pd-ord-top">
+                        <span className="pd-ord-kot">
+                          <small>KOT</small>
+                          {row.kotNo}
+                        </span>
+                        <span className="pd-ord-type">
+                          <SupplyIcon size={12} strokeWidth={2.4} />
+                          {row.supplyType === 'TAKEAWAY' ? 'Takeaway' : row.supplyType === 'DELIVERY' ? 'Delivery' : 'Dine In'}
+                        </span>
+                      </span>
+
+                      <span className="pd-ord-time">
+                        <Clock size={12} />
+                        {mins == null ? formatKotClock(row.kotTime) : mins < 1 ? 'Just now' : mins < 60 ? `${mins} min ago` : `${Math.floor(mins / 60)}h ${mins % 60}m ago`}
+                      </span>
+
+                      <span className="pd-ord-info">
+                        <span>
+                          <MapPinned size={12} />
+                          {row.tableName ? `Table ${row.tableName}` : 'No table'}
+                          {row.areaName ? <em> · {row.areaName}</em> : null}
+                        </span>
+                        <span>
+                          <Users size={12} />
+                          {row.pax || 0} pax
+                        </span>
+                        <span>
+                          <User size={12} />
+                          {row.waiterName || waiter}
+                        </span>
+                      </span>
+
+                      {row.remarks ? (
+                        <span className="pd-ord-note">
+                          <MessageSquare size={11} />
+                          {row.remarks}
+                        </span>
+                      ) : null}
+
+                      <span className="pd-ord-foot">
+                        <span className="pd-ord-amt">
+                          <small>AED</small>
+                          {money(row.amount)}
+                        </span>
+                        <span className="pd-ord-open">
+                          Open <ArrowRight size={13} strokeWidth={2.4} />
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           </div>

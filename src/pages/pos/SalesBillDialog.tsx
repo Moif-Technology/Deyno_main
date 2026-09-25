@@ -201,9 +201,6 @@ export default function SalesBillDialog({ salesId, onClose }: Props) {
                   Balance : <b>{money(bill.balancePaid)}</b>
                 </span>
               </div>
-              <button type="button" className="pd-settle-cancel" onClick={onClose}>
-                Close
-              </button>
             </footer>
           </>
         ) : null}

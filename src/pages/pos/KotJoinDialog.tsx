@@ -976,14 +976,6 @@ export default function KotJoinDialog({ areas, tables, waiter, onClose, onJoined
                 <button type="submit" className="pd-mod-foot-btn is-ok" disabled={adminBusy}>
                   {adminBusy ? 'Checking…' : 'Login'}
                 </button>
-                <button
-                  type="button"
-                  className="pd-mod-foot-btn is-close"
-                  onClick={() => setAdminOpen(false)}
-                  disabled={adminBusy}
-                >
-                  Close
-                </button>
               </div>
             </form>
           </div>

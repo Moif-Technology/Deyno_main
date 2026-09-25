@@ -1,0 +1,60 @@
+.ui-st {
+  flex: none;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  scrollbar-width: thin;
+  scrollbar-color: var(--brand-border) transparent;
+}
+
+.ui-st table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ui-st thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 12px;
+  background: var(--surface-2);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-2);
+}
+
+.ui-st tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.ui-st tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+.ui-st tbody tr.is-clickable:hover td {
+  background: var(--brand-bg);
+}
+
+.ui-st tbody tr.is-selected td {
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.ui-st tbody tr.is-selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+.ui-st-empty td {
+  padding: 24px 12px;
+  border-bottom: none;
+  text-align: center;
+  font-weight: 500;
+  color: var(--text-3);
+}

@@ -155,6 +155,12 @@ class ApiService {
     return listOf(res, 'subGroups')
   }
 
+  /** Unverified against a live server — mirrors createGroup's REST shape,
+   * since no sub-group create endpoint has been exercised yet. */
+  async createSubGroup(body: Row): Promise<Row> {
+    return api.post<Row>('/sub-groups', body)
+  }
+
   async fetchSubSubGroups(opts?: {
     groupId?: string | number
     subGroupId?: string | number
@@ -163,6 +169,12 @@ class ApiService {
       `/sub-sub-groups${qs({ groupId: opts?.groupId, subGroupId: opts?.subGroupId })}`,
     )
     return listOf(res, 'subSubGroups')
+  }
+
+  /** Unverified against a live server — mirrors createGroup's REST shape,
+   * since no sub-sub-group create endpoint has been exercised yet. */
+  async createSubSubGroup(body: Row): Promise<Row> {
+    return api.post<Row>('/sub-sub-groups', body)
   }
 
   async fetchModifiers(): Promise<Row[]> {

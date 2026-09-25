@@ -1,0 +1,244 @@
+/* Table Entry — table shape picker + preview (right column). */
+.tsp {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 16px;
+  background: #fbf7f8;
+  border: 1px solid var(--brand-tint);
+}
+
+.tsp-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+
+.tsp-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.tsp-head p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* Shape cards */
+.tsp-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tsp-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px 8px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.tsp-option .tsp-svg {
+  width: 56px;
+  height: 56px;
+}
+
+.tsp-option:hover {
+  border-color: var(--brand-border);
+}
+
+.tsp-option.is-on {
+  border-color: var(--brand);
+  background: var(--brand-bg);
+  color: var(--brand);
+  box-shadow: 0 4px 12px var(--brand-glow);
+}
+
+.tsp-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--brand);
+  color: #fff;
+}
+
+/* Big preview on a tiled floor */
+.tsp-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 210px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--brand-tint);
+  background-color: #f6eef0;
+  background-image:
+    linear-gradient(rgba(120, 8, 41, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 8, 41, 0.05) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+.tsp-preview .tsp-svg {
+  width: 190px;
+  height: 190px;
+  filter: drop-shadow(0 10px 14px rgba(80, 0, 20, 0.22));
+}
+
+.tsp-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.tsp-badge i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+.tsp-count {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-xs);
+  color: var(--brand);
+}
+
+.tsp-count b {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.tsp-count small {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+/* SVG parts */
+.tsp-chair-shadow {
+  fill: rgba(80, 0, 20, 0.12);
+}
+
+.tsp-chair-seat {
+  fill: var(--brand-2);
+}
+
+.tsp-chair-cushion {
+  fill: var(--brand-light);
+  opacity: 0.85;
+}
+
+.tsp-chair-back {
+  fill: var(--brand);
+}
+
+.tsp-plant ellipse {
+  fill: #6f9a5a;
+}
+
+.tsp-plant-core {
+  fill: #b4cf8f;
+}
+
+/* Compact labels on the preview: "Square Table" badge and chairs count. */
+.tsp-badge {
+  top: 8px;
+  left: 8px;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
+.tsp-badge i {
+  width: 7px;
+  height: 7px;
+}
+
+.tsp-count {
+  top: 8px;
+  right: 8px;
+  column-gap: 4px;
+  padding: 3px 7px;
+  border-radius: 8px;
+}
+
+.tsp-count svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tsp-count b {
+  font-size: 12px;
+}
+
+.tsp-count small {
+  font-size: 9px;
+}
+
+/* Shape cards scroll sideways when there are more than fit (3 show at once). */
+.tsp-options {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 20px) / 3);
+  grid-template-columns: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--brand-border) transparent;
+  padding-bottom: 4px;
+}
+
+.tsp-option {
+  scroll-snap-align: start;
+}
+
+.tsp-options::-webkit-scrollbar {
+  height: 5px;
+}
+
+.tsp-options::-webkit-scrollbar-thumb {
+  background: var(--brand-border);
+  border-radius: 999px;
+}

@@ -1,0 +1,92 @@
+.ui-search {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  cursor: text;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.ui-search.is-sm { height: 32px; gap: 6px; }
+.ui-search.is-lg { height: 42px; padding-left: 14px; }
+
+.ui-search:focus-within {
+  border-color: var(--brand);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.ui-search-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  color: var(--text-3);
+}
+
+.ui-search:focus-within .ui-search-icon {
+  color: var(--brand);
+}
+
+.ui-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.ui-search.is-lg input { font-size: 14px; }
+
+/* Our own clear button replaces the browser's built-in one. */
+.ui-search input::-webkit-search-cancel-button,
+.ui-search input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ui-search input::placeholder {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.ui-search-clear {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ui-search-clear:hover {
+  background: var(--brand);
+  color: #fff;
+}
+
+.ui-search-kbd {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-3);
+  white-space: nowrap;
+}

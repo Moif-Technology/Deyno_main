@@ -1,0 +1,88 @@
+/* ── Toggle — small branded switch, neumorphic 3D feel ────────────────── */
+.tg-root {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tg-root.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.tg-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+}
+
+.tg-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #e2e0d9 0%, #f4f3ef 100%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  /* Recessed groove when off — carved-in, not flat. */
+  box-shadow:
+    inset 1.5px 1.5px 3px rgba(163, 160, 152, 0.55),
+    inset -1px -1px 2px rgba(255, 255, 255, 0.7);
+  transition: background 0.32s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tg-knob {
+  position: absolute;
+  top: 1.5px;
+  left: 1.5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffffff 0%, #dedcd4 100%);
+  box-shadow:
+    0 1px 1px rgba(255, 255, 255, 0.9) inset,
+    0 1.5px 3px rgba(0, 0, 0, 0.35);
+  will-change: transform;
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.32s ease;
+}
+
+.tg-input:checked + .tg-track {
+  background: linear-gradient(180deg, var(--brand-2, #933953) 0%, var(--brand, #780829) 100%);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow:
+    inset 1.5px 1.5px 3px rgba(0, 0, 0, 0.35),
+    inset -1px -1px 2px rgba(255, 255, 255, 0.15);
+}
+
+.tg-input:checked + .tg-track .tg-knob {
+  transform: translateX(15px);
+  background: linear-gradient(180deg, #ffffff 0%, #f0eee8 100%);
+}
+
+.tg-input:active + .tg-track .tg-knob {
+  width: 16px;
+}
+
+.tg-input:focus-visible + .tg-track {
+  box-shadow:
+    inset 1.5px 1.5px 3px rgba(163, 160, 152, 0.55),
+    inset -1px -1px 2px rgba(255, 255, 255, 0.7),
+    0 0 0 3px var(--brand-glow, rgba(120, 8, 41, 0.15));
+}
+
+.tg-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1, #17150f);
+}

@@ -5,6 +5,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { useArabicAutoFill } from '../../utils/useArabicAutoFill'
+import { ArabicInput } from '../../components/common/ArabicInput'
 
 const TABLE_FORMATS = ['SQUARE', 'ROUND', 'OVAL', 'RECTANGLE'] as const
 
@@ -64,6 +66,7 @@ export default function TableMasterDialog({ areas, onClose, onSaved }: Props) {
   const [tableNo, setTableNo] = useState('')
   const [tableName, setTableName] = useState('')
   const [tableNameArabic, setTableNameArabic] = useState('')
+  const autoFillTableArabic = useArabicAutoFill(setTableNameArabic, 50)
   const [noOfChairs, setNoOfChairs] = useState('')
   const [waiterId, setWaiterId] = useState(0)
   const [tableFormat, setTableFormat] = useState('SQUARE')
@@ -243,16 +246,21 @@ export default function TableMasterDialog({ areas, onClose, onSaved }: Props) {
                 <input
                   className="pd-em-input"
                   value={tableName}
-                  onChange={(e) => setTableName(e.target.value.slice(0, 50))}
+                  onChange={(e) => {
+                    const v = e.target.value.slice(0, 50)
+                    setTableName(v)
+                    autoFillTableArabic(v)
+                  }}
                 />
               </label>
               <label className="pd-em-row">
                 <span>Table Name Arabic</span>
-                <input
+                <ArabicInput
                   className="pd-em-input pd-em-rtl"
-                  dir="rtl"
                   value={tableNameArabic}
-                  onChange={(e) => setTableNameArabic(e.target.value.slice(0, 50))}
+                  onValueChange={setTableNameArabic}
+                  source={tableName}
+                  maxLength={50}
                 />
               </label>
               <label className="pd-em-row">
@@ -333,9 +341,6 @@ export default function TableMasterDialog({ areas, onClose, onSaved }: Props) {
             </button>
             <button type="button" className="pd-em-btn is-save" onClick={() => void onSave()} disabled={busy}>
               {busy ? (task === 'Edit' ? 'Updating…' : 'Saving…') : task === 'Edit' ? 'Update' : 'Save'}
-            </button>
-            <button type="button" className="pd-em-btn is-close" onClick={onClose} disabled={busy}>
-              Close
             </button>
           </div>
         </div>

@@ -56,19 +56,25 @@
   gap: 12px;
   padding: 0 14px;
   border-bottom: 2px solid rgba(0, 0, 0, 0.18);
+  position: relative;
 }
 
+/* Logo sits in the exact centre of the header, independent of how wide the
+   menu button (left) and user/logout block (right) are. */
 .pd-logo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   gap: 6px;
-  padding-right: 12px;
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
   white-space: nowrap;
+  pointer-events: none;
 }
 
 .pd-logo-img {
-  height: calc(var(--header-h) * 0.42);
+  height: calc(var(--header-h) * 0.62);
   width: auto;
   display: block;
 }
@@ -94,8 +100,8 @@
    rail itself is gone, and reads distinctly from the plain round --pd-power
    button (rounded-square chip, faint fill, own hover tint). */
 .pd-nav-toggle {
-  width: 34px;
-  height: 30px;
+  width: 36px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -127,6 +133,39 @@
   overflow: hidden;
 }
 
+/* Logout — a normal menu row pinned to the bottom of the side menu. */
+.pd-side-spacer {
+  flex: 1 0 12px;
+}
+
+.pd-side-logout-wrap {
+  padding-top: 6px;
+  border-top: 1px solid var(--pd-border);
+}
+
+.pd-side-logout:hover {
+  color: var(--red);
+}
+
+/* Global search at the top of the side menu. */
+.pd-side-search {
+  margin-bottom: 6px;
+}
+
+/* Plain box in the same shape as the menu items below it. */
+.pd-side-search > .ui-search {
+  height: 40px;
+  border-radius: 14px;
+  border: 1px solid var(--pd-border);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.pd-side-search > .ui-search:focus-within {
+  border-color: var(--brand);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: none;
+}
+
 .pd-side-nav-backdrop {
   position: fixed;
   inset: 0;
@@ -141,14 +180,14 @@
   bottom: 10px;
   left: 10px;
   z-index: 95;
-  width: 168px;
+  width: 210px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: 0;
   padding: 10px 8px;
   border-radius: var(--r-lg);
   /* Glass effect — translucent, blurred fill over whatever is behind it. */
@@ -224,8 +263,11 @@
 .pd-subnav {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 2px 0 4px;
+  gap: 2px;
+  margin: 4px 2px 6px;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
 }
 
 .pd-subnav-item {
@@ -239,9 +281,9 @@
   justify-content: space-between;
   gap: 6px;
   width: 100%;
-  min-height: 32px;
+  min-height: 30px;
   padding: 6px 10px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--pd-text-2);
   font-size: 11px;
@@ -257,11 +299,12 @@
 }
 
 .pd-subnav-btn:hover {
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.7);
   color: var(--pd-text);
 }
 
 .pd-subnav-btn.is-open {
+  background: rgba(255, 255, 255, 0.55);
   color: var(--pd-text);
   font-weight: 700;
 }
@@ -655,7 +698,8 @@
 .pd-empty-logo {
   width: min(160px, 40%);
   height: auto;
-  opacity: 0.1;
+  /* Full opacity so the wordmark shows its true brand maroon. */
+  opacity: 1;
   pointer-events: none;
   user-select: none;
 }
@@ -938,6 +982,14 @@
 }
 
 .pd-right {
+  /* Product-box row height scales with the screen height so the action
+     buttons below keep a usable share of the panel on every screen.
+     5.859375vh = 60/1024 of the viewport — exactly 60px on a 1024px-tall
+     screen (the reference 1280×1024 layout), clamped for very short/tall
+     screens. 52px still fits a 2-line name + price. Shared with
+     .pd-table-popup, which takes the grid's place. */
+  --pd-prod-row: clamp(52px, 5.859375vh, 72px);
+  --pd-prod-gap: 8px;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -985,8 +1037,11 @@
 }
 
 .pd-table-popup {
-  flex: 1;
-  min-height: 120px;
+  /* Same height as the 6-row .pd-products grid it replaces, so the action
+     buttons below don't jump when the table picker opens. */
+  flex: 0 0 auto;
+  height: calc(6 * var(--pd-prod-row) + 5 * var(--pd-prod-gap));
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1227,58 +1282,6 @@
   background: var(--brand-bg);
 }
 
-.pd-search {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1.5px solid var(--pd-border);
-  background: var(--surface-2);
-}
-
-.pd-search:focus-within {
-  border-color: var(--brand);
-  background: var(--pd-surface);
-  box-shadow: 0 0 0 3px var(--brand-glow);
-}
-
-.pd-search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--pd-text);
-}
-
-.pd-search input::placeholder {
-  color: var(--text-3);
-  font-weight: 600;
-}
-
-.pd-search-clear {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 999px;
-  background: var(--pd-border);
-  color: var(--pd-text-2);
-  cursor: pointer;
-}
-
-.pd-search-clear:hover {
-  background: var(--pd-brand);
-  color: #fff;
-}
-
 .pd-crumb {
   flex: 0 1 auto;
   display: flex;
@@ -1394,9 +1397,18 @@
 }
 
 .pd-cat.is-sub {
-  background: var(--amber-bg);
-  border-color: var(--amber-border);
-  color: var(--amber);
+  min-height: 34px;
+  padding: 5px 8px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--pd-text-2);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.pd-cat.is-sub:hover {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: transparent;
 }
 
 .pd-cat.is-active {
@@ -1404,6 +1416,14 @@
   border-color: transparent;
   color: #fff;
   box-shadow: 0 4px 14px rgba(107, 0, 0, 0.22);
+}
+
+.pd-cat.is-sub.is-active {
+  background: #fff;
+  color: var(--brand);
+  border-color: transparent;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.14);
+  font-weight: 800;
 }
 
 .pd-cat.pd-top-move {
@@ -1432,35 +1452,46 @@
 .pd-subcat-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 2px;
-  padding-left: 14px;
-  border-left: 2px solid var(--brand-tint);
+  gap: 3px;
+  margin: 3px 0 2px;
+  padding: 4px;
+  background: var(--pd-muted);
+  border-radius: 10px;
 }
 
 .pd-subsubcat-list {
-  padding-left: 12px;
+  margin: 3px 0 0;
+  padding: 4px;
+  background: var(--pd-surface);
+  border-radius: 8px;
 }
 
 .pd-products {
-  flex: 1;
-  min-height: 120px;
+  /* Exactly 6 rows are visible; more rows scroll. Row height comes from
+     --pd-prod-row on .pd-right; the action area below (.pd-actions) takes
+     whatever height is left. */
+  flex: 0 0 auto;
+  height: calc(6 * var(--pd-prod-row) + 5 * var(--pd-prod-gap));
+  min-height: 0;
   overflow: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
+  grid-auto-rows: var(--pd-prod-row);
+  gap: var(--pd-prod-gap);
   align-content: start;
+  scrollbar-width: none;
+}
+
+.pd-products::-webkit-scrollbar {
+  display: none;
 }
 
 .pd-product {
-  /* One vh-based formula for every screen instead of fixed per-breakpoint
-     pixel values — scales down on short viewports, up on tall ones. The
-     floor is tall enough to actually fit 2 real lines of the name plus the
-     price row (see .pd-product-name) — a shorter floor was clipping the
-     2nd line before the line-clamp's own ellipsis ever got a chance. */
+  /* Height comes from .pd-products' grid-auto-rows (fixed 60px). */
   position: relative;
-  min-height: clamp(46px, 6.2vh, 62px);
-  padding: clamp(4px, 0.7vh, 7px) clamp(5px, 0.8vh, 8px);
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px 7px;
   border-radius: 6px;
   border: 1.5px solid var(--brand-tint);
   background: var(--pd-surface);
@@ -1488,9 +1519,10 @@
      enough room for 2 full lines + the price row, so long names wrap to a
      clean 2nd line (or "…" if even that overflows) instead of being cut
      off mid-word by a container that was too short to hold them. */
-  font-size: clamp(9px, 1.1vh, 12px);
+  /* Capped at 12px so 2 lines + the price row fit the fixed 60px box. */
+  font-size: clamp(11px, 1.4vh, 12px);
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.2;
   color: var(--pd-text);
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -1503,7 +1535,7 @@
      without it, browsers can under-report a line-clamped box's natural
      height inside a CSS Grid item, so the grid row gets sized too short
      and the real 2nd line spills out past the card's visible border. */
-  min-height: calc(1.25em * 2);
+  min-height: calc(1.2em * 2);
   flex-shrink: 0;
 }
 
@@ -1512,7 +1544,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: clamp(7.5px, 0.9vh, 9.5px);
+  font-size: clamp(8.5px, 1.05vh, 11px);
   font-weight: 700;
   color: var(--brand);
   font-family: var(--font-sans);
@@ -1522,7 +1554,7 @@
 
 
 .pd-product-price {
-  font-size: clamp(9px, 1.1vh, 12px);
+  font-size: clamp(10.5px, 1.3vh, 12px);
   font-weight: 800;
   color: var(--brand);
   font-family: var(--font-sans);
@@ -1581,8 +1613,11 @@
 /* ── Right actions ──────────────────────────────────────── */
 /* Two columns: pd-actions-main (keypad + quick actions, PAY below) on the
    left, pd-corner-actions as a full-height column on the right. */
+/* Fills the height left under the 6-row product grid; the keypad, quick
+   actions and corner buttons all stretch to use it. */
 .pd-actions {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   align-items: stretch;
   gap: 8px;
@@ -1591,9 +1626,20 @@
 .pd-actions-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.pd-actions-main > .pd-keypad-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.pd-actions-main > .pd-pay {
+  flex-shrink: 0;
 }
 
 .pd-group-btns {
@@ -1624,6 +1670,9 @@
 .pd-quick-actions .pd-act {
   width: 100%;
   height: 100%;
+  /* Stretch with the action area instead of staying a ≤100px square. */
+  aspect-ratio: auto;
+  max-height: none;
 }
 
 .pd-more-wrap {
@@ -1642,25 +1691,72 @@
   color: var(--brand);
 }
 
+/* "More" actions — centered modal over a dimmed backdrop, zooming in on
+   open and back out on close (.is-closing, 180ms — keep in sync with
+   closeMoreActions in PosMainPage). */
+.pd-more-overlay {
+  /* Portaled to <body>, outside .pos-main, so re-declare the tokens
+     .pd-more-item relies on. */
+  --pd-border: var(--border);
+  --pd-text: var(--text-1);
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(20, 6, 10, 0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: pdMoreFadeIn 0.2s ease-out both;
+}
+
+.pd-more-overlay.is-closing {
+  animation: pdMoreFadeOut 0.18s ease-in both;
+}
+
 .pd-more-menu {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: 0;
-  z-index: 30;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  width: max-content;
-  max-width: min(360px, 80vw);
-  padding: 8px;
+  gap: 8px;
+  width: min(380px, 100%);
+  padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: var(--r-lg);
-  /* Glass effect, matching the side nav's floating panel treatment. */
-  background: rgba(255, 255, 255, 0.68);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: var(--shadow-lg);
-  animation: toastPopUp 0.16s cubic-bezier(.22, .68, 0, 1.2);
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+  transform-origin: center;
+  animation: pdMoreZoomIn 0.22s cubic-bezier(.22, .68, 0, 1.2) both;
+}
+
+.pd-more-overlay.is-closing .pd-more-menu {
+  animation: pdMoreZoomOut 0.18s ease-in both;
+}
+
+.pd-more-menu .pd-more-item {
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+@keyframes pdMoreFadeIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pdMoreFadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+@keyframes pdMoreZoomIn {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pdMoreZoomOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.85); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pd-more-overlay,
+  .pd-more-overlay.is-closing,
+  .pd-more-menu,
+  .pd-more-overlay.is-closing .pd-more-menu { animation-duration: 0.01ms; }
 }
 
 @keyframes toastPopUp {
@@ -1918,7 +2014,7 @@
   /* One formula for every screen size/height instead of separate fixed
      pixel values per breakpoint (which were silently fighting each other
      depending on which media query happened to match last). */
-  height: clamp(34px, 5.8vh, 62px);
+  min-height: clamp(30px, 4.6vh, 52px);
   border-radius: 14px;
   border: 1px solid rgba(0, 0, 0, 0.14);
   background: var(--pd-surface);
@@ -1947,7 +2043,7 @@
 /* PAY sits in the left half of the bottom row; the corner-action stack
    fills the right half, divided by a vertical rule. */
 .pd-pay {
-  height: clamp(34px, 4.6vh, 44px);
+  height: clamp(32px, 4.2vh, 42px);
   border-radius: var(--r-lg);
   background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   color: #fff;
@@ -1974,7 +2070,7 @@
 }
 
 .pd-entry {
-  height: clamp(34px, 4.6vh, 48px);
+  height: clamp(30px, 4vh, 42px);
   border-radius: var(--r-md);
   border: 1.5px solid var(--pd-border);
   background: var(--surface-2);
@@ -1992,7 +2088,7 @@
 
 .pd-entry-qty {
   flex-shrink: 0;
-  height: clamp(26px, 3.6vh, 38px);
+  height: clamp(24px, 3.2vh, 34px);
   display: inline-flex;
   align-items: center;
   font-family: inherit;
@@ -2108,7 +2204,7 @@
     border-left: none;
   }
 
-  .pd-side-nav { flex-basis: 132px; width: 132px; padding: 8px 6px; gap: 3px; }
+  .pd-side-nav { flex-basis: 165px; width: 165px; padding: 8px 6px; gap: 3px; }
   .pd-side-nav-btn { font-size: 10.5px; min-height: 38px; padding: 6px 8px; gap: 8px; }
 
   .pd-service { gap: 3px; }
@@ -2120,7 +2216,8 @@
 
   /* 1024×768 tills — force a fixed 4-column product grid instead of
      auto-fill (sizes now come from the base clamp() rules). */
-  .pd-products { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+  .pd-right { --pd-prod-gap: 5px; }
+  .pd-products { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .pd-product-foot { gap: 3px; }
   .pd-product-add { gap: 3px; }
   .pd-product-add-icon { width: 14px; height: 14px; border-width: 1px; }
@@ -2144,6 +2241,13 @@
      correctly on short viewports without a competing fixed-pixel rule. */
   .pd-header { flex-basis: 50px; height: 50px; }
   .pd-chip, .pd-service-btn { height: 32px; }
+}
+
+/* Wide tills: widen the keypad and corner columns so the 3x3 quick actions
+   don't stretch into very wide, flat buttons. */
+@media (min-width: 1600px) {
+  .pd-keypad-wrap { grid-template-columns: 360px minmax(0, 1fr); }
+  .pd-corner-actions { flex-basis: 190px; }
 }
 
 @media (min-width: 1800px) {
@@ -2189,7 +2293,10 @@
   bottom: 40px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 40;
+  /* Above every other overlay (modals 50, radial menu 60, side-nav 90/95) so
+     a validation/status message is never silently hidden behind whatever's
+     open — e.g. a save error inside a modal must still be visible. */
+  z-index: 120;
   animation: pdToastIn 0.32s cubic-bezier(.22, .68, 0, 1.2);
 }
 
@@ -2423,6 +2530,16 @@
 
 .pd-mod-foot-spacer {
   flex: 1;
+}
+
+.pd-mod-foot-center {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.pd-mod-foot-center .pd-mod-foot-btn {
+  min-width: 160px;
 }
 
 .pd-mod-foot-btn {
@@ -2675,6 +2792,16 @@
   width: min(480px, 100%);
 }
 
+/* Booking / Booking List — a little taller than content-height so the form
+   breathes and the list shows more rows; capped to the viewport. */
+.pd-ol-booking {
+  min-height: min(520px, 90vh);
+}
+
+.pd-ol-booking .pd-ol-body {
+  gap: 14px;
+}
+
 .pd-ol-body {
   padding: 12px 16px 16px;
   overflow: auto;
@@ -2825,8 +2952,7 @@
   font-size: 11px;
   font-weight: 800;
   color: var(--pd-text-2);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.1px;
 }
 
 .pd-form-row input,
@@ -2881,7 +3007,8 @@
   gap: 8px;
 }
 
-.pd-form-code input {
+.pd-form-code input,
+.pd-form-code select {
   flex: 1;
   min-width: 0;
 }
@@ -2895,40 +3022,6 @@
   color: var(--brand);
   font-size: 12px;
   font-weight: 800;
-}
-
-.pd-form-picker {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  height: 38px;
-  padding: 0 12px;
-  border-radius: var(--r-sm);
-  border: 1.5px solid var(--pd-border);
-  background: #fff;
-  color: var(--pd-text);
-  font-size: 13px;
-  font-weight: 600;
-  text-align: left;
-}
-
-.pd-form-picker span {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pd-form-picker svg {
-  flex-shrink: 0;
-  color: var(--text-3);
-}
-
-.pd-form-picker:hover {
-  border-color: var(--brand-border);
-  background: var(--brand-bg);
 }
 
 .pd-form-vat-pair {
@@ -2969,6 +3062,879 @@
 .pd-product-modal-foot .pd-mod-foot-btn:disabled {
   opacity: 0.5;
   pointer-events: none;
+}
+
+/* ── Generic "Creation" master-entry modals ─────────────────────── */
+.pd-entry-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 33px;
+}
+
+.pd-entry-radio,
+.pd-entry-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--pd-text);
+  cursor: pointer;
+}
+
+.pd-entry-radio input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+}
+
+/* On/off pill toggle instead of a native tickbox — same <input
+   type="checkbox"> markup, just restyled, so no JSX changed. */
+.pd-entry-check input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: #d5d3ce;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.pd-entry-check input::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease;
+}
+
+.pd-entry-check input:checked {
+  background: var(--brand);
+}
+
+.pd-entry-check input:checked::before {
+  transform: translateX(18px);
+}
+
+.pd-entry-check input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pd-recipe-line-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pd-recipe-line-row input,
+.pd-recipe-line-row select {
+  flex: 1 1 90px;
+  min-width: 70px;
+  height: 33px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pd-text);
+}
+
+.pd-notes-body {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  min-height: 240px;
+}
+
+.pd-notes-list {
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-notes-editor {
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-notes-editor textarea {
+  flex: 1;
+  height: 100%;
+}
+
+.pd-addon-body {
+  display: flex;
+  gap: 14px;
+}
+
+.pd-addon-form {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.pd-addon-tree {
+  flex: 1;
+  min-width: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--pd-border);
+  border-radius: var(--r-md);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pd-addon-tree-group {
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pd-text);
+  text-transform: capitalize;
+}
+
+.pd-addon-tree-group:hover {
+  background: var(--brand-bg);
+}
+
+.pd-booking-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.pd-booking-tab {
+  flex: 1;
+  height: 38px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  color: var(--pd-text);
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.pd-booking-tab.is-on {
+  background: var(--brand);
+  border-color: transparent;
+  color: #fff;
+}
+
+.pd-floor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── Damage Entry: compact, single-column layout ── */
+.pd-ol-damage {
+  width: min(560px, 100%);
+  max-height: min(520px, 90vh);
+}
+
+.pd-dmg {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+}
+
+.pd-dmg-head {
+  display: grid;
+  grid-template-columns: 90px 130px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.pd-dmg-head .pd-form-row > * {
+  min-width: 0;
+}
+
+.pd-dmg-line {
+  display: flex;
+  gap: 6px;
+}
+
+.pd-dmg-line input,
+.pd-dmg-line select {
+  flex: 0 0 100px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pd-text);
+}
+
+.pd-dmg-line .pd-dmg-desc { flex: 1 1 auto; }
+.pd-dmg-line .pd-dmg-qty { flex-basis: 56px; text-align: right; }
+.pd-dmg-line select { flex-basis: 92px; }
+
+.pd-dmg-add {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--brand);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pd-dmg-list {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--pd-border);
+  border-radius: var(--r-sm);
+}
+
+.pd-dmg-list table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.pd-dmg-list th,
+.pd-dmg-list td {
+  padding: 7px 10px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pd-dmg-list th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  color: var(--pd-text-2);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pd-dmg-list th:nth-child(1) { width: 26%; }
+.pd-dmg-list th:nth-child(3) { width: 56px; }
+.pd-dmg-list th:nth-child(4) { width: 22%; }
+
+.pd-dmg-list td {
+  border-top: 1px solid var(--pd-border);
+  font-weight: 600;
+  color: var(--pd-text);
+}
+
+.pd-dmg-list .is-num { text-align: right; }
+
+.pd-dmg-list tbody tr { cursor: pointer; }
+.pd-dmg-list tbody tr:hover td { background: var(--surface-2); }
+.pd-dmg-list tbody tr.is-selected td { background: rgba(107, 0, 0, 0.08); }
+
+.pd-dmg-list td.pd-dmg-empty {
+  padding: 28px 10px;
+  text-align: center;
+  color: var(--pd-text-2);
+  cursor: default;
+}
+
+@media (max-width: 520px) {
+  .pd-dmg-head { grid-template-columns: 1fr 1fr; }
+  .pd-dmg-remarks { grid-column: 1 / -1; }
+  .pd-dmg-line { flex-wrap: wrap; }
+  .pd-dmg-line .pd-dmg-desc { flex-basis: 100%; order: -1; }
+}
+
+/* ── Transactions master-entry modals (Stock/Production/Purchase/Damage) ── */
+.pd-txn-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px;
+  border: 1px solid var(--pd-border);
+  border-radius: var(--r-md);
+}
+
+.pd-txn-head-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.pd-txn-status {
+  flex-shrink: 0;
+  margin: 0;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pd-txn-title {
+  margin: 0;
+  text-align: center;
+  color: var(--brand);
+  font-size: 16px;
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+.pd-txn-search-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.pd-txn-search-row .pd-form-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-txn-search-btn {
+  flex-shrink: 0;
+  height: 33px;
+}
+
+.pd-txn-count {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--pd-text-2);
+}
+
+.pd-mr-body {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+  min-height: 320px;
+}
+
+.pd-mr-groups {
+  flex: 1;
+  min-width: 0;
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--pd-border);
+  border-radius: var(--r-md);
+  padding: 4px;
+}
+
+.pd-mr-group-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pd-text);
+}
+
+.pd-mr-group-row:hover {
+  background: var(--brand-bg);
+}
+
+.pd-mr-group-row input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brand);
+}
+
+.pd-mr-filters {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.pd-bill-reprint-body {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  min-height: 360px;
+}
+
+.pd-bill-reprint-body .pd-grid-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Admin submenu's plain alert/confirm popups ─────────────────── */
+.pd-alert-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: rgba(20, 6, 10, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.15s ease;
+}
+.pd-alert-box {
+  position: relative;
+  width: min(440px, 100%);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--pd-surface);
+  border-top: 4px solid var(--brand);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+  animation: slideUp 0.18s cubic-bezier(.22, .68, 0, 1.2);
+}
+
+.pd-alert-x {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  transition: background 0.12s, color 0.12s;
+}
+
+.pd-alert-x:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.pd-alert-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 24px 48px 22px 22px;
+}
+
+.pd-alert-icon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--brand-bg);
+  color: var(--brand);
+  display: grid;
+  place-items: center;
+}
+
+.pd-alert-box.is-danger .pd-alert-icon {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.pd-alert-text {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.pd-alert-title {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--pd-text);
+}
+
+.pd-alert-msg {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.pd-alert-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+}
+
+.pd-alert-btn {
+  min-width: 96px;
+  height: 38px;
+  padding: 0 18px;
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--text-1);
+  font-size: 13.5px;
+  font-weight: 700;
+  transition: background 0.12s, border-color 0.12s, filter 0.12s;
+}
+
+.pd-alert-btn:hover {
+  background: var(--brand-bg);
+  border-color: var(--brand-border);
+}
+
+.pd-alert-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.pd-alert-btn.is-primary {
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(107, 0, 0, 0.22);
+}
+
+.pd-alert-btn.is-primary:hover {
+  filter: brightness(1.08);
+}
+
+@media (max-width: 480px) {
+  .pd-alert-actions .pd-alert-btn { flex: 1; }
+}
+
+.pd-alert-btn:active {
+  transform: scale(0.97);
+}
+
+.pd-vat-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 8px 0;
+}
+
+.pd-cdp-body {
+  display: flex;
+  gap: 20px;
+}
+
+.pd-cdp-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.pd-cdp-presets {
+  flex: 0 0 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.pd-cdp-preset {
+  height: 40px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  color: var(--pd-text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pd-cdp-preset.is-on {
+  background: var(--brand);
+  border-color: transparent;
+  color: #fff;
+}
+
+.pd-el-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.pd-el-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px;
+  border-radius: var(--r-md);
+  background: var(--pd-muted);
+}
+
+.pd-el-stat span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pd-text-2);
+  text-transform: uppercase;
+}
+
+.pd-el-stat strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--brand);
+}
+
+/* ── Settings modals ───────────────────────────────────────────── */
+.pd-priv-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--pd-border);
+  border-radius: var(--r-md);
+  padding: 6px;
+}
+
+.pd-priv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--pd-text);
+}
+
+.pd-priv-row:hover {
+  background: var(--brand-bg);
+}
+
+.pd-priv-row input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brand);
+}
+
+.pd-cp-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--pd-border);
+  padding-bottom: 8px;
+}
+
+.pd-cp-tab {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px 8px 0 0;
+  color: var(--pd-text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pd-cp-tab.is-on {
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+.pd-poi-body {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+  min-height: 360px;
+}
+
+.pd-poi-main {
+  flex: 2;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pd-poi-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border-left: 1px solid var(--pd-border);
+  padding-left: 14px;
+}
+
+.pd-poi-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--pd-text-2);
+  text-transform: uppercase;
+}
+
+.pd-vcu-body {
+  display: flex;
+  gap: 16px;
+}
+
+.pd-vcu-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.pd-vcu-warn {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--red);
+}
+
+.pd-vcu-actions {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Cash In / Cash Out ────────────────────────────────────────── */
+.pd-cash-pick {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 160px;
+}
+
+.pd-cash-pick-btn {
+  flex: 1;
+  border: 1.5px solid var(--pd-border);
+  border-radius: var(--r-md);
+  background: #fff;
+  color: var(--pd-text);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.pd-cash-pick-btn:hover {
+  background: var(--brand-bg);
+  border-color: var(--brand-border);
+  color: var(--brand);
+}
+
+.pd-cash-cancel {
+  flex: 1;
+}
+
+.pd-cash-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pd-cash-entry-title {
+  margin: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 800;
+  text-decoration: underline;
+  color: var(--pd-text);
+}
+
+.pd-cash-entry-top {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.pd-cash-tag {
+  flex-shrink: 0;
+  height: 33px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--brand-border);
+  border-radius: var(--r-sm);
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pd-cash-entry-body {
+  display: flex;
+  gap: 14px;
+  min-height: 300px;
+}
+
+.pd-cash-list {
+  flex: 1.4;
+  min-width: 0;
+}
+
+.pd-cash-quick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 340px;
+}
+
+.pd-cash-quick-btn {
+  height: 36px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--pd-border);
+  background: var(--pd-muted);
+  color: var(--pd-text);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.pd-cash-quick-btn:hover {
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+.pd-cash-keys {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-cash-amount-display {
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: right;
+  color: var(--pd-text);
+}
+
+.pd-cash-enter {
+  height: 44px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--brand-border);
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 15px;
+  font-weight: 800;
 }
 
 /* Wider than the default .pd-ol-narrow, and clearly wider than the
@@ -3487,4 +4453,1061 @@
   text-align: center;
   border-radius: 8px;
   padding: 6px 4px;
+}
+
+/* Area master: "Table Creation Type" radios and the "Show on Tablet" switch
+   share one row. */
+.pd-em-inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.pd-em-inline .pd-em-radios {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pd-em-inline .pd-em-radios label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.pd-em-inline .tg-root {
+  margin-left: auto;
+}
+
+/* Table Entry: inputs on the left, table shape picker on the right. */
+.pd-te-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.pd-te-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .pd-te-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Table Entry modal — compact two-column size. */
+.pd-ol-table {
+  width: min(760px, 100%);
+}
+
+.pd-ol-table .tsp {
+  padding: 12px;
+  gap: 10px;
+}
+
+.pd-ol-table .tsp-preview {
+  height: 170px;
+}
+
+.pd-ol-table .tsp-preview .tsp-svg {
+  width: 150px;
+  height: 150px;
+}
+
+.pd-ol-table .tsp-option .tsp-svg {
+  width: 44px;
+  height: 44px;
+}
+
+.pd-te-fields .pd-form-grid-2 > *,
+.pd-te-fields .pd-form-row input,
+.pd-te-fields .pd-form-row select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Phones: tighter Table Entry spacing so more fits on screen. */
+@media (max-width: 480px) {
+  .pd-ol-table .pd-ol-body { padding: 10px 12px 12px; }
+  .pd-ol-table .tsp { padding: 10px; }
+  .pd-ol-table .tsp-head p { display: none; }
+  .pd-ol-table .tsp-options { gap: 6px; }
+  .pd-ol-table .tsp-option { font-size: 11.5px; padding: 8px 4px 6px; }
+  .pd-ol-table .tsp-preview { height: 150px; }
+  .pd-ol-table .tsp-preview .tsp-svg { width: 130px; height: 130px; }
+}
+
+/* Short screens (1366×768, 1280×800, 1024×768 tills): tighten the keypad /
+   quick-action block under the product grid so 6 full rows of products fit. */
+@media (max-height: 820px) {
+  .pd-right { --pd-prod-gap: 5px; }
+  .pd-product { padding: 4px 6px; gap: 2px; }
+  .pd-actions,
+  .pd-actions-main,
+  .pd-keypad-left { gap: 5px; }
+  .pd-keypad-wrap { gap: 6px; }
+  .pd-keys { gap: 4px; }
+  .pd-key { min-height: clamp(28px, 3.9vh, 40px); }
+  .pd-entry { height: 28px; }
+  .pd-entry-qty { height: 22px; }
+  .pd-pay { height: 32px; }
+  .pd-group-btns { padding: 5px; gap: 4px; }
+  .pd-quick-actions { gap: 4px; }
+  .pd-group-btns .pd-act { gap: 3px; padding: 3px 2px; }
+  .pd-corner-actions { gap: 4px; }
+  /* Icon beside the label instead of above it — the corner column was the
+     tallest thing in this block and set its height. */
+  .pd-corner-btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 7px;
+    padding: 4px 8px;
+    border-radius: 11px;
+    text-align: left;
+    font-size: clamp(11px, 1.5vh, 13px);
+  }
+  .pd-corner-btn .pd-btn-ic { width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0; }
+  .pd-corner-btn .pd-btn-ic svg { width: 15px; height: 15px; }
+}
+
+@media (max-height: 740px) {
+  .pd-key { min-height: 26px; }
+  .pd-keys { gap: 3px; }
+}
+
+/* Number keypad fills its column: the four key rows stretch evenly so the
+   keypad lines up with the quick-action block beside it at every size
+   (the min-heights above are floors, not fixed heights). */
+.pd-keypad-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.pd-keypad-left > .pd-keys {
+  flex: 1;
+  grid-auto-rows: 1fr;
+}
+
+.pd-keypad-left .pd-key {
+  height: auto;
+}
+
+/* ══ Action area redesign — quick actions and corner rail ════════════════
+   Same burgundy palette. The number keypad, QTY input and PAY bar are untouched. */
+
+/* Quick-action panel */
+.pd-actions .pd-group-btns {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, 0.9) 0%, transparent 60%),
+    linear-gradient(160deg, #f8f1f3 0%, #f1e6e9 100%);
+  border: 1px solid var(--brand-tint);
+  border-radius: 16px;
+}
+
+.pd-actions .pd-quick-actions .pd-act {
+  position: relative;
+  overflow: hidden;
+  max-width: none;
+  border: 1px solid rgba(120, 8, 41, 0.1);
+  border-radius: 14px;
+  background: linear-gradient(170deg, #ffffff 0%, #fdf9fa 100%);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 1px 2px rgba(80, 0, 20, 0.06),
+    0 3px 8px rgba(80, 0, 20, 0.04);
+  color: var(--text-1);
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  transition: transform 0.12s, box-shadow 0.15s, border-color 0.15s, background 0.15s;
+}
+
+/* Accent notch that grows in on hover. */
+.pd-actions .pd-quick-actions .pd-act::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(90deg, var(--pd-grad-start), var(--pd-grad-end));
+  transform: translateX(-50%);
+  transition: width 0.18s ease;
+}
+
+.pd-actions .pd-quick-actions .pd-act .pd-btn-ic {
+  border-radius: 10px;
+  background: var(--brand-bg);
+  color: var(--brand);
+  box-shadow: inset 0 0 0 1px var(--brand-tint);
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.pd-actions .pd-quick-actions .pd-act:hover {
+  transform: translateY(-1px);
+  border-color: var(--brand-border);
+  background: #fff;
+  box-shadow: 0 6px 14px rgba(120, 8, 41, 0.12);
+}
+
+.pd-actions .pd-quick-actions .pd-act:hover::after {
+  width: 40%;
+}
+
+.pd-actions .pd-quick-actions .pd-act:hover .pd-btn-ic,
+.pd-actions .pd-quick-actions .pd-act.is-active .pd-btn-ic {
+  background: linear-gradient(135deg, var(--pd-grad-start), var(--pd-grad-end));
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(120, 8, 41, 0.28);
+}
+
+.pd-actions .pd-quick-actions .pd-act:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* Corner rail: icon chip + title + caption, left-aligned cards */
+.pd-actions .pd-corner-actions {
+  border-left: none;
+  padding-left: 0;
+}
+
+/* One box: the 3x3 quick actions and the corner buttons share
+   .pd-group-btns, side by side with a thin divider between them. */
+.pd-actions .pd-group-btns {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.pd-actions .pd-group-btns > .pd-quick-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pd-actions .pd-group-btns > .pd-corner-actions {
+  min-height: 0;
+  padding-left: 8px;
+  border-left: 1px solid var(--brand-tint);
+}
+
+.pd-actions .pd-corner-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(120, 8, 41, 0.12);
+  background: linear-gradient(170deg, #ffffff 0%, #fbf6f8 100%);
+  box-shadow: 0 1px 2px rgba(80, 0, 20, 0.06), 0 4px 10px rgba(80, 0, 20, 0.05);
+  color: var(--text-1);
+  text-align: left;
+  transition: transform 0.12s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.pd-actions .pd-corner-btn .pd-btn-ic {
+  flex-shrink: 0;
+  width: clamp(28px, 4.2vh, 42px);
+  height: clamp(28px, 4.2vh, 42px);
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--pd-grad-start), var(--pd-grad-end));
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(120, 8, 41, 0.25);
+}
+
+.pd-actions .pd-corner-btn .pd-btn-ic svg {
+  width: clamp(15px, 2.2vh, 20px);
+  height: clamp(15px, 2.2vh, 20px);
+}
+
+.pd-corner-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+  line-height: 1.15;
+}
+
+.pd-corner-text > span {
+  font-size: clamp(11.5px, 1.6vh, 15px);
+  font-weight: 800;
+}
+
+.pd-corner-text > small {
+  font-size: clamp(9.5px, 1.15vh, 11px);
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pd-actions .pd-corner-btn:hover {
+  transform: translateX(-2px);
+  border-color: var(--brand-border);
+  box-shadow: 0 6px 16px rgba(120, 8, 41, 0.14);
+}
+
+.pd-actions .pd-corner-btn:active {
+  transform: scale(0.97);
+}
+
+/* Save KOT — the main action, filled */
+.pd-actions .pd-corner-btn.is-primary {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(120, 8, 41, 0.3);
+}
+
+.pd-actions .pd-corner-btn.is-primary .pd-btn-ic {
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.pd-actions .pd-corner-btn.is-primary small {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Cancel Bill — red, as before */
+.pd-actions .pd-corner-btn.is-danger {
+  border-color: var(--red-border, #fecaca);
+  background: linear-gradient(170deg, #fff 0%, var(--red-bg) 100%);
+  color: var(--red);
+}
+
+.pd-actions .pd-corner-btn.is-danger .pd-btn-ic {
+  background: var(--red);
+  box-shadow: 0 3px 8px rgba(220, 38, 38, 0.25);
+}
+
+/* Short screens: captions would crowd the rail — keep just the titles. */
+@media (max-height: 820px) {
+  .pd-corner-text > small { display: none; }
+  .pd-actions .pd-corner-btn { gap: 8px; padding: 4px 8px; }
+}
+
+/* Narrow tills: the rail is thin, stack icon over title. */
+@media (max-width: 1100px) {
+  .pd-actions .pd-corner-btn { gap: 6px; padding: 4px 6px; }
+  .pd-corner-text > small { display: none; }
+}
+
+/* ══ Order List ═════════════════════════════════════════════════════════ */
+.pd-ord-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pd-ord-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-tint);
+}
+
+.pd-ord-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+
+.pd-ord-tab:hover {
+  color: var(--brand);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.pd-ord-tab.is-on {
+  background: linear-gradient(135deg, var(--pd-grad-start), var(--pd-grad-end));
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(120, 8, 41, 0.25);
+}
+
+.pd-ord-search {
+  flex: 1 1 200px;
+}
+
+.pd-ord-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 0 2px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.pd-ord-summary b {
+  color: var(--text-1);
+  font-weight: 800;
+}
+
+.pd-ord-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+  overflow: auto;
+  min-height: 0;
+  align-content: start;
+  padding: 2px;
+}
+
+.pd-ord-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 36px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.pd-ord-empty svg {
+  color: var(--brand-border);
+}
+
+.pd-ord-empty b {
+  color: var(--text-1);
+  font-size: 14px;
+}
+
+.pd-ord-empty.is-error {
+  color: var(--red);
+}
+
+/* Card */
+.pd-ord-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(120, 8, 41, 0.12);
+  background: linear-gradient(170deg, #ffffff 0%, #fcf8f9 100%);
+  box-shadow: 0 1px 2px rgba(80, 0, 20, 0.05), 0 4px 12px rgba(80, 0, 20, 0.05);
+  text-align: left;
+  color: var(--text-1);
+  transition: transform 0.12s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.pd-ord-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-border);
+  box-shadow: 0 10px 22px rgba(120, 8, 41, 0.14);
+}
+
+.pd-ord-card:active {
+  transform: scale(0.98);
+}
+
+.pd-ord-card:disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.pd-ord-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pd-ord-kot {
+  display: flex;
+  flex-direction: column;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.pd-ord-kot small {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--text-3);
+}
+
+.pd-ord-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 10.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pd-ord-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+/* Waiting 30+ minutes: amber, so older orders stand out. */
+.pd-ord-card.is-late .pd-ord-time {
+  background: #fff4e0;
+  color: #9a5b00;
+}
+
+.pd-ord-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.pd-ord-info > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pd-ord-info svg {
+  flex-shrink: 0;
+  color: var(--brand-light);
+}
+
+.pd-ord-info em {
+  font-style: normal;
+  color: var(--text-3);
+}
+
+.pd-ord-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #fbf3f5;
+  border: 1px dashed var(--brand-tint);
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.35;
+}
+
+.pd-ord-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--brand-light);
+}
+
+.pd-ord-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px dashed var(--brand-tint);
+}
+
+.pd-ord-amt {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.pd-ord-amt small {
+  margin-right: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.pd-ord-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--pd-grad-start), var(--pd-grad-end));
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+  transition: gap 0.15s;
+}
+
+.pd-ord-card:hover .pd-ord-open {
+  gap: 7px;
+}
+
+@media (max-width: 640px) {
+  .pd-ord-tabs { width: 100%; overflow-x: auto; }
+  .pd-ord-tab { flex: 1; justify-content: center; padding: 0 8px; }
+  .pd-ord-tab span { white-space: nowrap; }
+  .pd-ord-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Order header: Table / Covers / Customer always on one line. Long table or
+   customer names shrink with "…" (full text on hover) instead of wrapping. */
+.pd-order-head {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.pd-order-head .pd-meta {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.pd-order-head .pd-meta-btn {
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+
+.pd-order-head .pd-meta-btn.is-covers {
+  flex-shrink: 0;
+}
+
+.pd-order-head .pd-meta-btn.is-table,
+.pd-order-head .pd-meta-btn.is-customer {
+  flex: 0 1 auto;
+  min-width: 76px;
+}
+
+.pd-meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pd-order-head .pd-pill-icon,
+.pd-order-head .pd-pill-chevron {
+  flex-shrink: 0;
+}
+
+/* Combo entry: inputs left, added-groups table right. */
+.pd-combo-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+}
+
+/* Group picker: select with an inline clear (x) and a + add button. */
+.pd-combo-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pd-combo-select {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.pd-combo-select select {
+  width: 100%;
+  min-width: 0;
+  padding-right: 58px;
+}
+
+/* Searchable variant (Mess Master) — keep the value clear of the × button. */
+.pd-combo-select .ui-ss-value {
+  padding-right: 26px;
+}
+
+.pd-combo-clear {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+  transition: background 0.12s, color 0.12s;
+}
+
+.pd-combo-clear:hover {
+  background: var(--brand);
+  color: #fff;
+}
+
+.pd-combo-add {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: linear-gradient(135deg, var(--pd-grad-start), var(--pd-grad-end));
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(120, 8, 41, 0.25);
+  transition: filter 0.12s, transform 0.08s;
+}
+
+.pd-combo-add:hover { filter: brightness(1.08); }
+.pd-combo-add:active { transform: scale(0.95); }
+.pd-combo-add:disabled { opacity: 0.4; box-shadow: none; pointer-events: none; }
+
+
+/* ══ Modal footers — no Close buttons (the header ✕ closes); actions sit
+   centred. A left group and a right group separated by a spacer still split
+   to the two edges; a spacer left dangling at either end is dropped so a
+   lone button centres instead of hugging one side. ═════════════════════ */
+.pd-mod-foot {
+  justify-content: center;
+}
+
+.pd-mod-foot > .pd-mod-foot-spacer:first-child,
+.pd-mod-foot > .pd-mod-foot-spacer:last-child {
+  display: none;
+}
+
+.pd-mod-foot > .pd-mod-foot-center:only-child {
+  width: auto;
+}
+
+.pd-em-foot,
+.pd-fd-foot,
+.pd-sv-foot,
+.pd-sb-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.pd-product-modal-foot {
+  justify-content: center;
+}
+
+.pd-product-modal-foot .pd-mod-foot-btn {
+  flex: 0 1 220px;
+}
+
+/* ══ Note Entry — sticky-note pad + board ═══════════════════════════════ */
+.pd-nt {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Writing pad */
+.pd-nt-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--brand-tint);
+  box-shadow: 0 6px 16px rgba(120, 8, 41, 0.06);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.pd-nt-pad:focus-within,
+.pd-nt-pad.is-editing {
+  border-color: var(--brand-border);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.pd-nt-pad-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--brand);
+}
+
+.pd-nt-pad-top > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pd-nt-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.pd-nt-pad textarea {
+  width: 100%;
+  resize: none;
+  border: none;
+  outline: none;
+  background:
+    repeating-linear-gradient(transparent, transparent 25px, rgba(120, 8, 41, 0.08) 25px, rgba(120, 8, 41, 0.08) 26px);
+  line-height: 26px;
+  font-size: 14px;
+  color: var(--text-1);
+  padding: 0 2px;
+}
+
+.pd-nt-pad textarea::placeholder {
+  color: var(--text-3);
+}
+
+.pd-nt-pad-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pd-nt-pad-foot small {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.pd-nt-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--pd-grad-start), var(--pd-grad-end));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(120, 8, 41, 0.25);
+  transition: filter 0.12s, transform 0.08s;
+}
+
+.pd-nt-save:hover { filter: brightness(1.08); }
+.pd-nt-save:active { transform: scale(0.96); }
+.pd-nt-save:disabled { opacity: 0.4; box-shadow: none; pointer-events: none; }
+
+/* Title + date range */
+.pd-nt-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pd-nt-bar b {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.pd-nt-bar em {
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-style: normal;
+  font-size: 11px;
+}
+
+.pd-nt-dates {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.pd-nt-dates > :not(span) {
+  width: 140px;
+}
+
+/* Board of sticky notes */
+.pd-nt-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 2px 2px 4px;
+}
+
+.pd-nt-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 96px;
+  padding: 10px 12px;
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid var(--brand-tint);
+  border-top: 3px solid var(--brand);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(80, 0, 20, 0.06);
+  transition: transform 0.12s, box-shadow 0.15s;
+}
+
+.pd-nt-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-border);
+  box-shadow: 0 8px 16px rgba(80, 0, 20, 0.14);
+}
+
+.pd-nt-card.is-on {
+  background: var(--brand-bg);
+  border-color: var(--brand);
+}
+
+.pd-nt-text {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-1);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.pd-nt-date {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.pd-nt-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 8px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.pd-nt-empty svg {
+  color: var(--brand-border);
+}
+
+.pd-nt-pad-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pd-nt-new.is-danger {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.pd-nt-text {
+  padding-right: 22px;
+}
+
+.pd-nt-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--text-3);
+  opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+
+.pd-nt-card:hover .pd-nt-del,
+.pd-nt-card.is-on .pd-nt-del {
+  opacity: 1;
+}
+
+.pd-nt-del:hover {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+/* Notes board: one row, 3 cards visible; more scroll left ↔ right. */
+.pd-nt-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 20px) / 3);
+  grid-template-columns: none;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--brand-border) transparent;
+  padding: 4px 2px 8px;
+}
+
+.pd-nt-board .pd-nt-card {
+  scroll-snap-align: start;
+}
+
+.pd-nt-board::-webkit-scrollbar {
+  height: 5px;
+}
+
+.pd-nt-board::-webkit-scrollbar-thumb {
+  background: var(--brand-border);
+  border-radius: 999px;
+}
+
+@media (max-width: 480px) {
+  .pd-nt-board { grid-auto-columns: calc((100% - 10px) / 2); }
 }

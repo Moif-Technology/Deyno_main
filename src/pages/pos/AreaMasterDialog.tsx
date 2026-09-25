@@ -5,6 +5,9 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { Toggle } from '../../components/common/Toggle'
+import { useArabicAutoFill } from '../../utils/useArabicAutoFill'
+import { ArabicInput } from '../../components/common/ArabicInput'
 
 const SUPPLY_TYPES = ['DINE IN', 'PARCEL', 'DELIVERY'] as const
 const PRICE_LEVELS = [
@@ -80,6 +83,7 @@ export default function AreaMasterDialog({ onClose, onSaved }: Props) {
   const [areaId, setAreaId] = useState(0)
   const [areaName, setAreaName] = useState('')
   const [areaNameArabic, setAreaNameArabic] = useState('')
+  const autoFillAreaArabic = useArabicAutoFill(setAreaNameArabic, 50)
   const [supplyType, setSupplyType] = useState('')
   const [prefix, setPrefix] = useState('')
   const [priceLevel, setPriceLevel] = useState('')
@@ -203,17 +207,22 @@ export default function AreaMasterDialog({ onClose, onSaved }: Props) {
                 <input
                   className="pd-em-input"
                   value={areaName}
-                  onChange={(e) => setAreaName(e.target.value.slice(0, 150))}
+                  onChange={(e) => {
+                    const v = e.target.value.slice(0, 150)
+                    setAreaName(v)
+                    autoFillAreaArabic(v)
+                  }}
                   autoFocus
                 />
               </label>
               <label className="pd-em-row">
                 <span>Area Name Arabic</span>
-                <input
+                <ArabicInput
                   className="pd-em-input pd-em-rtl"
-                  dir="rtl"
                   value={areaNameArabic}
-                  onChange={(e) => setAreaNameArabic(e.target.value.slice(0, 50))}
+                  onValueChange={setAreaNameArabic}
+                  source={areaName}
+                  maxLength={50}
                 />
               </label>
               <label className="pd-em-row">
@@ -254,7 +263,7 @@ export default function AreaMasterDialog({ onClose, onSaved }: Props) {
                   ))}
                 </select>
               </label>
-              <div className="pd-em-row">
+              <div className="pd-em-row pd-em-inline">
                 <span>Table Creation Type</span>
                 <div className="pd-em-radios">
                   <label>
@@ -276,15 +285,8 @@ export default function AreaMasterDialog({ onClose, onSaved }: Props) {
                     Automatic
                   </label>
                 </div>
+                <Toggle checked={tabletShow} onChange={setTabletShow} label="Show on Tablet" />
               </div>
-              <label className="pd-em-check">
-                <input
-                  type="checkbox"
-                  checked={tabletShow}
-                  onChange={(e) => setTabletShow(e.target.checked)}
-                />
-                Show on Tablet
-              </label>
             </div>
             <div className="pd-em-list">
               <p className="pd-em-list-title">Area List</p>
@@ -325,9 +327,6 @@ export default function AreaMasterDialog({ onClose, onSaved }: Props) {
             </button>
             <button type="button" className="pd-em-btn is-save" onClick={() => void onSave()} disabled={busy}>
               {busy ? (task === 'Edit' ? 'Updating…' : 'Saving…') : task === 'Edit' ? 'Update' : 'Save'}
-            </button>
-            <button type="button" className="pd-em-btn is-close" onClick={onClose} disabled={busy}>
-              Close
             </button>
           </div>
         </div>

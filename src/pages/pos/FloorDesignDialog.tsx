@@ -939,9 +939,6 @@ export default function FloorDesignDialog({ onClose }: Props) {
           <button type="button" className="pd-fd-save" onClick={() => void onSave()} disabled={busy}>
             <Save size={15} /> {busy ? 'Saving…' : 'Save'}
           </button>
-          <button type="button" className="pd-fd-close" onClick={onClose} disabled={busy}>
-            Close
-          </button>
         </div>
 
         {prompt ? (
