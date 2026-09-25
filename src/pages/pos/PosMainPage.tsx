@@ -8489,6 +8489,9 @@ export default function PosMainPage() {
                 >
                   <option value="NORMAL">NORMAL</option>
                   <option value="COMBO">COMBO</option>
+                  <option value="RECIPE ITEM">RECIPE ITEM</option>
+                  <option value="RAW MATERIAL">RAW MATERIAL</option>
+                  <option value="VARIATION">VARIATION</option>
                 </select>
               </div>
 
