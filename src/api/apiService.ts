@@ -627,10 +627,10 @@ class ApiService {
       `/pos/counter/summary${qs({
         counterNo,
         stationId: session.stationId,
-        allStaff: opts?.allStaff === false ? undefined : 1,
+        allStaff: opts?.allStaff === false ? 0 : 1,
       })}`,
     )
-    return { counterNo, cashierName: 'ALL', ...res }
+    return { counterNo, ...res }
   }
 
   async closeCounter(opts: {

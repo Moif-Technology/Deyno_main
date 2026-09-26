@@ -37,6 +37,10 @@ export type SettlementDone = {
   net: number
   paid: number
   change: number
+  paymentMode: string
+  cash: number
+  card: number
+  online: number
 }
 
 type Props = {
@@ -241,12 +245,25 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
       if (result.ok === false) {
         throw new Error(String(result.message ?? 'Try Again............'))
       }
+      const paymentMode =
+        parts.length > 1
+          ? 'SPLITPAY'
+          : parts[0]?.payMode === 'CARD'
+            ? 'CREDITCARD'
+            : parts[0]?.payMode === 'ONLINE'
+              ? 'ONLINE'
+              : 'CASH'
+      const tender = (mode: SettleTender) => round2(parts.filter((p) => p.payMode === mode).reduce((n, p) => n + p.amount, 0))
       onCompleted({
         billNo: String(result.billNo ?? ''),
         salesId: String(result.salesId ?? ''),
         net,
         paid,
         change: round2(Number(result.balancePaid ?? Math.max(0, paid - due - tip))),
+        paymentMode,
+        cash: paymentMode === 'CASH' ? paid : tender('CASH'),
+        card: tender('CARD'),
+        online: tender('ONLINE'),
       })
     } catch (err) {
       const msg = errMessage(err, 'Try Again............')

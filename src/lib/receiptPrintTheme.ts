@@ -1,17 +1,17 @@
 /**
- * 80mm thermal receipt print — same auto-print path as Counter-POS.
- * Font: Courier New bold (MOIF BillFont).
+ * GP-80160 print head is 72mm. Content wider than that is cut on the right.
+ * Courier New bold, kept inside the 72mm head so the right edge stays on the paper.
  */
 
 export const BILL_FONT = '"Courier New", Courier, monospace'
-export const RECEIPT_PAGE_WIDTH = '80mm'
+export const RECEIPT_PAGE_WIDTH = '72mm'
 
 export const RECEIPT_FONT = {
-  body: 14,
-  storeName: 18,
-  meta: 13,
-  footer: 14,
-  printerNote: 11,
+  body: 12,
+  storeName: 15,
+  meta: 11,
+  footer: 12,
+  printerNote: 10,
 }
 
 export function escReceipt(s: unknown) {
@@ -26,39 +26,43 @@ export function buildReceiptBaseCss() {
   const f = RECEIPT_FONT
   return `
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: ${RECEIPT_PAGE_WIDTH};
+      max-width: ${RECEIPT_PAGE_WIDTH};
+      overflow: hidden;
+    }
     body, table, div, span, td, th {
       font-family: ${BILL_FONT};
       font-weight: 700;
+      font-synthesis: none;
       color: #000;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
+      -webkit-font-smoothing: none;
+      text-rendering: geometricPrecision;
     }
     body {
       font-size: ${f.body}px;
-      line-height: 1.3;
-      width: ${RECEIPT_PAGE_WIDTH};
-      max-width: ${RECEIPT_PAGE_WIDTH};
-      margin: 0 auto;
-      padding: 3mm 2mm;
+      line-height: 1.2;
+      margin: 0;
+      padding: 1mm 3.2mm 1mm 1.6mm;
     }
     @media print {
-      body { width: ${RECEIPT_PAGE_WIDTH}; padding: 0; font-size: ${f.body}px; }
-      @page { size: ${RECEIPT_PAGE_WIDTH} auto; margin: 2mm; }
+      html, body { width: ${RECEIPT_PAGE_WIDTH}; max-width: ${RECEIPT_PAGE_WIDTH}; }
+      body { padding: 1mm 3.2mm 1mm 1.6mm; font-size: ${f.body}px; }
+      @page { size: ${RECEIPT_PAGE_WIDTH} auto; margin: 0; }
     }
     .store-name {
       font-size: ${f.storeName}px;
       font-weight: 700;
-      letter-spacing: 0.5px;
       text-transform: uppercase;
       text-align: center;
-      line-height: 1.2;
-      margin-bottom: 5px;
+      line-height: 1.15;
+      margin-bottom: 3px;
     }
     .center { text-align: center; }
-    .meta-line { text-align: center; font-size: ${f.meta}px; font-weight: 700; margin: 2px 0; }
-    .dash { border: none; border-top: 2px dashed #000; margin: 7px 0; }
-    .footer { text-align: center; font-size: ${f.footer}px; font-weight: 700; margin-top: 10px; letter-spacing: 0.3px; }
-    .printer-note { font-size: ${f.printerNote}px; font-weight: 700; color: #000; margin-top: 5px; text-align: center; }
+    .meta-line { text-align: center; font-size: ${f.meta}px; font-weight: 700; margin: 1px 0; }
+    .dash { border: none; border-top: 1px dashed #000; margin: 4px 0; }
+    .footer { text-align: center; font-size: ${f.footer}px; font-weight: 700; margin-top: 8px; }
+    .printer-note { font-size: ${f.printerNote}px; font-weight: 700; color: #000; margin-top: 4px; text-align: center; }
   `
 }
 
@@ -92,6 +96,26 @@ export function buildReceiptDocumentHtml(opts: {
   ${autoPrint ? AUTO_PRINT_SCRIPT : ''}
 </body>
 </html>`
+}
+
+type DesktopPrint = { printHtml?: (html: string) => Promise<unknown> }
+
+/** Straight to the Windows default printer. No printer dialog. */
+export async function printHtmlOnDefaultPrinter(html: string) {
+  const desktop = (window as Window & { deyno?: DesktopPrint }).deyno?.printHtml
+  if (desktop) {
+    await desktop(html)
+    return
+  }
+  const res = await fetch('/local-print', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/html;charset=utf-8' },
+    body: html,
+  })
+  if (!res.ok) {
+    const detail = (await res.text()).trim()
+    throw new Error(detail || 'Could not print to the default printer')
+  }
 }
 
 export function openReceiptPrintWindow(html: string, opts: { width?: number; height?: number } = {}) {
