@@ -30,6 +30,7 @@ import { getPosSession } from '../../utils/posSession'
 import { uiZoom, useUiZoom } from '../../utils/useUiZoom'
 import { translateToArabic } from '../../utils/translate'
 import { apiService, ApiError } from '../../api/apiService'
+import { printSettlementBill, printViewerBill } from '../../lib/printSettlementBill'
 import { TableCard, TableGlyph } from '../../components/common/TableCard'
 import { Toast, type ToastKind } from '../../components/common/Toast'
 import { DatePicker } from '../../components/common/DatePicker'
@@ -584,6 +585,8 @@ type CustomerPick = {
   mobile: string
   telephone: string
   code: string
+  city?: string
+  address?: string
 }
 
 /** Counter-POS / Select Customer: digits → mobile prefill, otherwise name. */
@@ -630,6 +633,19 @@ function mapGroups(rows: Record<string, unknown>[]): Cat[] {
   })).filter((g) => g.id > 0 && g.name)
   const moh = mapped.filter((g) => g.code.toUpperCase().startsWith('MOH-'))
   return moh.length ? moh : mapped
+}
+
+/** Restaurant menu groups are MOH- codes. A blank code follows that series when the branch already uses it. */
+function menuGroupCode(name: string, taken: Set<string>) {
+  const slug = name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'GROUP'
+  let code = `MOH-${slug}`.slice(0, 50)
+  let n = 2
+  while (taken.has(code.toUpperCase())) {
+    const suffix = `-${n}`
+    code = (`MOH-${slug}`.slice(0, 50 - suffix.length) + suffix).slice(0, 50)
+    n += 1
+  }
+  return code
 }
 
 function mapSubGroups(rows: Record<string, unknown>[]): SubCat[] {
@@ -891,7 +907,7 @@ function isChiefCashierOrAdmin() {
 }
 
 type AdminCreds = { username: string; password: string }
-type AdminNext = 'item-remove' | 'bill-confirm' | 'return' | 'item-qty' | 'counter-close-all' | 'price-change' | 'area-change' | 'discount' | 'kot-join'
+type AdminNext = 'item-remove' | 'bill-confirm' | 'return' | 'item-qty' | 'counter-close-all' | 'price-change' | 'area-change' | 'discount' | 'bill-print' | 'kot-join'
 type AlertKind = 'info' | 'success' | 'warning' | 'question'
 type AlertBox = { kind: AlertKind; title: string; message: string }
 
@@ -1258,7 +1274,7 @@ function NavMenuInline({
         const hasChildren = typeof entry !== 'string' && 'children' in entry
         const itemPath = `${path}/${label}`
         const isOpen = hasChildren && expanded.has(itemPath)
-        return (
+          return (
           <div key={itemPath} className="pd-subnav-item">
             <button
               type="button"
@@ -1351,6 +1367,7 @@ export default function PosMainPage() {
   const [productListOpen, setProductListOpen] = useState(false)
   const [editProductId, setEditProductId] = useState<number | null>(null)
   const [counterCloseOpen, setCounterCloseOpen] = useState(false)
+  const [counterCloseMode, setCounterCloseMode] = useState<'cashier' | 'admin'>('cashier')
   const [entryMenuOpen, setEntryMenuOpen] = useState(false)
   const [areaMasterOpen, setAreaMasterOpen] = useState(false)
   const [tableMasterOpen, setTableMasterOpen] = useState(false)
@@ -1402,6 +1419,7 @@ export default function PosMainPage() {
   const [allowZeroPriceOnBill, setAllowZeroPriceOnBill] = useState(0)
   const [defaultTax1, setDefaultTax1] = useState(0)
   const adminLoginRef = useRef<HTMLInputElement | null>(null)
+  const printBillRef = useRef<() => void>(() => {})
   const adminPasswordRef = useRef<HTMLInputElement | null>(null)
   const customerSearchRef = useRef<HTMLInputElement | null>(null)
   const orderListSearchRef = useRef<HTMLInputElement | null>(null)
@@ -1432,6 +1450,7 @@ export default function PosMainPage() {
   const [currentKotId, setCurrentKotId] = useState(0)
   const [kotPrefix, setKotPrefix] = useState('')
   const [kotNo, setKotNo] = useState('')
+  const [kotTime, setKotTime] = useState('')
   const [areaId, setAreaId] = useState(0)
   const [tableId, setTableId] = useState(0)
   const [tableName, setTableName] = useState('')
@@ -1454,6 +1473,12 @@ export default function PosMainPage() {
   const discountPercentRef = useRef<HTMLInputElement | null>(null)
   const [customerId, setCustomerId] = useState(0)
   const [customerName, setCustomerName] = useState('')
+  const [customerCode, setCustomerCode] = useState('')
+  const [customerMobile, setCustomerMobile] = useState('')
+  const [customerTelephone, setCustomerTelephone] = useState('')
+  const [customerCity, setCustomerCity] = useState('')
+  const [customerAddress, setCustomerAddress] = useState('')
+  const [orderWaiterName, setOrderWaiterName] = useState('')
   const [waiterId, setWaiterId] = useState(() => getPosSession().staffId)
   const [clearAfterKotSave, setClearAfterKotSave] = useState(0)
   const [waiterMandatory, setWaiterMandatory] = useState(0)
@@ -1528,11 +1553,24 @@ export default function PosMainPage() {
   const [groupOptions, setGroupOptions] = useState<SearchSelectOption[]>([])
   const [subgroupOptions, setSubgroupOptions] = useState<SearchSelectOption[]>([])
   const [groupOptionsLoading, setGroupOptionsLoading] = useState<'group' | 'subgroup' | null>(null)
+  const [addingProductGroup, setAddingProductGroup] = useState(false)
+  const [newProductGroupName, setNewProductGroupName] = useState('')
+  const [newProductGroupArabic, setNewProductGroupArabic] = useState('')
+  const [productGroupSaving, setProductGroupSaving] = useState(false)
 
   // Generic "Creation" master-entry modals (Area/Table/Group/etc.) — one
   // shared string|boolean bag keyed by field name, since only one of these
   // is ever open at a time and each modal only reads its own keys.
   const [entryModal, setEntryModal] = useState<EntryKey | null>(null)
+  const [reprintBills, setReprintBills] = useState<
+    { salesId: string; billNo: string; billTime: string; paymentMode: string; total: number }[]
+  >([])
+  const [reprintItems, setReprintItems] = useState<
+    { sl: number; barcode: string; name: string; qty: number; unitPrice: number; lineTotal: number }[]
+  >([])
+  const [reprintPick, setReprintPick] = useState('')
+  const [reprintRaw, setReprintRaw] = useState<Record<string, unknown> | null>(null)
+  const [reprintState, setReprintState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [entrySaving, setEntrySaving] = useState(false)
   const [entryForm, setEntryForm] = useState<Record<string, string | boolean>>({})
   // Live English→Arabic auto-fill bookkeeping — plain refs (not state) since
@@ -1674,6 +1712,18 @@ export default function PosMainPage() {
         setSideNavHidden(false)
         window.setTimeout(() => navSearchRef.current?.focus(), 0)
       }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
+    function onKey(e: globalThis.KeyboardEvent) {
+      if (e.key !== 'F6') return
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      e.preventDefault()
+      printBillRef.current()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -1848,10 +1898,10 @@ export default function PosMainPage() {
         setAllSubSubGroups(mapSubSubGroups(subSubRows))
         setAllProducts(tiles)
         if (first) {
-          setGroupId(null)
-          setSubGroupId(null)
-          setSubSubGroupId(null)
-          setCatalogueState('ready')
+        setGroupId(null)
+        setSubGroupId(null)
+        setSubSubGroupId(null)
+        setCatalogueState('ready')
           catalogueReady.current = true
         } else {
           setGroupId((cur) => (cur != null && cats.some((c) => c.id === cur) ? cur : null))
@@ -1914,6 +1964,10 @@ export default function PosMainPage() {
       setChairNo(0)
       setCustomerId(0)
       setCustomerName('')
+      setCustomerCode('')
+      setCustomerMobile('')
+      setCustomerTelephone('')
+      setOrderWaiterName('')
       setCurrentKotId(0)
       setKotNo('')
       setKotPrefix('')
@@ -1931,6 +1985,39 @@ export default function PosMainPage() {
       alive = false
     }
   }, [])
+
+  useEffect(() => {
+    if (entryModal !== 'billReprint') return
+    let alive = true
+    setReprintPick('')
+    setReprintRaw(null)
+    setReprintItems([])
+    setReprintState('loading')
+    const today = isoDate(new Date())
+    apiService
+      .fetchSalesViewer({ dateFrom: today, dateTo: today })
+      .then((rows) => {
+        if (!alive) return
+        setReprintBills(
+          rows.map((r) => ({
+            salesId: String(r.salesId ?? r.SalesID ?? ''),
+            billNo: String(r.billNo ?? r.BillNo ?? ''),
+            billTime: String(r.billTime ?? r.BillTime ?? r.billDate ?? ''),
+            paymentMode: String(r.paymentMode ?? r.PaymentMode ?? ''),
+            total: Number(r.total ?? r.Total ?? r.amount ?? 0) || 0,
+          })),
+        )
+        setReprintState('idle')
+      })
+      .catch(() => {
+        if (!alive) return
+        setReprintBills([])
+        setReprintState('error')
+      })
+    return () => {
+      alive = false
+    }
+  }, [entryModal])
 
   async function reloadFloorMasters() {
     try {
@@ -2764,11 +2851,15 @@ export default function PosMainPage() {
       else if (next === 'bill-confirm') setBillConfirmOpen(true)
       else if (next === 'return') void runReturn()
       else if (next === 'item-qty') void runItemQtyChange(null)
-      else if (next === 'counter-close-all') setCounterCloseOpen(true)
+      else if (next === 'counter-close-all') {
+        setCounterCloseMode('admin')
+        setCounterCloseOpen(true)
+      }
       else if (next === 'kot-join') setDragJoinConfirm(true)
       else if (next === 'price-change') showPriceChangeDialog(priceChangeKey ?? selectedLine ?? -1)
       else if (next === 'area-change') setAreaChangeOpen(true)
       else if (next === 'discount') openDiscountDialog()
+      else if (next === 'bill-print') void printLastCounterBill()
       return
     }
     setAdminNext(next)
@@ -2778,6 +2869,8 @@ export default function PosMainPage() {
     setAdminError(null)
     setAdminOpen(true)
   }
+
+  printBillRef.current = () => requestAdmin('bill-print')
 
   /** btnItemCancel_Click — CurrentKOTID required, then ItemRemovefrm. */
   function onItemCancelClick() {
@@ -2907,8 +3000,12 @@ export default function PosMainPage() {
     setRemarks(String(payload.remarks ?? payload.Remarks ?? ''))
     setCustomerId(num(payload.customerId ?? payload.CustomerID))
     setCustomerName(String(payload.customerName ?? payload.CustomerName ?? ''))
+    setCustomerCode(String(payload.customerCode ?? payload.CustomerCode ?? ''))
+    setCustomerMobile(String(payload.mobileNo ?? payload.MobileNo ?? ''))
+    setCustomerTelephone(String(payload.telephone ?? payload.Telephone ?? ''))
     const loadedWaiter = num(payload.waiterId ?? payload.WaiterID)
     setWaiterId(loadedWaiter > 0 ? loadedWaiter : getPosSession().staffId)
+    setOrderWaiterName(String(payload.waiterName ?? payload.WaiterName ?? ''))
   }
 
 
@@ -2945,11 +3042,15 @@ export default function PosMainPage() {
       else if (next === 'bill-confirm') setBillConfirmOpen(true)
       else if (next === 'return') await runReturn()
       else if (next === 'item-qty') await runItemQtyChange(creds)
-      else if (next === 'counter-close-all') setCounterCloseOpen(true)
+      else if (next === 'counter-close-all') {
+        setCounterCloseMode('admin')
+        setCounterCloseOpen(true)
+      }
       else if (next === 'kot-join') setDragJoinConfirm(true)
       else if (next === 'price-change') showPriceChangeDialog(priceChangeKey ?? selectedLine ?? -1)
       else if (next === 'area-change') setAreaChangeOpen(true)
       else if (next === 'discount') openDiscountDialog()
+      else if (next === 'bill-print') await printLastCounterBill()
     } catch (err) {
       setAdminError(errMessage(err, 'Password Failed...'))
       setAdminPassword('')
@@ -3206,6 +3307,10 @@ export default function PosMainPage() {
     setKotPrefix('')
     setCustomerId(0)
     setCustomerName('')
+    setCustomerCode('')
+    setCustomerMobile('')
+    setCustomerTelephone('')
+    setOrderWaiterName('')
     setCovers(1)
     setRemarks('')
     setBillDiscount(0)
@@ -3548,12 +3653,19 @@ export default function PosMainPage() {
     setSeparatorAfterKeys(new Set())
     setCurrentKotId(0)
     setKotNo('')
+    setKotTime('')
     setRemarks('')
     setBillDiscount(0)
     setDiscountType(0)
     setDiscountOpen(false)
     setCustomerId(0)
     setCustomerName('')
+    setCustomerCode('')
+    setCustomerMobile('')
+    setCustomerTelephone('')
+    setCustomerCity('')
+    setCustomerAddress('')
+    setOrderWaiterName('')
     setCovers(1)
     setTableId(0)
     setTableName('')
@@ -3660,6 +3772,7 @@ export default function PosMainPage() {
     setCurrentKotId(num(first.KotMasterID ?? first.kotMasterID))
     setKotPrefix(String(first.KotPrefix ?? first.KOTPrefix ?? ''))
     setKotNo(String(first.KotNumber ?? first.KOTNumber ?? first.kotNumber ?? ''))
+    setKotTime(String(first.KotTime ?? first.KOTTime ?? first.kotTime ?? ''))
     const nextAreaId = num(first.AreaID ?? first.areaID)
     setAreaId(nextAreaId)
     const area = areas.find((a) => a.id === nextAreaId)
@@ -3683,8 +3796,14 @@ export default function PosMainPage() {
     setBillDiscount(loadedType === 2 ? 0 : loadedBillDisc)
     setCustomerId(num(first.CustomerID ?? first.customerID))
     setCustomerName(String(first.CustomerName ?? first.customerName ?? ''))
+    setCustomerCode(String(first.CustomerCode ?? first.customerCode ?? ''))
+    setCustomerMobile(String(first.MobileNo ?? first.mobileNo ?? ''))
+    setCustomerTelephone(String(first.Telephone ?? first.telephone ?? ''))
+    setCustomerCity(String(first.City ?? first.city ?? ''))
+    setCustomerAddress(String(first.Address ?? first.address ?? ''))
     const loadedWaiter = num(first.WaiterID ?? first.waiterID)
     setWaiterId(loadedWaiter > 0 ? loadedWaiter : getPosSession().staffId)
+    setOrderWaiterName(String(first.WaiterName ?? first.waiterName ?? ''))
     return nextLines
   }
 
@@ -3772,6 +3891,7 @@ export default function PosMainPage() {
   async function saveKotInternal(opts?: {
     forSettlement?: boolean
     forDiscount?: boolean
+    forDummy?: boolean
     ticket?: TicketLine[]
     billDisc?: number
     discType?: 0 | 2
@@ -3780,7 +3900,7 @@ export default function PosMainPage() {
     lines: TicketLine[]
     kotLabel: string
   } | null> {
-    if (savingKot && !opts?.forSettlement && !opts?.forDiscount) return null
+    if (savingKot && !opts?.forSettlement && !opts?.forDiscount && !opts?.forDummy) return null
     const ticket = opts?.ticket ?? lines
     const discType = opts?.discType ?? discountType
     const discAmt = opts?.billDisc ?? billDiscount
@@ -3858,7 +3978,7 @@ export default function PosMainPage() {
         CurrentKOTID: currentKotId > 0 ? currentKotId : 0,
         IsTablePopup: isTablePopup,
         isTablePopup,
-        btnname: opts?.forSettlement ? 'Settlement' : opts?.forDiscount ? 'Discount' : 'KotSave',
+        btnname: opts?.forDummy ? 'DummyBill' : opts?.forSettlement ? 'Settlement' : opts?.forDiscount ? 'Discount' : 'KotSave',
         Items: buildKotItems(ticket),
       })
       const kotId = num(result.CurrentKOTID ?? result.jobId)
@@ -3869,9 +3989,9 @@ export default function PosMainPage() {
       }
       const savedNo = `${String(result.KotPrefix ?? kotPrefix)}${String(result.KotNumber ?? kotNo)}`
       if (opts?.forDiscount) toast('Discount Saved....... ')
-      else if (!opts?.forSettlement) toast(`Kot ${savedNo} Saved. . . `)
+      else if (!opts?.forSettlement && !opts?.forDummy) toast(`Kot ${savedNo} Saved. . . `)
       let savedLines: TicketLine[] = ticket
-      if (clearAfterKotSave === 1 && !opts?.forSettlement && !opts?.forDiscount) {
+      if (clearAfterKotSave === 1 && !opts?.forSettlement && !opts?.forDiscount && !opts?.forDummy) {
         clearData()
       } else if (details) {
         const applied = applyKotDetails(details, allProducts, false)
@@ -3894,6 +4014,63 @@ export default function PosMainPage() {
   async function onSaveKot() {
     if (savingKot) return
     await saveKotInternal()
+  }
+
+  /** btnDummyBill_Click — save the open KOT, then print the pre-settlement dummy slip. */
+  async function onDummyBill() {
+    if (currentKotId <= 0) {
+      toast('Select a Bill...')
+      return
+    }
+    const saved = await saveKotInternal({ forDummy: true })
+    if (!saved) return
+    const ticket = saved.lines
+    const totals = calcKotTotals(ticket, billDiscount, defaultTax1, 0)
+    const session = getPosSession()
+    const waiterLabel =
+      orderWaiterName || (waiterId > 0 && waiterId === session.staffId ? session.staffName : '')
+    try {
+      await printSettlementBill({
+        dummy: true,
+        billNo: '',
+        billTime: kotTime || new Date(),
+        kotNo: saved.kotLabel,
+        supplyType: service,
+        counterNo: String(session.counterNo ?? ''),
+        cashier: session.staffName || waiter,
+        tableName,
+        waiterName: waiterLabel,
+        guests: String(covers),
+        comments: remarks,
+        paymentMode: '',
+        customerId,
+        customerCode,
+        customerName,
+        customerMobile,
+        customerTelephone,
+        customerCity,
+        customerAddress,
+        discount: discountType === 2 ? 0 : totals.billDiscount,
+        roundOff: totals.roundOff,
+        paid: 0,
+        balance: 0,
+        taxPct: defaultTax1,
+        taxName: tax1Name,
+        itemWise: discountType === 2,
+        lines: ticket.map((line) => ({
+          name: line.item,
+          qty: line.qty,
+          unitPrice: line.price,
+          lineTotal: line.total,
+          taxRate: line.taxRate,
+          taxAmt: line.tax,
+          exclusive: round2(line.price * line.qty - line.disc),
+          itemDisc: line.disc,
+        })),
+      })
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Dummy bill print failed')
+    }
   }
 
   /** btnOrderList_Click — always load as NEW (no combine). */
@@ -4166,10 +4343,62 @@ export default function PosMainPage() {
   }
 
   function onSettlementCompleted(info: SettlementDone) {
+    const snapshot = settleBill
+    const session = getPosSession()
+    const waiterLabel =
+      orderWaiterName || (waiterId > 0 && waiterId === session.staffId ? session.staffName : '')
     setSettleOpen(false)
     setSettleBill(null)
     setLastInfo(info)
     toast('Transaction Completed. . . ')
+    if (snapshot) {
+      const lines = (snapshot.items ?? []).map((row) => row as Record<string, unknown>)
+      void printSettlementBill({
+        billNo: info.billNo,
+        billTime: new Date(),
+        kotNo: snapshot.kotLabel,
+        supplyType: service,
+        counterNo: String(session.counterNo ?? ''),
+        cashier: session.staffName || waiter,
+        tableName,
+        waiterName: waiterLabel,
+        guests: String(snapshot.covers ?? ''),
+        comments: snapshot.remarks || '',
+        paymentMode: info.paymentMode,
+        customerId,
+        customerCode,
+        customerName,
+        customerMobile,
+        customerTelephone,
+        discount: snapshot.discount,
+        roundOff: 0,
+        paid: info.paid,
+        balance: info.change,
+        taxPct: defaultTax1,
+        taxName: tax1Name,
+        itemWise: discountType === 2,
+        lines: lines.map((row) => ({
+          name: String(row.shortDescription ?? row.ShortDescription ?? ''),
+          qty: Number(row.qty ?? row.Qty) || 0,
+          unitPrice: Number(row.unitPrice ?? row.UnitPrice) || 0,
+          lineTotal: Number(row.lineTotal ?? row.LineTotal) || 0,
+          taxRate: Number(row.tax1RateC ?? row.Tax1RateC) || 0,
+          taxAmt: Number(row.tax1AmountC ?? row.Tax1AmountC) || 0,
+          exclusive: Number(row.subTotalC ?? row.SubTotalC) || 0,
+          itemDisc: Number(row.discount ?? row.ItemDisc) || 0,
+        })),
+        splits:
+          info.paymentMode === 'SPLITPAY'
+            ? [
+                { label: 'CASH', amount: info.cash },
+                { label: 'CREDIT CARD', amount: info.card },
+                { label: 'ONLINE', amount: info.online },
+              ]
+            : [],
+      }).catch((err) => {
+        toast(err instanceof Error ? err.message : 'Bill print failed')
+      })
+    }
     const areaForRefresh = areaId
     clearData()
     clearQty()
@@ -4429,6 +4658,8 @@ export default function PosMainPage() {
           mobile: String(c.mobileNo ?? c.MobileNo ?? '').trim(),
           telephone: String(c.telephone ?? c.Telephone ?? '').trim(),
           code: String(c.customerCode ?? c.CustomerCode ?? '').trim(),
+          city: String(c.city ?? c.City ?? '').trim(),
+          address: String(c.address ?? c.Address ?? '').trim(),
         })).filter((c) => c.id > 0 && c.name),
       )
     } catch {
@@ -4454,6 +4685,11 @@ export default function PosMainPage() {
   function pickCustomer(c: CustomerPick) {
     setCustomerId(c.id)
     setCustomerName(c.name)
+    setCustomerCode(c.code)
+    setCustomerMobile(c.mobile)
+    setCustomerTelephone(c.telephone)
+    setCustomerCity(c.city ?? '')
+    setCustomerAddress(c.address ?? '')
     setCustomerOpen(false)
     setCustomerEntryOpen(false)
   }
@@ -4675,6 +4911,59 @@ export default function PosMainPage() {
 
   function closeEntryModal() {
     setEntryModal(null)
+  }
+
+  /** btnBillreprint_Click → OldBillPrint Task=DirectPrint: last bill of this counter today. */
+  async function printLastCounterBill() {
+    const session = getPosSession()
+    const today = isoDate(new Date())
+    try {
+      const rows = await apiService.fetchSalesViewer({
+        dateFrom: today,
+        dateTo: today,
+        counterNo: session.counterNo,
+      })
+      let best: { salesId: string; billNo: number } | null = null
+      for (const row of rows) {
+        const billNo = Number(row.billNo ?? row.BillNo)
+        const salesId = String(row.salesId ?? row.SalesID ?? '')
+        if (!salesId || !Number.isFinite(billNo)) continue
+        if (!best || billNo > best.billNo) best = { salesId, billNo }
+      }
+      if (!best) {
+        toast('No Data found..............')
+        return
+      }
+      await printViewerBill(await apiService.fetchSalesViewerBill(best.salesId))
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'No Data found..............')
+    }
+  }
+
+  async function openReprintBill(salesId: string, andPrint = false) {
+    if (!salesId) return
+    setReprintPick(salesId)
+    try {
+      const raw = await apiService.fetchSalesViewerBill(salesId)
+      setReprintRaw(raw)
+      const list = Array.isArray(raw.items) ? raw.items : []
+      setReprintItems(
+        list.map((it, i) => {
+          const row = it as Record<string, unknown>
+          return {
+            sl: Number(row.slNo) || i + 1,
+            barcode: String(row.barcode ?? row.BarCode ?? ''),
+            name: String(row.shortDescription ?? row.ShortDescription ?? ''),
+            qty: Number(row.qty ?? row.Qty) || 0,
+            unitPrice: Number(row.unitPrice ?? row.UnitPrice) || 0,
+            lineTotal: Number(row.lineTotal ?? row.LineTotal) || 0,
+          }
+        }),
+      )
+      if (andPrint) await printViewerBill(raw)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not print bill')
+    }
   }
 
   function openEntryModal(key: EntryKey) {
@@ -4949,9 +5238,15 @@ export default function PosMainPage() {
     }
     setEntrySaving(true)
     try {
+      const groupName = ef('mgDescription').trim()
+      const typedCode = ef('mgCode').trim()
+      const useOwnCode = groups.some((g) => g.code.toUpperCase().startsWith('MOH-'))
+      const groupCode = typedCode || (useOwnCode
+        ? menuGroupCode(groupName, new Set(groups.map((g) => g.code.toUpperCase())))
+        : undefined)
       await apiService.createGroup({
-        groupCode: ef('mgCode').trim() || undefined,
-        groupDescription: ef('mgDescription').trim(),
+        groupCode,
+        groupDescription: groupName,
         groupDescriptionArabic: ef('mgDescriptionArabic').trim(),
         applyDiscount: efBool('mgApplyDiscount'),
       })
@@ -5536,15 +5831,7 @@ export default function PosMainPage() {
     try {
       if (kind === 'group') {
         const rows = await apiService.fetchGroups()
-        setGroupOptions(
-          rows
-            .map((g) => ({
-              id: num(g.groupId ?? g.GroupID),
-              name: String(g.groupDescription ?? g.GroupDescription ?? g.groupName ?? '').trim(),
-              code: String(g.groupCode ?? g.GroupCode ?? '').trim(),
-            }))
-            .filter((g) => g.id > 0 && g.name),
-        )
+        setGroupOptions(mapGroups(rows))
       } else {
         const rows = await apiService.fetchSubGroups({ groupId: productForm.groupId || undefined })
         setSubgroupOptions(
@@ -5572,6 +5859,52 @@ export default function PosMainPage() {
     return money(b * (1 + (Number.isFinite(v) ? v : 0) / 100))
   }
 
+  async function saveProductGroup() {
+    const groupDescription = newProductGroupName.trim()
+    if (!groupDescription) {
+      toast('Enter a Group Name')
+      return
+    }
+    const useOwnCode = groupOptions.some((g) => (g.code ?? '').toUpperCase().startsWith('MOH-')) || groups.some((g) => g.code.toUpperCase().startsWith('MOH-'))
+    const taken = new Set([
+      ...groupOptions.map((g) => (g.code ?? '').toUpperCase()),
+      ...groups.map((g) => g.code.toUpperCase()),
+    ])
+    const groupCode = useOwnCode ? menuGroupCode(groupDescription, taken) : undefined
+    setProductGroupSaving(true)
+    try {
+      const created = await apiService.createGroup({
+        groupDescription,
+        groupDescriptionArabic: newProductGroupArabic.trim(),
+        ...(groupCode ? { groupCode } : {}),
+      })
+      const id = Number(created.groupId) || 0
+      if (id < 1) throw new Error('Group was not created')
+      const opt = {
+        id,
+        name: String(created.groupDescription ?? groupDescription),
+        code: String(created.groupCode ?? groupCode ?? ''),
+      }
+      setGroupOptions((prev) => [...prev, opt].sort((a, b) => a.name.localeCompare(b.name)))
+      setProductForm((f) => ({
+        ...f,
+        groupId: id,
+        groupName: opt.name,
+        subgroupId: 0,
+        subgroupName: '',
+      }))
+      setAddingProductGroup(false)
+      setNewProductGroupName('')
+      setNewProductGroupArabic('')
+      void reloadGroups()
+      toast('Group saved', 'success')
+    } catch (err) {
+      toast(errMessage(err, 'Could not create group'))
+    } finally {
+      setProductGroupSaving(false)
+    }
+  }
+
   async function saveProductForm() {
     if (!productForm.description.trim()) {
       toast('Enter a Description')
@@ -5587,22 +5920,31 @@ export default function PosMainPage() {
     }
     setProductSaving(true)
     try {
+      const description = productForm.description.trim()
+      const cost = productForm.unitCost || '0'
+      const derivedCode = description.toUpperCase().replace(/\s+/g, '-').slice(0, 20)
       const payload = {
-        productCode: productForm.code.trim() || undefined,
-        productName: productForm.description.trim(),
-        arabicName: productForm.arabicDescription.trim(),
+        productCode: productForm.code.trim() || derivedCode || `PRD-${Date.now() % 1000000}`,
+        newBarcode: true,
+        description,
+        shortDescription: description,
+        descriptionArabic: productForm.arabicDescription.trim(),
         groupId: productForm.groupId,
-        subgroupId: productForm.subgroupId || undefined,
-        kitchenLocation: productForm.kitchenLocation.trim(),
-        kotPriority: productForm.kotPriority,
-        unitCost: Number(productForm.unitCost) || 0,
-        tax1Rate: Number(productForm.vatIn) || 0,
-        unitPrice: Number(productForm.unitPrice) || 0,
-        outputTax1Rate: Number(productForm.vatOut) || 0,
-        packQty: Number(productForm.packQty) || 1,
+        subGroupId: productForm.subgroupId || undefined,
+        unitCost: cost,
+        averageCost: cost,
+        lastPurchCost: cost,
+        baseCost: cost,
+        vatInPct: productForm.vatIn,
+        unitPrice: productForm.unitPrice,
+        vatOutPct: productForm.vatOut,
+        packQty: productForm.packQty || '1',
+        qtyOnHand: productForm.qtyOnHand,
         unit: productForm.unit,
         productType: productForm.productType,
-        description: productForm.itemDescription.trim(),
+        location: productForm.kitchenLocation.trim() || 'Main',
+        remark: productForm.itemDescription.trim(),
+        makeType: 'Standard',
       }
       if (productForm.id > 0) {
         await apiService.updateProduct(productForm.id, payload)
@@ -5612,8 +5954,8 @@ export default function PosMainPage() {
       toast('Item saved', 'success')
       setProductOpen(false)
       void reloadProducts()
-    } catch {
-      toast('Could not save the item')
+    } catch (err) {
+      toast(errMessage(err, 'Could not save the item'))
     } finally {
       setProductSaving(false)
     }
@@ -5712,7 +6054,8 @@ export default function PosMainPage() {
       return
     }
     if (label === 'Counter Close') {
-      requestAdmin('counter-close-all', true)
+      setCounterCloseMode('cashier')
+      setCounterCloseOpen(true)
       setSideNavHidden(true)
       return
     }
@@ -5722,7 +6065,8 @@ export default function PosMainPage() {
       return
     }
     if (label === 'CounterClose -Admin') {
-      requestAdmin('counter-close-all', true)
+      setCounterCloseMode('admin')
+      setCounterCloseOpen(true)
       setSideNavHidden(true)
       return
     }
@@ -5863,12 +6207,12 @@ export default function PosMainPage() {
   /** One sidebar nav item — icon + label, expanding its submenu inline
    * (indented underneath, accordion-style) rather than a flyout. */
   function renderNavItem(item: (typeof NAV)[number]) {
-    const menu = NAV_MENUS[item]
+            const menu = NAV_MENUS[item]
     const ItemIcon = NAV_ICON[item]
     const isOpen = openNavMenu === item
     const button = (
-      <button
-        type="button"
+                <button
+                  type="button"
         className={`pd-side-nav-btn${item === nav ? ' is-active' : ''}${isOpen && item !== nav ? ' is-open' : ''}`}
         onClick={() => {
           if (menu) setOpenNavMenu((open) => (open === item ? null : item))
@@ -5878,16 +6222,16 @@ export default function PosMainPage() {
         <ItemIcon size={18} strokeWidth={2} />
         <span>{item}</span>
         {menu ? <ChevronRight size={13} className={`pd-side-nav-arrow${isOpen ? ' is-open' : ''}`} /> : null}
-      </button>
+                </button>
     )
     if (!menu) {
       return (
         <div key={item} className="pd-side-nav-wrap">
           {button}
         </div>
-      )
-    }
-    return (
+              )
+            }
+            return (
       <div key={item} className="pd-side-nav-wrap">
         {button}
         {isOpen ? (
@@ -6071,8 +6415,8 @@ export default function PosMainPage() {
       case 'combo':
         return (
           <>
-            <button
-              type="button"
+                <button
+                  type="button"
               className="pd-mod-foot-btn"
               disabled={comboGroups.length === 0}
               onClick={() => {
@@ -6081,7 +6425,7 @@ export default function PosMainPage() {
               }}
             >
               Remove from list
-            </button>
+                </button>
             <span className="pd-mod-foot-spacer" />
             <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveCombo}>
               Save
@@ -6112,7 +6456,7 @@ export default function PosMainPage() {
             <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveOnlineSource}>
               Save
             </button>
-          </div>
+                  </div>
         )
       case 'paymentMode':
         return (
@@ -6120,8 +6464,8 @@ export default function PosMainPage() {
             <button type="button" className="pd-mod-foot-btn is-ok" onClick={savePaymentMode}>
               Save
             </button>
-          </div>
-        )
+              </div>
+            )
       case 'messMaster':
         return (
           <>
@@ -6687,8 +7031,8 @@ export default function PosMainPage() {
               >
                 <span className="pd-pill-icon"><TableGlyph size={10} /></span>
                 <span className="pd-meta-text">
-                  Table {tableName || (tableId > 0 ? String(tableId) : '—')}
-                  {chairNo > 0 ? ` / CH ${chairNo}` : ''}
+                Table {tableName || (tableId > 0 ? String(tableId) : '—')}
+                {chairNo > 0 ? ` / CH ${chairNo}` : ''}
                 </span>
                 <ChevronDown size={11} className="pd-pill-chevron" />
               </button>
@@ -6700,7 +7044,7 @@ export default function PosMainPage() {
               >
                 <span className="pd-pill-icon"><Users size={10} /></span>
                 <span className="pd-meta-text">
-                  {covers} {covers === 1 ? 'Cover' : 'Covers'}
+                {covers} {covers === 1 ? 'Cover' : 'Covers'}
                 </span>
                 <ChevronDown size={11} className="pd-pill-chevron" />
               </button>
@@ -7006,12 +7350,12 @@ export default function PosMainPage() {
             </div>
           ) : null}
           <SearchBar
-            ref={searchInputRef}
+              ref={searchInputRef}
             size="sm"
-            value={query}
+              value={query}
             onValueChange={setQuery}
-            placeholder="Search item / barcode"
-          />
+              placeholder="Search item / barcode"
+            />
           <button
             type="button"
             className="pd-barcode-btn"
@@ -7046,8 +7390,8 @@ export default function PosMainPage() {
               const isGroupOn = groupId === g.id
               return (
                 <div key={g.id} className="pd-cat-branch">
-                  <button
-                    type="button"
+                <button
+                  type="button"
                     className={`pd-cat${isGroupOn ? ' is-active' : ''}`}
                     onClick={() => onStripTap(() => onGroupClick(g.id))}
                   >
@@ -7084,10 +7428,10 @@ export default function PosMainPage() {
                                     >
                                       <SubSubIcon size={11} strokeWidth={2} />
                                       <span className="pd-cat-label">{ss.name.toLowerCase()}</span>
-                                    </button>
-                                  )
-                                })}
-                              </div>
+                </button>
+              )
+            })}
+          </div>
                             ) : null}
                           </div>
                         )
@@ -7213,9 +7557,9 @@ export default function PosMainPage() {
               {products.map((p) => (
                   <button key={p.id} type="button" className="pd-product" onClick={() => onItemClick(p)}>
                     <span className="pd-product-name">{p.name.toLowerCase()}</span>
-                    {p.sub && p.sub !== p.name ? (
-                      <span className="pd-product-sub">{p.sub.toLowerCase()}</span>
-                    ) : null}
+                      {p.sub && p.sub !== p.name ? (
+                        <span className="pd-product-sub">{p.sub.toLowerCase()}</span>
+                      ) : null}
                     <span className="pd-product-foot">
                       <span className="pd-product-price">AED {money(p.price)}</span>
                     </span>
@@ -7295,7 +7639,7 @@ export default function PosMainPage() {
                     </span>
                     <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
                   </button>
-                  <button type="button" className="pd-tile">
+                  <button type="button" className="pd-tile" onClick={() => void onDummyBill()}>
                     <FileText className="pd-tile-ic" strokeWidth={2} />
                     <span className="pd-tile-text">
                       <span className="pd-tile-label">Dummy Bill</span>
@@ -7337,19 +7681,19 @@ export default function PosMainPage() {
                   >
                   <div className="pd-more-menu" role="dialog" aria-modal="true" aria-label="More actions">
                     <button type="button" className="pd-more-item" onClick={() => void onSaveKot()} disabled={savingKot}>
-                      <BtnIcon icon={Zap} /> <span>Quick KOT</span>
-                    </button>
-                    <button
-                      type="button"
+                    <BtnIcon icon={Zap} /> <span>Quick KOT</span>
+                  </button>
+                  <button
+                    type="button"
                       className={`pd-more-item${remarks.trim() ? ' is-on' : ''}`}
-                      title={remarks.trim() || 'Comments'}
-                      onClick={() => {
-                        setCommentsDraft(remarks)
-                        setCommentsOpen(true)
-                      }}
-                    >
-                      <BtnIcon icon={MessageSquare} /> <span>Comments</span>
-                    </button>
+                    title={remarks.trim() || 'Comments'}
+                    onClick={() => {
+                      setCommentsDraft(remarks)
+                      setCommentsOpen(true)
+                    }}
+                  >
+                    <BtnIcon icon={MessageSquare} /> <span>Comments</span>
+                  </button>
                     <button type="button" className="pd-more-item">
                       <BtnIcon icon={Printer} /> <span>KOT Print</span>
                     </button>
@@ -7372,35 +7716,35 @@ export default function PosMainPage() {
                       onClick={onKotJoinClick}
                     >
                       <BtnIcon icon={Merge} /> <span>KOT Join</span>
-                    </button>
+                        </button>
                     <button type="button" className="pd-more-item" onClick={onReturnClick}>
                       <BtnIcon icon={RotateCcw} /> <span>Return</span>
-                    </button>
-                    <button type="button" className="pd-more-item">
+                        </button>
+                        <button type="button" className="pd-more-item">
                       <BtnIcon icon={Package} /> <span>Delivery</span>
-                    </button>
-                    <button type="button" className="pd-more-item">
+                        </button>
+                        <button type="button" className="pd-more-item">
                       <BtnIcon icon={Repeat} /> <span>KOT Reprint</span>
-                    </button>
-                    <button type="button" className="pd-more-item">
+                        </button>
+                    <button type="button" className="pd-more-item" onClick={() => requestAdmin('bill-print')}>
                       <BtnIcon icon={Printer} /> <span>Print Bill</span>
-                    </button>
+                        </button>
                     <button type="button" className="pd-more-item">
                       <BtnIcon icon={ShoppingBag} /> <span>Takeaway List</span>
-                    </button>
-                    <button type="button" className="pd-more-item">
+                        </button>
+                        <button type="button" className="pd-more-item">
                       <BtnIcon icon={ClipboardList} /> <span>Delivery List</span>
-                    </button>
+                        </button>
                     <button type="button" className="pd-more-item is-danger" onClick={onItemCancelClick}>
-                      <BtnIcon icon={MinusCircle} /> <span>Item Cancel</span>
-                    </button>
-                    <button type="button" className="pd-more-item" onClick={openModifierForSelection}>
-                      <BtnIcon icon={StickyNote} /> <span>Kitchen Message</span>
-                    </button>
-                  </div>
+                          <BtnIcon icon={MinusCircle} /> <span>Item Cancel</span>
+                        </button>
+                        <button type="button" className="pd-more-item" onClick={openModifierForSelection}>
+                          <BtnIcon icon={StickyNote} /> <span>Kitchen Message</span>
+                        </button>
+                      </div>
                   </div>,
                   document.body,
-                ) : null}
+                    ) : null}
               </div>
             </div>
 
@@ -7412,7 +7756,7 @@ export default function PosMainPage() {
             >
               <BtnIcon icon={CreditCard} size={16} />
               PAY <em>AED {money(summary.total)}</em>
-            </button>
+              </button>
             </div>
           </div>
         </div>
@@ -7689,21 +8033,21 @@ export default function PosMainPage() {
                   <span>Current Discount</span>
                   <strong>{money(discChangeLine.disc)}</strong>
                 </div>
-                <div className="pd-qty-row">
+                  <div className="pd-qty-row">
                   <span>New Discount</span>
-                  <input
+                    <input
                     ref={discChangeRef}
                     className="pd-qty-input"
                     value={discChangeNew}
                     onChange={(e) => setDiscChangeNew(e.target.value.replace(/[^\d.]/g, '').slice(0, 10))}
-                    onKeyDown={(e) => {
+                      onKeyDown={(e) => {
                       if (e.key === 'Enter') applyLineDiscount()
                       if (e.key === 'Escape') cancelLineDiscount()
-                    }}
-                    inputMode="decimal"
+                      }}
+                      inputMode="decimal"
                     placeholder="Enter discount…"
-                  />
-                </div>
+                    />
+                  </div>
               </div>
               <div className="pd-qty-pad">
                 <NumberKeypad className="pd-qty-keys" onKey={onDiscChangeKey} />
@@ -7758,14 +8102,14 @@ export default function PosMainPage() {
                 orderListState === 'idle' &&
                 orderListRows.filter((r) => r.kotMasterId !== currentKotId).length === 0 ? (
                   <p className="pd-cat-msg">No other open orders to move this item to</p>
-                ) : null}
+      ) : null}
                 {!moving &&
                   orderListRows
                     .filter((row) => row.kotMasterId !== currentKotId)
                     .map((row) => (
-                      <button
+              <button
                         key={row.kotMasterId}
-                        type="button"
+                type="button"
                         className="pd-ol-card"
                         onClick={() => void moveLineToKot(row)}
                       >
@@ -7778,13 +8122,13 @@ export default function PosMainPage() {
                         <span className="pd-ol-card-waiter">{row.waiterName || waiter}</span>
                         <span className="pd-ol-card-amt">AED {money(row.amount)}</span>
                         <span className="pd-ol-card-kot">KOT No: {row.kotNo}</span>
-                      </button>
-                    ))}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            ) : null}
 
       {commentsOpen ? (
         <div
@@ -8472,27 +8816,60 @@ export default function PosMainPage() {
               <div className="pd-form-grid-2">
                 <div className="pd-form-row">
                   <label>Group</label>
-                  <SearchSelect
-                    id="pd-product-group"
-                    value={productForm.groupId || null}
-                    valueLabel={productForm.groupName}
-                    options={groupOptions}
-                    loading={groupOptionsLoading === 'group'}
-                    onOpen={() => void loadGroupOptions('group')}
-                    onChange={(o) => {
-                      if (o.id === productForm.groupId) return
-                      setSubgroupOptions([])
-                      setProductForm((f) => ({
-                        ...f,
-                        groupId: Number(o.id),
-                        groupName: o.name,
-                        subgroupId: 0,
-                        subgroupName: '',
-                      }))
-                    }}
-                    placeholder="Select group"
-                    searchPlaceholder="Search group"
-                  />
+                  <div className="pd-form-code">
+                    <SearchSelect
+                      id="pd-product-group"
+                      value={productForm.groupId || null}
+                      valueLabel={productForm.groupName}
+                      options={groupOptions}
+                      loading={groupOptionsLoading === 'group'}
+                      onOpen={() => void loadGroupOptions('group')}
+                      onChange={(o) => {
+                        if (o.id === productForm.groupId) return
+                        setSubgroupOptions([])
+                        setProductForm((f) => ({
+                          ...f,
+                          groupId: Number(o.id),
+                          groupName: o.name,
+                          subgroupId: 0,
+                          subgroupName: '',
+                        }))
+                      }}
+                      placeholder="Select group"
+                      searchPlaceholder="Search group"
+                    />
+                    <button
+                      type="button"
+                      className="pd-form-code-btn"
+                      disabled={productGroupSaving}
+                      onClick={() => setAddingProductGroup((open) => !open)}
+                    >
+                      New
+                    </button>
+                  </div>
+                  {addingProductGroup ? (
+                    <div className="pd-form-code">
+                      <input
+                        value={newProductGroupName}
+                        placeholder="Group name"
+                        onChange={(e) => setNewProductGroupName(e.target.value)}
+                      />
+                      <input
+                        value={newProductGroupArabic}
+                        dir="rtl"
+                        placeholder="Arabic"
+                        onChange={(e) => setNewProductGroupArabic(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="pd-form-code-btn"
+                        disabled={productGroupSaving}
+                        onClick={() => void saveProductGroup()}
+                      >
+                        {productGroupSaving ? '…' : 'Save'}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="pd-form-row">
                   <label>SubGroup</label>
@@ -8615,7 +8992,14 @@ export default function PosMainPage() {
                 </div>
                 <div className="pd-form-row">
                   <label>Qty On Hand</label>
-                  <input value={productForm.qtyOnHand} readOnly placeholder="—" />
+                  <input
+                    inputMode="decimal"
+                    value={productForm.qtyOnHand}
+                    placeholder="0"
+                    onChange={(e) =>
+                      setProductForm((f) => ({ ...f, qtyOnHand: e.target.value.replace(/[^\d.]/g, '') }))
+                    }
+                  />
                 </div>
               </div>
 
@@ -10804,6 +11188,21 @@ export default function PosMainPage() {
 
               {entryModal === 'billReprint' ? (
                 <div className="pd-bill-reprint-body">
+                  <div className="pd-form-row" style={{ justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      className="pd-mod-foot-btn"
+                      disabled={!reprintRaw}
+                      onClick={() => {
+                        if (!reprintRaw) return
+                        void printViewerBill(reprintRaw).catch((err) => {
+                          toast(err instanceof Error ? err.message : 'Bill print failed')
+                        })
+                      }}
+                    >
+                      Print
+                    </button>
+                  </div>
                   <div className="pd-grid-wrap">
                     <table className="pd-grid">
                       <thead>
@@ -10816,9 +11215,33 @@ export default function PosMainPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td colSpan={5}>No bills found</td>
-                        </tr>
+                        {reprintState === 'loading' ? (
+                          <tr>
+                            <td colSpan={5}>Loading bills…</td>
+                          </tr>
+                        ) : reprintBills.length === 0 ? (
+                          <tr>
+                            <td colSpan={5}>{reprintState === 'error' ? 'Could not load bills' : 'No bills found'}</td>
+                          </tr>
+                        ) : (
+                          reprintBills.map((row) => (
+                            <tr
+                              key={row.salesId}
+                              onClick={() => void openReprintBill(row.salesId)}
+                              onDoubleClick={() => void openReprintBill(row.salesId, true)}
+                              style={{
+                                cursor: 'pointer',
+                                background: reprintPick === row.salesId ? 'rgba(64, 0, 0, 0.08)' : undefined,
+                              }}
+                            >
+                              <td>{row.billNo}</td>
+                              <td />
+                              <td>{row.billTime ? new Date(row.billTime).toLocaleString('en-GB') : ''}</td>
+                              <td>{row.paymentMode}</td>
+                              <td>{money(row.total)}</td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -10835,9 +11258,22 @@ export default function PosMainPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td colSpan={6}>Select a bill</td>
-                        </tr>
+                        {reprintItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={6}>Select a bill</td>
+                          </tr>
+                        ) : (
+                          reprintItems.map((it) => (
+                            <tr key={it.sl}>
+                              <td>{it.sl}</td>
+                              <td>{it.barcode}</td>
+                              <td>{it.name}</td>
+                              <td>{it.qty}</td>
+                              <td>{money(it.unitPrice)}</td>
+                              <td>{money(it.lineTotal)}</td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -13486,7 +13922,7 @@ export default function PosMainPage() {
       ) : null}
 
       {counterCloseOpen ? (
-        <CounterCloseAllDialog onClose={() => setCounterCloseOpen(false)} />
+        <CounterCloseAllDialog mode={counterCloseMode} onClose={() => setCounterCloseOpen(false)} />
       ) : null}
 
       {kotJoinOpen ? (

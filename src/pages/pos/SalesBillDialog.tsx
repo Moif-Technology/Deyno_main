@@ -2,8 +2,9 @@
  * SalesMasterBackOfficeFrm.DisplayRecord — read-only bill after viewer double-click.
  */
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { Printer, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { printViewerBill } from '../../lib/printSettlementBill'
 
 type Props = {
   salesId: string
@@ -181,6 +182,18 @@ export default function SalesBillDialog({ salesId, onClose }: Props) {
             </div>
 
             <footer className="pd-sb-foot">
+              <button
+                type="button"
+                className="pd-mod-foot-btn"
+                onClick={() => {
+                  if (!bill) return
+                  void printViewerBill(bill).catch((err) => {
+                    setError(err instanceof Error ? err.message : 'Bill print failed')
+                  })
+                }}
+              >
+                <Printer size={14} /> Print
+              </button>
               <div className="pd-sb-totals">
                 <span>
                   Amount : <b>{money(bill.subTotal)}</b>

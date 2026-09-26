@@ -1,6 +1,8 @@
 /**
- * RptCounterCloseDetailsPending — Counter Close ALL.
- * X-Report = live snapshot. Z-Report = PrintSalesReportSummary (requires collected amount).
+ * Counter Close.
+ * mode cashier = RptCounterCloseDetails (this cashier).
+ * mode admin   = RptCounterCloseDetailsPending (whole station).
+ * X = print only. Z = collected amount, then close and print.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -42,7 +44,7 @@ const DENOMS = [
 
 const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', 'next'] as const
 
-type Props = { onClose: () => void }
+type Props = { mode?: 'cashier' | 'admin'; onClose: () => void }
 type Summary = Record<string, unknown>
 type StaffRow = {
   staffId: number | null
@@ -71,7 +73,8 @@ function emptyCounts() {
   return Object.fromEntries(DENOMS.map((d) => [d.key, ''])) as Record<string, string>
 }
 
-export default function CounterCloseAllDialog({ onClose }: Props) {
+export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props) {
+  const allStaff = mode === 'admin'
   const session = getPosSession()
   const counterLabel = getEnrollment()?.stationName || String(session.counterNo || session.stationId || '')
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -102,7 +105,7 @@ export default function CounterCloseAllDialog({ onClose }: Props) {
     setState('loading')
     setError(null)
     try {
-      const row = await apiService.fetchCounterSummary({ allStaff: true })
+      const row = await apiService.fetchCounterSummary({ allStaff })
       setData(row)
       setState('ready')
     } catch (err) {
@@ -114,7 +117,7 @@ export default function CounterCloseAllDialog({ onClose }: Props) {
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [allStaff])
 
   // Put the cursor on the first note as soon as the reading loads, so the
   // cashier can start typing counts straight away.
@@ -166,7 +169,7 @@ export default function CounterCloseAllDialog({ onClose }: Props) {
       return
     }
     if (collectedOverride == null && !DENOMS.some((d) => String(counts[d.key] ?? '').trim() !== '')) {
-      setError('Count the cash (step 2) before closing the counter.')
+      setError('Enter Collected Amount...........')
       focusDenom(focusKey)
       return
     }
@@ -182,7 +185,7 @@ export default function CounterCloseAllDialog({ onClose }: Props) {
       const res = await apiService.closeCounter({
         reportType,
         collectedCash: collected,
-        allStaff: true,
+        allStaff,
         remarks,
       })
       const merged: Summary = {
@@ -303,7 +306,7 @@ export default function CounterCloseAllDialog({ onClose }: Props) {
             <div>
               <p className="pd-mod-kicker">Reports</p>
               <h2 id="pd-cc-title" className="pd-mod-item-name">
-                Counter Close — All Cashiers
+                {allStaff ? 'Counter Close — All Cashiers' : 'Counter Close'}
               </h2>
             </div>
           </div>
@@ -312,7 +315,7 @@ export default function CounterCloseAllDialog({ onClose }: Props) {
               Counter <b>{String(data?.counterNo ?? counterLabel) || '—'}</b>
             </span>
             <span className="pd-cc-chip">
-              <Users size={13} /> <b>All cashiers</b>
+              <Users size={13} /> <b>{allStaff ? 'All cashiers' : String(data?.cashierName ?? session.staffName ?? 'Cashier')}</b>
             </span>
             <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close" disabled={Boolean(busy)}>
               <X size={14} />

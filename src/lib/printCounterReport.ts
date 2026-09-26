@@ -1,14 +1,14 @@
 /**
  * X / Z counter close thermal print.
  * Layout = RptCounterCloseDetailsPending.Print_PrintPage
- * Delivery = Counter-POS openReceiptPrintWindow + auto window.print()
+ * Delivery = Windows default printer, no printer dialog.
  */
 import { apiService } from '../api/apiService'
 import { fmtMoney } from '../utils/posSession'
 import {
   buildReceiptDocumentHtml,
   escReceipt as esc,
-  openReceiptPrintWindow,
+  printHtmlOnDefaultPrinter,
 } from './receiptPrintTheme'
 
 export type CounterReportMeta = {
@@ -226,6 +226,7 @@ export function buildCounterReportHtml(data: MoneyRow, meta: CounterReportMeta =
   <div class="xr-row"><span class="xr-lbl">TIME</span><span class="xr-val">${fmtReportTime(reportAt)}</span></div>
   <div class="xr-row"><span class="xr-lbl">COUNTER CLOSE#</span><span class="xr-val">${esc(closeNo || '—')}</span></div>
   <div class="xr-row"><span class="xr-lbl">COUNTER</span><span class="xr-val">${esc(String(counterNo))}</span></div>
+  <div class="xr-row"><span class="xr-lbl">CASHIER</span><span class="xr-val">${esc(String(data.cashierName ?? ''))}</span></div>
   <div class="xr-row"><span class="xr-lbl">BILL COUNT</span><span class="xr-val">${n(data.billCount)}</span></div>
 
   <hr class="dash" />
@@ -308,31 +309,32 @@ export function buildCounterReportHtml(data: MoneyRow, meta: CounterReportMeta =
 
   return buildReceiptDocumentHtml({
     title: `${reportType} Report`,
+    autoPrint: false,
     bodyHtml,
     extraCss: `
       .xr-title {
-        text-align: center; font-size: 16px; font-weight: 700;
-        letter-spacing: 1px; margin: 4px 0;
+        text-align: center; font-size: 13px; font-weight: 700;
+        margin: 2px 0;
       }
       .xr-section {
-        text-align: center; font-size: 12px; font-weight: 700;
-        margin: 6px 0 4px; letter-spacing: 0.4px; text-transform: uppercase;
+        text-align: center; font-size: 11px; font-weight: 700;
+        margin: 4px 0 2px; text-transform: uppercase;
       }
       .xr-row {
         display: flex; justify-content: space-between; align-items: baseline;
-        font-size: 12px; font-weight: 700; margin: 2px 0; gap: 6px;
-        flex-wrap: nowrap; white-space: nowrap;
+        font-size: 11px; font-weight: 700; margin: 1px 0; gap: 4px;
+        flex-wrap: nowrap; max-width: 100%;
       }
-      .xr-row.is-strong { font-size: 13px; }
-      .xr-lbl { flex: 1 1 auto; min-width: 0; }
+      .xr-row.is-strong { font-size: 12px; font-weight: 700; }
+      .xr-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; }
       .xr-val { flex: 0 0 auto; text-align: right; white-space: nowrap; }
       .xr-cols-head {
         display: flex; justify-content: space-between;
-        font-size: 12px; font-weight: 700; margin-bottom: 4px;
-        border-bottom: 1px dashed #000; padding-bottom: 3px;
+        font-size: 11px; font-weight: 700; margin-bottom: 2px;
+        border-bottom: 1px dashed #000; padding-bottom: 2px;
       }
-      table.xr-table { width: 100%; border-collapse: collapse; font-size: 11px; font-weight: 700; margin: 4px 0; }
-      table.xr-table th, table.xr-table td { padding: 3px 2px; font-weight: 700; }
+      table.xr-table { width: 100%; border-collapse: collapse; font-size: 10px; font-weight: 700; margin: 2px 0; table-layout: fixed; }
+      table.xr-table th, table.xr-table td { padding: 1px 0; font-weight: 700; }
       table.xr-table th { text-align: left; border-bottom: 1px dashed #000; }
       table.xr-table th.c, table.xr-table td.c { text-align: center; width: 36px; }
       table.xr-table th.r, table.xr-table td.r { text-align: right; white-space: nowrap; }
@@ -360,5 +362,5 @@ export async function printCounterReport(data: MoneyRow, meta: CounterReportMeta
     meta.heading1 || meta.heading2 || meta.heading3
       ? meta
       : { ...meta, ...(await loadPrintHeadings()) }
-  openReceiptPrintWindow(buildCounterReportHtml(data, headings), { width: 420, height: 920 })
+  await printHtmlOnDefaultPrinter(buildCounterReportHtml(data, headings))
 }
