@@ -8,6 +8,8 @@ import { apiService, ApiError } from '../../api/apiService'
 import { SessionManager } from '../../utils/sessionManager'
 import { getPosSession } from '../../utils/posSession'
 import KotSplitDialog, { type SplitSource } from './KotSplitDialog'
+import { Toast, toastKindFor } from '../../components/common/Toast'
+import { digits } from '../../utils/validate'
 
 const AREA_PALETTE = [
   '#90EE90',
@@ -758,7 +760,11 @@ export default function KotJoinDialog({ areas, tables, waiter, onClose, onJoined
         </div>
       </div>
 
-      {hint ? <div className="pd-toast">{hint}</div> : null}
+      {hint ? (
+        <div className="pd-toast">
+          <Toast key={hint} message={hint} kind={toastKindFor(hint)} duration={3200} />
+        </div>
+      ) : null}
 
       {splitSource ? (
         <KotSplitDialog
@@ -863,7 +869,7 @@ export default function KotJoinDialog({ areas, tables, waiter, onClose, onJoined
                     ref={paxRef}
                     className="pd-qty-input"
                     value={paxDraft}
-                    onChange={(e) => setPaxDraft(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                    onChange={(e) => setPaxDraft(digits(e.target.value, 6))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') onPaxDone()
                       if (e.key === 'Escape') onPaxCancel()

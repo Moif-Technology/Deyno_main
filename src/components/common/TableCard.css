@@ -1,141 +1,153 @@
 /* ── TableCard — reusable table tile (floor/table pickers) ───────────── */
-/* Status colors: green = vacant, blue = occupied, amber = reserved (no
-   reservation data yet — the state exists for when the backend adds it). */
+/* Same top-down look as Table Entry's shape preview (TableShapePicker):
+   Round / Rectangle / Square table with its chairs around it.
+   Vacant = soft rose table, occupied = maroon table (like the preview),
+   reserved = amber. Occupied chairs are filled maroon, free ones stay soft. */
 .tc-card {
-  --tc-free: #22c55e;
-  --tc-occupied: #2f6fed;
-  --tc-reserved: #f5b301;
-  --tc-chair-free: #d7e6fb;
-  --tc-chair-occupied: #2f6fed;
-  --tc-accent: var(--tc-free);
+  --tc-hi: #f6e9ed;
+  --tc-lo: var(--brand-tint);
+  --tc-ink: var(--brand);
+  --tc-sub: var(--brand-light);
 
   position: relative;
-  min-height: 84px;
-  padding: 12px 10px 10px 15px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  border-radius: var(--r-lg);
-  border: 1.5px solid var(--border);
-  background: var(--surface);
-  box-shadow: var(--shadow-xs);
-  overflow: visible;
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  border-radius: 18px;
+  transition: transform 0.14s ease, background 0.14s ease;
 }
 
-.tc-card::before {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 10px;
-  bottom: 10px;
-  width: 4px;
-  border-radius: 4px;
-  background: var(--tc-accent);
+.tc-card.is-occupied {
+  --tc-hi: var(--brand-light);
+  --tc-lo: var(--brand);
+  --tc-ink: #fff;
+  --tc-sub: rgba(255, 255, 255, 0.85);
 }
 
-.tc-card.is-occupied { --tc-accent: var(--tc-occupied); }
-.tc-card.is-reserved { --tc-accent: var(--tc-reserved); }
+.tc-card.is-reserved {
+  --tc-hi: #fde68a;
+  --tc-lo: #f59e0b;
+  --tc-ink: #78350f;
+  --tc-sub: #92400e;
+}
+
+.tc-card:hover {
+  transform: translateY(-2px);
+}
 
 .tc-card.is-selected {
-  border-color: var(--tc-accent);
-  box-shadow: 0 0 0 2px var(--tc-accent), var(--shadow-md);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 2px var(--brand), 0 8px 20px var(--brand-glow);
 }
 
-.tc-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 3px;
+.tc-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 8px 10px rgba(80, 0, 20, 0.18));
+}
+
+.tc-top-hi { stop-color: var(--tc-hi); }
+.tc-top-lo { stop-color: var(--tc-lo); }
+
+.tc-top {
+  cursor: pointer;
+}
+
+.tc-card.is-free .tc-top > * {
+  stroke: var(--brand-border);
+  stroke-width: 2;
+}
+
+/* ── Chairs — free = soft rose, occupied = maroon ───────────────────── */
+.tc-chair {
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+
+.tc-chair:hover {
+  opacity: 0.8;
+}
+
+.tc-chair .tsp-chair-seat { fill: var(--brand-tint); }
+.tc-chair .tsp-chair-cushion { fill: #fff; opacity: 0.7; }
+.tc-chair .tsp-chair-back { fill: var(--brand-border); }
+
+.tc-chair.is-occupied .tsp-chair-seat { fill: var(--brand-2); }
+.tc-chair.is-occupied .tsp-chair-cushion { fill: var(--brand-light); opacity: 0.85; }
+.tc-chair.is-occupied .tsp-chair-back { fill: var(--brand); }
+
+/* ── Name + status on the table top ─────────────────────────────────── */
+.tc-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 50%;
+  max-height: 40%;
+  padding: 0;
   border: 0;
   background: transparent;
-  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: transform 0.1s ease;
 }
 
-.tc-body:active {
-  transform: scale(0.97);
+.tc-center:active {
+  transform: translate(-50%, -50%) scale(0.95);
 }
 
 .tc-label {
-  font-size: 15px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: -0.2px;
-  color: var(--text-1);
   line-height: 1.1;
-}
-
-.tc-meta {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 700;
+  color: var(--tc-ink);
 }
 
 .tc-status {
-  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--tc-sub);
 }
 
 .tc-order {
-  color: #fff;
-  background: var(--tc-accent);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--brand);
+  background: #fff;
   border-radius: 999px;
-  padding: 2px 8px;
+  padding: 1px 7px;
   font-size: 10px;
   font-weight: 800;
 }
 
 .tc-pax {
   position: absolute;
-  top: 6px;
-  right: 8px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
+  top: 4px;
+  right: 4px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
   border-radius: 99px;
-  background: var(--red);
+  border: 2px solid #fff;
+  background: var(--brand);
   color: #fff;
   font-size: 10px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 800;
   display: grid;
   place-items: center;
-}
-
-/* ── Chair dots — peek outside the card edge, tap one to pick that chair. */
-.tc-chairs {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  display: flex;
-  justify-content: space-evenly;
-  z-index: 2;
-}
-
-.tc-chairs-top { top: -8px; }
-.tc-chairs-bottom { bottom: -8px; }
-
-.tc-chair {
-  width: 15px;
-  height: 15px;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid var(--surface);
-  background: var(--tc-chair-free);
-  box-shadow: var(--shadow-xs);
-  cursor: pointer;
-  transition: transform 0.1s ease, background 0.12s ease;
-}
-
-.tc-chair:hover {
-  transform: scale(1.15);
-}
-
-.tc-chair.is-occupied {
-  background: var(--tc-chair-occupied);
 }

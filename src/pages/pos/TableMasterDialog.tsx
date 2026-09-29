@@ -7,8 +7,11 @@ import { LayoutGrid, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
 import { useArabicAutoFill } from '../../utils/useArabicAutoFill'
 import { ArabicInput } from '../../components/common/ArabicInput'
+import { Toast, toastKindFor } from '../../components/common/Toast'
+import TableShapePicker from './TableShapePicker'
+import { digits } from '../../utils/validate'
 
-const TABLE_FORMATS = ['SQUARE', 'ROUND', 'OVAL', 'RECTANGLE'] as const
+const TABLE_FORMATS = ['SQUARE', 'ROUND', 'OVAL', 'RECTANGLE', 'HEXAGON', 'OCTAGON'] as const
 
 type AreaOpt = { id: number; name: string; tableCreationType: number }
 type WaiterOpt = { staffId: number; staffName: string }
@@ -270,31 +273,28 @@ export default function TableMasterDialog({ areas, onClose, onSaved }: Props) {
                   <input
                     inputMode="numeric"
                     value={noOfChairs}
-                    onChange={(e) => setNoOfChairs(e.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+                    onChange={(e) => setNoOfChairs(digits(e.target.value, 4))}
                   />
                 </div>
                 <div className="pd-form-row">
-                  <label>Table Shape</label>
-                  <select value={tableFormat} onChange={(e) => setTableFormat(e.target.value)}>
-                    {TABLE_FORMATS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
+                  <label>Waiter Name</label>
+                  <select value={waiterId || ''} onChange={(e) => setWaiterId(Number(e.target.value) || 0)}>
+                    <option value="">Select…</option>
+                    {waiters.map((w) => (
+                      <option key={w.staffId} value={w.staffId}>
+                        {w.staffName}
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
-              <div className="pd-form-row">
-                <label>Waiter Name</label>
-                <select value={waiterId || ''} onChange={(e) => setWaiterId(Number(e.target.value) || 0)}>
-                  <option value="">Select…</option>
-                  {waiters.map((w) => (
-                    <option key={w.staffId} value={w.staffId}>
-                      {w.staffName}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Same shape picker as Table Entry; still saves the plain text
+                  format (ROUND / RECTANGLE / SQUARE) like the old dropdown. */}
+              <TableShapePicker
+                value={tableFormat}
+                onChange={(shape) => setTableFormat(shape)}
+                chairs={Number(noOfChairs) || 0}
+              />
             </div>
 
             <div className="pd-edm-list">
@@ -344,7 +344,11 @@ export default function TableMasterDialog({ areas, onClose, onSaved }: Props) {
           </button>
         </div>
       </div>
-      {hint ? <div className="pd-toast">{hint}</div> : null}
+      {hint ? (
+        <div className="pd-toast">
+          <Toast key={hint} message={hint} kind={toastKindFor(hint)} duration={3600} />
+        </div>
+      ) : null}
     </div>
   )
 }

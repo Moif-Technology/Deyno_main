@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Package, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { decimal, percent } from '../../utils/validate'
+import { useArabicAutoFill } from '../../utils/useArabicAutoFill'
 
 type Opt = { id: number; name: string; code: string; groupId?: number }
 
@@ -77,6 +79,7 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
   const [addingGroup, setAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupArabic, setNewGroupArabic] = useState('')
+  const autoFillGroupArabic = useArabicAutoFill(setNewGroupArabic)
   const [groupBusy, setGroupBusy] = useState(false)
 
   const [newBarcode, setNewBarcode] = useState(!isEdit)
@@ -372,12 +375,14 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
 
         <div className="pd-ol-body">
 
-        <div className="pd-booking-tabs">
+        <div className="pd-prd-tabs" role="tablist">
           {tabs.map((label, i) => (
             <button
               key={label}
               type="button"
-              className={`pd-booking-tab${tab === i ? ' is-on' : ''}`}
+              role="tab"
+              aria-selected={tab === i}
+              className={`pd-prd-tab${tab === i ? ' is-on' : ''}`}
               onClick={() => setTab(i)}
             >
               {label}
@@ -436,16 +441,21 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                       disabled={groupBusy}
                       onClick={() => setAddingGroup((open) => !open)}
                     >
-                      New group
+                      New
                     </button>
                   </div>
                 </div>
+                {/* Same add-group row as the Product Entry modal. */}
                 {addingGroup ? (
-                  <div className="pd-edm-span pd-edm-inline">
+                  <div className="pd-edm-span pd-form-add-group">
                     <input
                       value={newGroupName}
-                      placeholder="Group name"
-                      onChange={(e) => setNewGroupName(e.target.value)}
+                      placeholder="New group name"
+                      autoFocus
+                      onChange={(e) => {
+                        setNewGroupName(e.target.value)
+                        autoFillGroupArabic(e.target.value)
+                      }}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void saveNewGroup() } }}
                     />
                     <input
@@ -454,11 +464,8 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                       placeholder="Arabic"
                       onChange={(e) => setNewGroupArabic(e.target.value)}
                     />
-                    <button type="button" className="pd-mfg-add" disabled={groupBusy} onClick={() => void saveNewGroup()}>
-                      {groupBusy ? 'Saving…' : 'Save group'}
-                    </button>
-                    <button type="button" className="pd-form-code-btn" disabled={groupBusy} onClick={() => setAddingGroup(false)}>
-                      Cancel
+                    <button type="button" className="pd-form-code-btn" disabled={groupBusy} onClick={() => void saveNewGroup()}>
+                      {groupBusy ? 'Saving…' : 'Save'}
                     </button>
                   </div>
                 ) : null}
@@ -491,11 +498,11 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                 </div>
                 <div className="pd-form-row">
                   <label>Unit Cost</label>
-                  <input value={unitCost} onChange={(e) => { setUnitCost(e.target.value); if (!suppress.current) applyInputFromNet(e.target.value, vatInPct) }} />
+                  <input value={unitCost} onChange={(e) => { const v = decimal(e.target.value); setUnitCost(v); if (!suppress.current) applyInputFromNet(v, vatInPct) }} />
                 </div>
                 <div className="pd-form-row">
                   <label>VAT In %</label>
-                  <input value={vatInPct} onChange={(e) => { setVatInPct(e.target.value); if (!suppress.current) applyInputFromNet(unitCost, e.target.value) }} />
+                  <input value={vatInPct} onChange={(e) => { const v = percent(e.target.value); setVatInPct(v); if (!suppress.current) applyInputFromNet(unitCost, v) }} />
                 </div>
                 <div className="pd-form-row">
                   <label>VAT In Amt</label>
@@ -506,7 +513,7 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                   <input
                     value={costWithVat}
                     onChange={(e) => {
-                      const gross = e.target.value
+                      const gross = decimal(e.target.value)
                       setCostWithVat(gross)
                       if (suppress.current) return
                       const rate = num(vatInPct)
@@ -521,11 +528,11 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                 </div>
                 <div className="pd-form-row">
                   <label>Unit Price</label>
-                  <input value={unitPrice} onChange={(e) => { setUnitPrice(e.target.value); if (!suppress.current) applyOutputFromNet(e.target.value, vatOutPct) }} />
+                  <input value={unitPrice} onChange={(e) => { const v = decimal(e.target.value); setUnitPrice(v); if (!suppress.current) applyOutputFromNet(v, vatOutPct) }} />
                 </div>
                 <div className="pd-form-row">
                   <label>VAT Out %</label>
-                  <input value={vatOutPct} onChange={(e) => { setVatOutPct(e.target.value); if (!suppress.current) applyOutputFromNet(unitPrice, e.target.value) }} />
+                  <input value={vatOutPct} onChange={(e) => { const v = percent(e.target.value); setVatOutPct(v); if (!suppress.current) applyOutputFromNet(unitPrice, v) }} />
                 </div>
                 <div className="pd-form-row">
                   <label>VAT Out Amt</label>
@@ -536,7 +543,7 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                   <input
                     value={priceWithVat}
                     onChange={(e) => {
-                      const gross = e.target.value
+                      const gross = decimal(e.target.value)
                       setPriceWithVat(gross)
                       if (suppress.current) return
                       const rate = num(vatOutPct)
@@ -568,7 +575,7 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                 </div>
                 <div className="pd-form-row">
                   <label>Pack Qty</label>
-                  <input value={packQty} onChange={(e) => setPackQty(e.target.value)} />
+                  <input value={packQty} onChange={(e) => setPackQty(decimal(e.target.value))} />
                 </div>
                 <div className="pd-form-row">
                   <label>Packet Details</label>
@@ -576,15 +583,15 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                 </div>
                 <div className="pd-form-row">
                   <label>Qty On Hand</label>
-                  <input value={qtyOnHand} onChange={(e) => setQtyOnHand(e.target.value)} />
+                  <input value={qtyOnHand} onChange={(e) => setQtyOnHand(decimal(e.target.value))} />
                 </div>
                 <div className="pd-form-row">
                   <label>Reorder Level</label>
-                  <input value={reorderLevel} onChange={(e) => setReorderLevel(e.target.value)} />
+                  <input value={reorderLevel} onChange={(e) => setReorderLevel(decimal(e.target.value))} />
                 </div>
                 <div className="pd-form-row">
                   <label>Reorder Qty</label>
-                  <input value={reorderQty} onChange={(e) => setReorderQty(e.target.value)} />
+                  <input value={reorderQty} onChange={(e) => setReorderQty(decimal(e.target.value))} />
                 </div>
                 <div className="pd-form-row">
                   <label>Location</label>
@@ -616,19 +623,19 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
               <>
                 <div className="pd-form-row">
                   <label>Min Price</label>
-                  <input value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
+                  <input value={minPrice} onChange={(e) => setMinPrice(decimal(e.target.value))} />
                 </div>
                 <div className="pd-form-row">
                   <label>Discount %</label>
-                  <input value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
+                  <input value={discountPct} onChange={(e) => setDiscountPct(percent(e.target.value))} />
                 </div>
                 <div className="pd-form-row">
                   <label>Margin %</label>
-                  <input value={marginPct} onChange={(e) => setMarginPct(e.target.value)} />
+                  <input value={marginPct} onChange={(e) => setMarginPct(decimal(e.target.value))} />
                 </div>
                 <div className="pd-form-row">
                   <label>Last Purchase</label>
-                  <input value={lastPurch} onChange={(e) => setLastPurch(e.target.value)} />
+                  <input value={lastPurch} onChange={(e) => setLastPurch(decimal(e.target.value))} />
                 </div>
                 <div className="pd-form-row">
                   <label>Average Cost</label>
@@ -639,7 +646,7 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                     <label>Price Level {i + 1}</label>
                     <input
                       value={value}
-                      onChange={(e) => setLevels((prev) => prev.map((v, idx) => (idx === i ? e.target.value : v)))}
+                      onChange={(e) => setLevels((prev) => prev.map((v, idx) => (idx === i ? decimal(e.target.value) : v)))}
                     />
                   </div>
                 ))}

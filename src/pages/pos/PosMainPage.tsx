@@ -22,7 +22,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Check, PenLine, StickyNote, ArrowRight, Clock, ChevronRight, ChevronDown, Hash, Home, LogOut, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Globe, Gift, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, Menu as MenuIcon, Repeat, Package, SeparatorHorizontal, Info, Search, UserPlus, CheckCircle2, HelpCircle, Mail, Factory, Trees, Zap } from 'lucide-react'
+import { AlertTriangle, Check, PenLine, StickyNote, ArrowRight, Clock, ChevronRight, ChevronDown, Hash, Home, LogOut, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Globe, Gift, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, Menu as MenuIcon, Repeat, Package, SeparatorHorizontal, Info, Search, UserPlus, CheckCircle2, HelpCircle, Mail, Factory, Trees, Zap, ZoomIn, ZoomOut } from 'lucide-react'
 import { SessionManager } from '../../utils/sessionManager'
 import { clearStaffSession } from '../../utils/pinLoginSession'
 import { getEnrollment } from '../../utils/deviceEnrollment'
@@ -34,6 +34,7 @@ import { printSettlementBill, printViewerBill } from '../../lib/printSettlementB
 import { TableCard, TableGlyph } from '../../components/common/TableCard'
 import { Toast, type ToastKind } from '../../components/common/Toast'
 import { DatePicker } from '../../components/common/DatePicker'
+import { DateRangePicker } from '../../components/common/DateRangePicker'
 import { Toggle } from '../../components/common/Toggle'
 import { SearchBar } from '../../components/common/SearchBar'
 import { SearchSelect, type SearchSelectOption } from '../../components/common/SearchSelect'
@@ -50,8 +51,9 @@ import MovementReportDialog from './MovementReportDialog'
 import StockEntryDialog, { type StockDocType } from './StockEntryDialog'
 import StockEntryListDialog from './StockEntryListDialog'
 import RecipeEntryDialog from './RecipeEntryDialog'
+import ProductionEntryDialog from './ProductionEntryDialog'
+import OpeningStockDialog from './OpeningStockDialog'
 import RecipeListDialog from './RecipeListDialog'
-import ProductEntryDialog from './ProductEntryDialog'
 import ProductListDialog from './ProductListDialog'
 import KotJoinDialog from './KotJoinDialog'
 import AreaMasterDialog from './AreaMasterDialog'
@@ -60,6 +62,7 @@ import FloorDesignDialog from './FloorDesignDialog'
 import { GroupEditDialog, SubGroupEditDialog } from './GroupEditDialogs'
 import FloorRuntimeCanvas from './FloorRuntimeCanvas'
 import AreaChangeDialog from './AreaChangeDialog'
+import { decimal, digits, percent, phone, phoneError, signedDecimal } from '../../utils/validate'
 
 const NAV = ['Creation', 'Edit', 'Manufacturing', 'Transactions', 'Credit', 'Reports', 'Admin', 'Settings'] as const
 
@@ -212,6 +215,20 @@ const NAV_MENUS: Partial<Record<(typeof NAV)[number], readonly NavMenuEntry[]>> 
     'Disable VAT',
     'Utility For Vat Correction',
   ],
+}
+
+/** The side-nav section (Creation, Transactions, …) a menu label lives
+ * under, for modal header kickers. Falls back to 'Creation'. */
+function navSectionOf(label: string): string {
+  const has = (entries: readonly NavMenuEntry[]): boolean =>
+    entries.some((e) =>
+      typeof e === 'string' ? e === label : e.label === label || ('children' in e && has(e.children)),
+    )
+  const hit = NAV.find((section) => {
+    const menu = NAV_MENUS[section]
+    return menu ? has(menu) : false
+  })
+  return hit ?? 'Creation'
 }
 
 /** Backing config for the generic master-entry modals opened from the
@@ -378,6 +395,10 @@ type ProductForm = {
   qtyOnHand: string
   productType: string
   itemDescription: string
+  /** Price levels 1–5, entered VAT-inclusive. */
+  priceLevels: string[]
+  /** Edit only: saved fields this modal doesn't show, sent back unchanged on update. */
+  keep: Record<string, unknown>
 }
 
 const BLANK_PRODUCT_FORM: ProductForm = {
@@ -400,6 +421,8 @@ const BLANK_PRODUCT_FORM: ProductForm = {
   qtyOnHand: '',
   productType: 'NORMAL',
   itemDescription: '',
+  priceLevels: ['', '', '', '', ''],
+  keep: {},
 }
 
 type TicketLine = {
@@ -623,6 +646,12 @@ function asRow(v: unknown): Record<string, unknown> {
 function num(v: unknown): number {
   const n = Number(v)
   return Number.isFinite(n) ? n : 0
+}
+
+/** Stored number → form text; blank for missing or zero. */
+function formNum(v: unknown): string {
+  const n = Number(v)
+  return v == null || v === '' || !Number.isFinite(n) || n === 0 ? '' : String(parseFloat(n.toFixed(2)))
 }
 
 function mapGroups(rows: Record<string, unknown>[]): Cat[] {
@@ -1361,11 +1390,11 @@ export default function PosMainPage() {
   const [stockListOpen, setStockListOpen] = useState(false)
   const [stockEntryId, setStockEntryId] = useState<number | null>(null)
   const [recipeEntryOpen, setRecipeEntryOpen] = useState(false)
+  const [productionEntryOpen, setProductionEntryOpen] = useState(false)
+  const [openingStockOpen, setOpeningStockOpen] = useState(false)
   const [recipeListOpen, setRecipeListOpen] = useState(false)
   const [recipeProductId, setRecipeProductId] = useState<number | null>(null)
-  const [productEntryOpen, setProductEntryOpen] = useState(false)
   const [productListOpen, setProductListOpen] = useState(false)
-  const [editProductId, setEditProductId] = useState<number | null>(null)
   const [counterCloseOpen, setCounterCloseOpen] = useState(false)
   const [counterCloseMode, setCounterCloseMode] = useState<'cashier' | 'admin'>('cashier')
   const [entryMenuOpen, setEntryMenuOpen] = useState(false)
@@ -1547,6 +1576,12 @@ export default function PosMainPage() {
   // "Add New Item" — product master form, plus the group/subgroup picker
   // it opens (the same picker serves both fields).
   const [productOpen, setProductOpen] = useState(false)
+  const [productTab, setProductTab] = useState(0)
+  /** Product modal was opened from Product List's Edit — go back to the list after. */
+  const [productFromList, setProductFromList] = useState(false)
+  const productSaveRef = useRef<HTMLButtonElement | null>(null)
+  /** Last Enter/Tab typed in Item Description — a repeat of the same key moves on. */
+  const productDescKey = useRef('')
   const [productForm, setProductForm] = useState<ProductForm>(BLANK_PRODUCT_FORM)
   const [productSaving, setProductSaving] = useState(false)
   // Options for Add New Item's Group / SubGroup search dropdowns.
@@ -1681,6 +1716,26 @@ export default function PosMainPage() {
   const [, setDefaultAreaName] = useState(1)
   const [tablePopupOpen, setTablePopupOpen] = useState(false)
   const [tableFloorOpen, setTableFloorOpen] = useState(false)
+  /** Dine-in floor view zoom (1 = fit). Resets each time the floor opens. */
+  const [floorZoom, setFloorZoom] = useState(1)
+  useEffect(() => {
+    if (tableFloorOpen) setFloorZoom(1)
+  }, [tableFloorOpen])
+  const zoomFloor = (delta: number) =>
+    setFloorZoom((z) => Math.min(2.5, Math.max(0.5, Math.round((z + delta) * 100) / 100)))
+  const floorCanvasRef = useRef<HTMLDivElement | null>(null)
+  // Ctrl + wheel zooms the floor only — non-passive so the whole window doesn't zoom too.
+  useEffect(() => {
+    const el = floorCanvasRef.current
+    if (!tableFloorOpen || !el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      zoomFloor(e.deltaY < 0 ? 0.1 : -0.1)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [tableFloorOpen])
   const [floorMap, setFloorMap] = useState<{
     hasFloor: boolean
     border: { x: number; y: number }[]
@@ -4159,7 +4214,7 @@ export default function PosMainPage() {
   function onDiscountAmountChange(raw: string) {
     if (discountMode === -1 || discountMode === 2) return
     if (discountKeyLock === 'percent') return
-    const next = raw.replace(/[^\d.]/g, '').slice(0, 12)
+    const next = decimal(raw).slice(0, 12)
     setDiscountKeyLock('amount')
     setDiscountAmount(next)
     const amt = next === '' || next === '.' ? 0 : Number(next)
@@ -4182,7 +4237,7 @@ export default function PosMainPage() {
   function onDiscountPercentChange(raw: string) {
     if (discountMode === -1) return
     if (discountKeyLock === 'amount') return
-    const next = raw.replace(/[^\d.]/g, '').slice(0, 12)
+    const next = decimal(raw).slice(0, 12)
     setDiscountKeyLock('percent')
     setDiscountPercent(next)
     const pct = next === '' || next === '.' ? 0 : Number(next)
@@ -4715,6 +4770,11 @@ export default function PosMainPage() {
       setCustomerEntryError('Customer name is required')
       return
     }
+    const phoneErr = phoneError(mobile, 'Mobile number') ?? phoneError(telephone, 'Telephone')
+    if (phoneErr) {
+      setCustomerEntryError(phoneErr)
+      return
+    }
     setCustomerSaving(true)
     setCustomerEntryError(null)
     try {
@@ -4820,13 +4880,156 @@ export default function PosMainPage() {
 
   function openNewProductModal() {
     setProductForm(BLANK_PRODUCT_FORM)
+    setProductTab(0)
+    setProductFromList(false)
     setProductOpen(true)
+  }
+
+  /** Product List → Edit: load the product into the same Product Master modal. */
+  async function openEditProductModal(productId: number) {
+    try {
+      const p = await apiService.fetchProduct(productId)
+      const inv = asRow(p.inventory)
+      const groupId = num(p.groupId)
+      const subgroupId = num(p.subgroupId ?? p.subGroupId)
+      let groupName = String(p.groupName ?? p.groupDescription ?? '').trim()
+      let subgroupName = String(p.subgroupName ?? p.subGroupName ?? p.subGroupDescription ?? p.subgroupDescription ?? '').trim()
+      // The product row may carry only ids — look the names up for the pickers.
+      if (groupId && !groupName) {
+        const rows = await apiService.fetchGroups().catch(() => [])
+        const g = rows.find((r) => num(r.groupId ?? r.GroupID) === groupId)
+        groupName = String(g?.groupDescription ?? g?.GroupDescription ?? '').trim()
+      }
+      if (subgroupId && !subgroupName) {
+        const rows = await apiService.fetchSubGroups({ groupId }).catch(() => [])
+        const sg = rows.find((r) => num(r.subGroupId ?? r.SubGroupID) === subgroupId)
+        subgroupName = String(sg?.subGroupDescription ?? sg?.SubGroupDescription ?? '').trim()
+      }
+      const cost = formNum(inv.averageCost ?? inv.lastPurchaseCost)
+      setProductForm({
+        id: productId,
+        code: String(p.productCode ?? ''),
+        description: String(p.productName ?? p.description ?? ''),
+        arabicDescription: String(p.descriptionArabic ?? ''),
+        groupId,
+        groupName,
+        subgroupId,
+        subgroupName,
+        kitchenLocation: String(inv.locationCode ?? '') === 'Main' ? '' : String(inv.locationCode ?? ''),
+        kotPriority: 'NORMAL',
+        unitCost: cost,
+        vatIn: formNum(inv.inputTax1Rate) || String(defaultTax1),
+        unitPrice: formNum(inv.unitPrice),
+        vatOut: formNum(inv.outputTax1Rate) || String(defaultTax1),
+        packQty: formNum(inv.packQty ?? p.packQty) || '1',
+        unit: String(p.unitName || p.unit || 'PCS'),
+        qtyOnHand: formNum(inv.qtyOnHand),
+        productType: String(p.productType || 'NORMAL'),
+        itemDescription: String(p.remarks ?? ''),
+        priceLevels: [1, 2, 3, 4, 5].map((n) => formNum(inv[`priceLevel${n}`])),
+        keep: {
+          newBarcode: false,
+          ...(String(p.barcode ?? '').trim() ? { barcode: String(p.barcode).trim() } : {}),
+          makeType: String(p.makeType || 'Standard'),
+          productBrand: String(p.brandName ?? ''),
+          stockType: String(p.stockType || 'Normal'),
+          productIdentity: Number(p.productIdentity) === 1 ? 'Yes' : 'No',
+          lastPurchCost: formNum(inv.lastPurchaseCost) || cost || '0',
+          minUnitPrice: formNum(inv.minimumRetailPrice),
+          discountPct: formNum(inv.discountPercentage),
+          marginPct: formNum(inv.minimumMarginPercentage),
+          reorderLevel: formNum(inv.reorderLevel),
+          reorderQty: formNum(inv.reorderQty),
+          packetDetails: String(p.packDescription ?? ''),
+          supplierRefNo: String(p.supplierRefNo ?? ''),
+          origin: String(p.countryOfOrigin ?? ''),
+        },
+      })
+      setSubgroupOptions([])
+      setAddingProductGroup(false)
+      setProductTab(0)
+      setProductFromList(true)
+      setProductListOpen(false)
+      setProductOpen(true)
+    } catch (err) {
+      toast(errMessage(err, 'Could not load product'))
+    }
+  }
+
+  function closeProductModal() {
+    setProductOpen(false)
+    if (productFromList) setProductListOpen(true)
+    setProductFromList(false)
   }
 
   /** "New Code" — no next-code endpoint exists yet, so this is a simple
    * timestamp-based placeholder the user can still edit by hand. */
   function generateNewProductCode() {
     setProductForm((f) => ({ ...f, code: `ITM${Date.now().toString().slice(-8)}` }))
+  }
+
+  /** Product modal keyboard flow: Tab / Enter jump field to field (Shift+Tab goes back).
+   * Starts on Item Code, then the New Code button (a second Enter / Tab there moves on
+   * without pressing it), then the inputs; the group New and tab buttons are skipped.
+   * Item Description is multi-line, so it needs Enter Enter (or Tab Tab) to move on to
+   * Price Levels; a single Enter is still a new line. Then it stops on Save. */
+  function onProductFormKey(e: KeyboardEvent<HTMLDivElement>) {
+    const el = e.target
+    if (el instanceof HTMLTextAreaElement && !e.shiftKey && e.key !== 'Shift') {
+      if (e.key !== 'Enter' && e.key !== 'Tab') {
+        productDescKey.current = ''
+        return
+      }
+      if (productDescKey.current !== e.key) {
+        // First press: Enter types its new line as usual, Tab just waits for the second.
+        productDescKey.current = e.key
+        if (e.key === 'Tab') e.preventDefault()
+        return
+      }
+      productDescKey.current = ''
+      if (e.key === 'Enter') {
+        // Drop the blank line the first Enter left behind.
+        const pos = el.selectionStart
+        if (pos > 0 && el.value[pos - 1] === '\n') {
+          const trimmed = el.value.slice(0, pos - 1) + el.value.slice(pos)
+          setProductForm((f) => ({ ...f, itemDescription: trimmed }))
+        }
+      }
+    }
+    if (e.key !== 'Enter' && e.key !== 'Tab') return
+    const isNavButton = el instanceof HTMLButtonElement && el.hasAttribute('data-nav')
+    if (!(isNavButton || el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return
+    // Shift+Enter is left alone (a new line in Item Description).
+    if (e.key === 'Enter' && e.shiftKey) return
+    const isPicker = el.classList.contains('ui-ss-input')
+    // Enter on a closed group picker opens its list — let the user pick first.
+    if (isPicker && e.key === 'Enter' && el.getAttribute('aria-expanded') !== 'true') return
+    // Something else already used this key (e.g. Enter saves the new group).
+    if (e.defaultPrevented && !isPicker) return
+    e.preventDefault()
+    const body = e.currentTarget
+    const back = e.key === 'Tab' && e.shiftKey
+    const move = () => {
+      const fields = Array.from(body.querySelectorAll<HTMLInputElement>('input, select, textarea, [data-nav]')).filter(
+        (f) => !f.disabled && !f.readOnly && f.offsetParent !== null,
+      )
+      const next = fields[fields.indexOf(el as HTMLInputElement) + (back ? -1 : 1)]
+      if (next) {
+        next.focus()
+        if (next instanceof HTMLInputElement) next.select()
+        return
+      }
+      if (back) return
+      if (productTab === 0) {
+        setProductTab(1)
+        setTimeout(() => body.querySelector<HTMLInputElement>('.pd-pf-levels input')?.focus(), 0)
+        return
+      }
+      productSaveRef.current?.focus()
+    }
+    // The picker applies its choice on this same Enter; move once that has rendered.
+    if (isPicker && e.key === 'Enter') setTimeout(move, 0)
+    else move()
   }
 
   // ── Generic "Creation" master-entry modals ────────────────────────────
@@ -4967,6 +5170,18 @@ export default function PosMainPage() {
   }
 
   function openEntryModal(key: EntryKey) {
+    // Production Entry has its own dialog (Recipe Entry layout).
+    if (key === 'productionEntry') {
+      setProductionEntryOpen(true)
+      setSideNavHidden(true)
+      return
+    }
+    // Opening Stock Entry too.
+    if (key === 'openingStock') {
+      setOpeningStockOpen(true)
+      setSideNavHidden(true)
+      return
+    }
     setEntryForm({})
     setEntryModal(key)
     setSideNavHidden(true)
@@ -5054,7 +5269,7 @@ export default function PosMainPage() {
     }
     const today = isoDate(new Date())
     const weekAgo = isoDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
-    if (key === 'stockAdjustment' || key === 'productionEntry' || key === 'openingStock' || key === 'damageEntry') {
+    if (key === 'stockAdjustment' || key === 'damageEntry') {
       setEf('txnDate', today)
       if (key === 'stockAdjustment') setTd('reason', 'Opening Stock')
       if (key === 'damageEntry') setTd('reason', 'Damage')
@@ -5450,11 +5665,14 @@ export default function PosMainPage() {
     setEf('pmName', '')
   }
 
-  function addMessLine() {
-    const item = ef('messAddLine').trim()
+  function addMessLine(name: string) {
+    const item = name.trim()
     if (!item) return
-    setMessLines((prev) => (prev.includes(item) ? prev : [...prev, item]))
-    setEf('messAddLine', '')
+    if (messLines.includes(item)) {
+      toast(`${item} is already added`, 'info')
+      return
+    }
+    setMessLines((prev) => [...prev, item])
   }
 
   function saveMessMaster() {
@@ -5483,6 +5701,11 @@ export default function PosMainPage() {
   function confirmBooking() {
     if (!ef('bookCustomer').trim()) {
       toast('Enter a Customer name')
+      return
+    }
+    const mobileErr = phoneError(ef('bookMobile'), 'Mobile')
+    if (mobileErr) {
+      toast(mobileErr)
       return
     }
     setBookings((prev) => [
@@ -5945,14 +6168,20 @@ export default function PosMainPage() {
         location: productForm.kitchenLocation.trim() || 'Main',
         remark: productForm.itemDescription.trim(),
         makeType: 'Standard',
+        priceLevel1: productForm.priceLevels[0],
+        priceLevel2: productForm.priceLevels[1],
+        priceLevel3: productForm.priceLevels[2],
+        priceLevel4: productForm.priceLevels[3],
+        priceLevel5: productForm.priceLevels[4],
       }
       if (productForm.id > 0) {
-        await apiService.updateProduct(productForm.id, payload)
+        await apiService.updateProduct(productForm.id, { ...payload, ...productForm.keep })
       } else {
         await apiService.createProduct(payload)
       }
-      toast('Item saved', 'success')
-      setProductOpen(false)
+      toast(productForm.id > 0 ? 'Item updated' : 'Item saved', 'success')
+      closeProductModal()
+      setCatalogueNonce((n) => n + 1)
       void reloadProducts()
     } catch (err) {
       toast(errMessage(err, 'Could not save the item'))
@@ -6259,9 +6488,9 @@ export default function PosMainPage() {
         <div className="pd-recipe-line-row">
           <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
           <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
-          <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', e.target.value.replace(/[^\d.]/g, ''))} />
-          <input placeholder="Unit Cost" value={td('unitCost')} onChange={(e) => setTd('unitCost', e.target.value.replace(/[^\d.]/g, ''))} />
-          <input placeholder="Unit Price" value={td('unitPrice')} onChange={(e) => setTd('unitPrice', e.target.value.replace(/[^\d.]/g, ''))} />
+          <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', decimal(e.target.value))} />
+          <input placeholder="Unit Cost" value={td('unitCost')} onChange={(e) => setTd('unitCost', decimal(e.target.value))} />
+          <input placeholder="Unit Price" value={td('unitPrice')} onChange={(e) => setTd('unitPrice', decimal(e.target.value))} />
           <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
             Add
           </button>
@@ -6473,10 +6702,7 @@ export default function PosMainPage() {
               type="button"
               className="pd-mod-foot-btn"
               disabled={messLines.length === 0}
-              onClick={() => {
-                setMessLines([])
-                setEf('messAddLine', '')
-              }}
+              onClick={() => setMessLines([])}
             >
               Remove from list
             </button>
@@ -6517,7 +6743,6 @@ export default function PosMainPage() {
           </>
         )
       case 'stockAdjustment':
-      case 'openingStock':
       case 'damageEntry':
         return (
           <>
@@ -6526,14 +6751,6 @@ export default function PosMainPage() {
             </button>
             <span className="pd-mod-foot-spacer" />
             <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn(ENTRY_META[entryModal].label)}>
-              Save
-            </button>
-          </>
-        )
-      case 'productionEntry':
-        return (
-          <>
-            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => saveTxn('Production Entry')}>
               Save
             </button>
           </>
@@ -7494,6 +7711,7 @@ export default function PosMainPage() {
                           key={t.id}
                           label={t.name}
                           seats={t.seats}
+                          shape={t.format}
                           status={occupied ? 'occupied' : 'free'}
                           orderNo={occupied ? occ[0].kotNo : undefined}
                           pax={occupied ? occ[0].pax : undefined}
@@ -7774,7 +7992,7 @@ export default function PosMainPage() {
 
       {notesHint ? (
         <div className="pd-toast">
-          <Toast message={notesHint} kind={notesKind} />
+          <Toast key={notesHint} message={notesHint} kind={notesKind} duration={1800} />
         </div>
       ) : null}
 
@@ -7788,10 +8006,10 @@ export default function PosMainPage() {
           <div className="pd-radial-center" aria-hidden />
           {(
             [
-              { label: 'Line\nDiscount', icon: Percent, angle: -90, onClick: () => openLineDiscount(rowMenu.key) },
-              { label: 'Change\nPrice', icon: Tag, angle: 0, onClick: () => openPriceChange(rowMenu.key, true) },
-              { label: 'Change\nQty', icon: SlidersHorizontal, angle: 90, onClick: () => openQtyChange(rowMenu.key) },
-              { label: 'Move', icon: MapPinned, angle: 180, onClick: () => openMovePicker(rowMenu.key) },
+              { label: 'Add\nDiscount', icon: Percent, angle: -90, onClick: () => openLineDiscount(rowMenu.key) },
+              { label: 'Edit\nPrice', icon: Tag, angle: 0, onClick: () => openPriceChange(rowMenu.key, true) },
+              { label: 'Edit\nQty', icon: SlidersHorizontal, angle: 90, onClick: () => openQtyChange(rowMenu.key) },
+              { label: 'Move\nItem', icon: MapPinned, angle: 180, onClick: () => openMovePicker(rowMenu.key) },
             ] as const
           ).map(({ label, icon, angle, onClick }, i) => {
             const radius = 74
@@ -7860,7 +8078,7 @@ export default function PosMainPage() {
                     ref={qtyChangeRef}
                     className="pd-visually-hidden-input"
                     value={qtyChangeNew}
-                    onChange={(e) => setQtyChangeNew(e.target.value.replace(/[^\d.]/g, '').slice(0, 8))}
+                    onChange={(e) => setQtyChangeNew(decimal(e.target.value).slice(0, 8))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') applyQtyChange()
                       if (e.key === 'Escape') cancelQtyChange()
@@ -7935,7 +8153,7 @@ export default function PosMainPage() {
                     onFocus={() => setPriceFocus('unit')}
                     onChange={(e) => {
                       setPriceFocus('unit')
-                      syncFromUnit(e.target.value.replace(/[^\d.]/g, '').slice(0, 12))
+                      syncFromUnit(decimal(e.target.value).slice(0, 12))
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') applyPriceChange()
@@ -7969,7 +8187,7 @@ export default function PosMainPage() {
                     onFocus={() => setPriceFocus('withVat')}
                     onChange={(e) => {
                       setPriceFocus('withVat')
-                      syncFromWithVat(e.target.value.replace(/[^\d.]/g, '').slice(0, 12))
+                      syncFromWithVat(decimal(e.target.value).slice(0, 12))
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') applyPriceChange()
@@ -8039,7 +8257,7 @@ export default function PosMainPage() {
                     ref={discChangeRef}
                     className="pd-qty-input"
                     value={discChangeNew}
-                    onChange={(e) => setDiscChangeNew(e.target.value.replace(/[^\d.]/g, '').slice(0, 10))}
+                    onChange={(e) => setDiscChangeNew(decimal(e.target.value).slice(0, 10))}
                       onKeyDown={(e) => {
                       if (e.key === 'Enter') applyLineDiscount()
                       if (e.key === 'Escape') cancelLineDiscount()
@@ -8181,28 +8399,44 @@ export default function PosMainPage() {
 
       {tableFloorOpen ? (
         <div
-          className="pd-mod-overlay pd-ol-overlay"
+          className="pd-mod-overlay"
           role="presentation"
           onClick={(e) => {
             if (e.target === e.currentTarget) dismissTableSelectionUi()
           }}
         >
-          <div className="pd-floor-dialog pd-ol-screen" role="dialog" aria-modal="true">
-            <div className="pd-mod-header">
-              <div className="pd-mod-header-left">
-                <div className="pd-mod-header-icon">
-                  <Utensils size={15} color="#fff" />
-                </div>
-                <div>
-                  <p className="pd-mod-kicker">Table Layout</p>
-                  <h2 className="pd-mod-item-name">{currentArea?.name || 'Tables'}</h2>
-                </div>
+          <div className="pd-floor-dialog" role="dialog" aria-modal="true">
+            <div className="pd-floor-head">
+              <div className="pd-floor-head-icon" aria-hidden>
+                <Utensils size={20} strokeWidth={2.2} />
               </div>
-              <button type="button" className="pd-mod-x" onClick={dismissTableSelectionUi} aria-label="Close">
-                <X size={13} />
+              <div className="pd-floor-head-text">
+                <p className="pd-floor-kicker">Pick a table</p>
+                <h2 className="pd-floor-title">{currentArea?.name || 'Tables'}</h2>
+              </div>
+              {(() => {
+                const busy = tablesInArea.filter((t) => (occupiedByTable.get(t.id) ?? []).length > 0).length
+                return (
+                  <div className="pd-floor-legend">
+                    <span className="pd-floor-chip is-free">
+                      <i /> {tablesInArea.length - busy} Free
+                    </span>
+                    <span className="pd-floor-chip is-busy">
+                      <i /> {busy} Occupied
+                    </span>
+                  </div>
+                )
+              })()}
+              <button type="button" className="pd-floor-x" onClick={dismissTableSelectionUi} aria-label="Close">
+                <X size={16} />
               </button>
             </div>
-            <div className={`pd-floor-canvas${floorMap?.hasFloor ? ' is-map' : ''}`}>
+            <div className="pd-floor-body">
+            <div
+              ref={floorCanvasRef}
+              className={`pd-floor-canvas${floorMap?.hasFloor ? ' is-map' : ''}`}
+            >
+              <div className="pd-floor-zoom" style={{ ['--floor-zoom']: floorZoom } as CSSProperties}>
               {floorMap == null ? (
                 <p className="pd-floor-note">Loading floor…</p>
               ) : floorMap.hasFloor ? (
@@ -8225,7 +8459,6 @@ export default function PosMainPage() {
                 />
               ) : (
                 <>
-              <p className="pd-floor-note">No floor map defined for this Area. Showing default table layout.</p>
               <div className="pd-table-grid is-floor">
                 {tablesInArea.map((t) => {
                   const occ = occupiedByTable.get(t.id) ?? []
@@ -8235,6 +8468,7 @@ export default function PosMainPage() {
                       key={t.id}
                       label={t.name}
                       seats={t.seats}
+                      shape={t.format}
                       status={occupied ? 'occupied' : 'free'}
                       orderNo={occupied ? occ[0].kotNo : undefined}
                       pax={occupied ? occ[0].pax : undefined}
@@ -8251,6 +8485,19 @@ export default function PosMainPage() {
               </div>
                 </>
               )}
+              </div>
+            </div>
+            <div className="pd-floor-zoomer" role="group" aria-label="Zoom">
+              <button type="button" onClick={() => zoomFloor(-0.25)} disabled={floorZoom <= 0.5} aria-label="Zoom out">
+                <ZoomOut size={18} />
+              </button>
+              <button type="button" className="pd-floor-zoom-pct" onClick={() => setFloorZoom(1)} title="Reset zoom">
+                {Math.round(floorZoom * 100)}%
+              </button>
+              <button type="button" onClick={() => zoomFloor(0.25)} disabled={floorZoom >= 2.5} aria-label="Zoom in">
+                <ZoomIn size={18} />
+              </button>
+            </div>
             </div>
           </div>
         </div>
@@ -8258,7 +8505,7 @@ export default function PosMainPage() {
 
       {coversPrompt ? (
         <div className="pd-mod-overlay" role="presentation">
-          <div className="pd-ol-dialog pd-ol-narrow" role="dialog" aria-modal="true">
+          <div className="pd-ol-dialog pd-ol-narrow pd-covers-dialog" role="dialog" aria-modal="true">
             <div className="pd-mod-header">
               <div className="pd-mod-header-left">
                 <div className="pd-mod-header-icon">
@@ -8282,13 +8529,16 @@ export default function PosMainPage() {
               </button>
             </div>
             <div className="pd-ol-body">
-              <p className="pd-covers-value">{coversDraft || '0'}</p>
+              <div className="pd-covers-display">
+                <span className="pd-covers-value">{coversDraft || '0'}</span>
+                <small>{Number(coversDraft) === 1 ? 'person' : 'persons'}</small>
+              </div>
               <div className="pd-covers-keys">
                 {['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', 'OK'].map((k) => (
                   <button
                     key={k}
                     type="button"
-                    className={`pd-key${k === 'OK' ? ' is-ok' : ''}`}
+                    className={`pd-key${k === 'OK' ? ' is-ok' : k === 'C' ? ' is-clear' : ''}`}
                     onClick={() => {
                       if (k === 'C') setCoversDraft('')
                       else if (k === 'OK') void confirmCovers()
@@ -8741,7 +8991,7 @@ export default function PosMainPage() {
           className="pd-mod-overlay"
           role="presentation"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setProductOpen(false)
+            if (e.target === e.currentTarget) closeProductModal()
           }}
         >
           <div className="pd-ol-dialog pd-product-dialog" role="dialog" aria-modal="true">
@@ -8755,286 +9005,386 @@ export default function PosMainPage() {
                   <h2 className="pd-mod-item-name">{productForm.id > 0 ? 'Edit Item' : 'New Item'}</h2>
                 </div>
               </div>
-              <button type="button" className="pd-mod-x" onClick={() => setProductOpen(false)} aria-label="Close">
+              <button type="button" className="pd-mod-x" onClick={closeProductModal} aria-label="Close">
                 <X size={13} />
               </button>
             </div>
 
-            <div className="pd-product-body">
-              <div className="pd-form-row">
-                <label>Item Code</label>
-                <div className="pd-form-code">
-                  <input
-                    value={productForm.code}
-                    onChange={(e) => setProductForm((f) => ({ ...f, code: e.target.value }))}
-                    placeholder="Auto or enter manually"
-                  />
-                  <button type="button" className="pd-form-code-btn" onClick={generateNewProductCode}>
-                    New Code
-                  </button>
-                </div>
-              </div>
-
-              <div className="pd-form-row">
-                <label>Description</label>
-                <input
-                  value={productForm.description}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    setProductForm((f) => ({ ...f, description: value }))
-                    const key = 'productDescriptionArabic'
-                    if (arabicAutoTimers.current[key]) clearTimeout(arabicAutoTimers.current[key])
-                    const trimmed = value.trim()
-                    if (!trimmed) return
-                    arabicAutoTimers.current[key] = setTimeout(() => {
-                      translateToArabic(trimmed)
-                        .then((translated) => {
-                          if (!translated) return
-                          setProductForm((prev) => {
-                            if (prev.arabicDescription && prev.arabicDescription !== arabicAutoLast.current[key]) return prev
-                            arabicAutoLast.current[key] = translated
-                            return { ...prev, arabicDescription: translated }
-                          })
-                        })
-                        .catch(notifyTranslateDown)
-                    }, 400)
-                  }}
-                  placeholder="Item name"
-                />
-              </div>
-
-              <div className="pd-form-row">
-                <label>Arabic Description</label>
-                <ArabicInput
-                  value={productForm.arabicDescription}
-                  onValueChange={(v) => setProductForm((f) => ({ ...f, arabicDescription: v }))}
-                  source={productForm.description}
-                  onTranslateError={notifyTranslateDown}
-                />
-              </div>
-
-              <div className="pd-form-grid-2">
-                <div className="pd-form-row">
-                  <label>Group</label>
-                  <div className="pd-form-code">
-                    <SearchSelect
-                      id="pd-product-group"
-                      value={productForm.groupId || null}
-                      valueLabel={productForm.groupName}
-                      options={groupOptions}
-                      loading={groupOptionsLoading === 'group'}
-                      onOpen={() => void loadGroupOptions('group')}
-                      onChange={(o) => {
-                        if (o.id === productForm.groupId) return
-                        setSubgroupOptions([])
-                        setProductForm((f) => ({
-                          ...f,
-                          groupId: Number(o.id),
-                          groupName: o.name,
-                          subgroupId: 0,
-                          subgroupName: '',
-                        }))
+            <div className="pd-product-body" onKeyDown={onProductFormKey}>
+              {/* Fixed section — identity, group and selling price. Always visible. */}
+              <section className="pd-pf-main">
+                <div className="pd-form-grid-2">
+                  <div className="pd-form-row">
+                    <label>Item Code</label>
+                    <div className="pd-form-code">
+                      <input
+                        value={productForm.code}
+                        onChange={(e) => setProductForm((f) => ({ ...f, code: e.target.value }))}
+                        placeholder="Auto or enter manually"
+                        autoFocus
+                      />
+                      <button type="button" className="pd-form-code-btn" tabIndex={-1} data-nav onClick={generateNewProductCode}>
+                        New Code
+                      </button>
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Description <span className="pd-pf-req">*</span></label>
+                    <input
+                      value={productForm.description}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setProductForm((f) => ({ ...f, description: value }))
+                        const key = 'productDescriptionArabic'
+                        if (arabicAutoTimers.current[key]) clearTimeout(arabicAutoTimers.current[key])
+                        const trimmed = value.trim()
+                        if (!trimmed) return
+                        arabicAutoTimers.current[key] = setTimeout(() => {
+                          translateToArabic(trimmed)
+                            .then((translated) => {
+                              if (!translated) return
+                              setProductForm((prev) => {
+                                if (prev.arabicDescription && prev.arabicDescription !== arabicAutoLast.current[key]) return prev
+                                arabicAutoLast.current[key] = translated
+                                return { ...prev, arabicDescription: translated }
+                              })
+                            })
+                            .catch(notifyTranslateDown)
+                        }, 400)
                       }}
-                      placeholder="Select group"
-                      searchPlaceholder="Search group"
+                      placeholder="Item name"
+                    />
+                  </div>
+                </div>
+
+                <div className="pd-form-row">
+                  <label>Arabic Description</label>
+                  <ArabicInput
+                    value={productForm.arabicDescription}
+                    onValueChange={(v) => setProductForm((f) => ({ ...f, arabicDescription: v }))}
+                    source={productForm.description}
+                    onTranslateError={notifyTranslateDown}
+                  />
+                </div>
+
+                <div className="pd-form-grid-2">
+                  <div className="pd-form-row">
+                    <label>Group <span className="pd-pf-req">*</span></label>
+                    <div className="pd-form-code">
+                      <SearchSelect
+                        id="pd-product-group"
+                        value={productForm.groupId || null}
+                        valueLabel={productForm.groupName}
+                        options={groupOptions}
+                        loading={groupOptionsLoading === 'group'}
+                        onOpen={() => void loadGroupOptions('group')}
+                        onChange={(o) => {
+                          if (o.id === productForm.groupId) return
+                          setSubgroupOptions([])
+                          setProductForm((f) => ({
+                            ...f,
+                            groupId: Number(o.id),
+                            groupName: o.name,
+                            subgroupId: 0,
+                            subgroupName: '',
+                          }))
+                        }}
+                        placeholder="Select group"
+                        searchPlaceholder="Search group"
+                      />
+                      <button
+                        type="button"
+                        className={`pd-form-code-btn${addingProductGroup ? ' is-on' : ''}`}
+                        tabIndex={-1}
+                        disabled={productGroupSaving}
+                        onClick={() => setAddingProductGroup((open) => !open)}
+                      >
+                        {addingProductGroup ? 'Cancel' : 'New'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>SubGroup</label>
+                    <SearchSelect
+                      id="pd-product-subgroup"
+                      value={productForm.subgroupId || null}
+                      valueLabel={productForm.subgroupName}
+                      options={subgroupOptions}
+                      loading={groupOptionsLoading === 'subgroup'}
+                      onOpen={() => void loadGroupOptions('subgroup')}
+                      onChange={(o) =>
+                        setProductForm((f) => ({ ...f, subgroupId: Number(o.id), subgroupName: o.name }))
+                      }
+                      disabled={!productForm.groupId}
+                      disabledHint="Pick a group first"
+                      placeholder="Select subgroup"
+                      searchPlaceholder="Search subgroup"
+                      emptyText="No subgroups in this group"
+                    />
+                  </div>
+                </div>
+                {addingProductGroup ? (
+                  <div className="pd-form-add-group">
+                    <input
+                      value={newProductGroupName}
+                      placeholder="New group name"
+                      autoFocus
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setNewProductGroupName(value)
+                        // Auto-fill Arabic unless the user typed their own.
+                        const key = 'productGroupArabic'
+                        if (arabicAutoTimers.current[key]) clearTimeout(arabicAutoTimers.current[key])
+                        const trimmed = value.trim()
+                        if (!trimmed) return
+                        arabicAutoTimers.current[key] = setTimeout(() => {
+                          translateToArabic(trimmed)
+                            .then((translated) => {
+                              if (!translated) return
+                              setNewProductGroupArabic((prev) => {
+                                if (prev && prev !== arabicAutoLast.current[key]) return prev
+                                arabicAutoLast.current[key] = translated
+                                return translated
+                              })
+                            })
+                            .catch(notifyTranslateDown)
+                        }, 400)
+                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void saveProductGroup() } }}
+                    />
+                    <input
+                      value={newProductGroupArabic}
+                      dir="rtl"
+                      placeholder="Arabic"
+                      onChange={(e) => setNewProductGroupArabic(e.target.value)}
                     />
                     <button
                       type="button"
                       className="pd-form-code-btn"
                       disabled={productGroupSaving}
-                      onClick={() => setAddingProductGroup((open) => !open)}
+                      onClick={() => void saveProductGroup()}
                     >
-                      New
+                      {productGroupSaving ? 'Saving…' : 'Save'}
                     </button>
                   </div>
-                  {addingProductGroup ? (
-                    <div className="pd-form-code">
-                      <input
-                        value={newProductGroupName}
-                        placeholder="Group name"
-                        onChange={(e) => setNewProductGroupName(e.target.value)}
-                      />
-                      <input
-                        value={newProductGroupArabic}
-                        dir="rtl"
-                        placeholder="Arabic"
-                        onChange={(e) => setNewProductGroupArabic(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className="pd-form-code-btn"
-                        disabled={productGroupSaving}
-                        onClick={() => void saveProductGroup()}
-                      >
-                        {productGroupSaving ? '…' : 'Save'}
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-                <div className="pd-form-row">
-                  <label>SubGroup</label>
-                  <SearchSelect
-                    id="pd-product-subgroup"
-                    value={productForm.subgroupId || null}
-                    valueLabel={productForm.subgroupName}
-                    options={subgroupOptions}
-                    loading={groupOptionsLoading === 'subgroup'}
-                    onOpen={() => void loadGroupOptions('subgroup')}
-                    onChange={(o) =>
-                      setProductForm((f) => ({ ...f, subgroupId: Number(o.id), subgroupName: o.name }))
-                    }
-                    disabled={!productForm.groupId}
-                    disabledHint="Pick a group first"
-                    placeholder="Select subgroup"
-                    searchPlaceholder="Search subgroup"
-                    emptyText="No subgroups in this group"
-                  />
-                </div>
-              </div>
+                ) : null}
 
-              <div className="pd-form-grid-2">
-                <div className="pd-form-row">
-                  <label>Kitchen Location</label>
-                  <input
-                    value={productForm.kitchenLocation}
-                    onChange={(e) => setProductForm((f) => ({ ...f, kitchenLocation: e.target.value }))}
-                  />
-                </div>
-                <div className="pd-form-row">
-                  <label>KOT Priority</label>
-                  <select
-                    value={productForm.kotPriority}
-                    onChange={(e) => setProductForm((f) => ({ ...f, kotPriority: e.target.value }))}
-                  >
-                    <option value="NORMAL">NORMAL</option>
-                    <option value="HIGH">HIGH</option>
-                    <option value="LOW">LOW</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pd-form-grid-2">
-                <div className="pd-form-row">
-                  <label>Unit Cost</label>
-                  <input
-                    inputMode="decimal"
-                    value={productForm.unitCost}
-                    onChange={(e) =>
-                      setProductForm((f) => ({ ...f, unitCost: e.target.value.replace(/[^\d.]/g, '') }))
-                    }
-                  />
-                </div>
-                <div className="pd-form-row">
-                  <label>VAT (IN) %</label>
-                  <div className="pd-form-vat-pair">
+                <div className="pd-form-grid-3">
+                  <div className="pd-form-row">
+                    <label>Unit Price <span className="pd-pf-req">*</span></label>
                     <input
                       inputMode="decimal"
-                      value={productForm.vatIn}
+                      value={productForm.unitPrice}
+                      placeholder="0.00"
                       onChange={(e) =>
-                        setProductForm((f) => ({ ...f, vatIn: e.target.value.replace(/[^\d.]/g, '') }))
+                        setProductForm((f) => ({ ...f, unitPrice: decimal(e.target.value) }))
                       }
                     />
-                    <span className="pd-form-computed">AED {withVat(productForm.unitCost, productForm.vatIn)}</span>
                   </div>
-                </div>
-              </div>
-
-              <div className="pd-form-grid-2">
-                <div className="pd-form-row">
-                  <label>Unit Price</label>
-                  <input
-                    inputMode="decimal"
-                    value={productForm.unitPrice}
-                    onChange={(e) =>
-                      setProductForm((f) => ({ ...f, unitPrice: e.target.value.replace(/[^\d.]/g, '') }))
-                    }
-                  />
-                </div>
-                <div className="pd-form-row">
-                  <label>VAT (OUT) %</label>
-                  <div className="pd-form-vat-pair">
+                  <div className="pd-form-row">
+                    <label>VAT (OUT) %</label>
                     <input
                       inputMode="decimal"
+                      className="pd-pf-pct"
                       value={productForm.vatOut}
                       onChange={(e) =>
-                        setProductForm((f) => ({ ...f, vatOut: e.target.value.replace(/[^\d.]/g, '') }))
+                        setProductForm((f) => ({ ...f, vatOut: percent(e.target.value) }))
                       }
                     />
-                    <span className="pd-form-computed">
-                      AED {withVat(productForm.unitPrice, productForm.vatOut)}
-                    </span>
+                  </div>
+                  <div className="pd-form-row">
+                    <label>Price with VAT</label>
+                    <span className="pd-form-computed">AED {withVat(productForm.unitPrice, productForm.vatOut)}</span>
                   </div>
                 </div>
-              </div>
+              </section>
 
-              <div className="pd-form-grid-3">
-                <div className="pd-form-row">
-                  <label>Pack Qty</label>
-                  <input
-                    inputMode="numeric"
-                    value={productForm.packQty}
-                    onChange={(e) =>
-                      setProductForm((f) => ({ ...f, packQty: e.target.value.replace(/[^\d]/g, '') }))
-                    }
-                  />
-                </div>
-                <div className="pd-form-row">
-                  <label>Unit</label>
-                  <select
-                    value={productForm.unit}
-                    onChange={(e) => setProductForm((f) => ({ ...f, unit: e.target.value }))}
+              {/* Tabbed section */}
+              <div className="pd-pf-side">
+              <div className="pd-pf-tabs" role="tablist">
+                {['Cost & Stock', 'Price Levels'].map((label, i) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="tab"
+                    aria-selected={productTab === i}
+                    tabIndex={-1}
+                    className={`pd-pf-tab${productTab === i ? ' is-on' : ''}`}
+                    onClick={() => {
+                      setProductTab(i)
+                      // Land on the tab's first field so typing can start right away.
+                      requestAnimationFrame(() =>
+                        document.querySelector<HTMLInputElement>('.pd-pf-panel input')?.focus(),
+                      )
+                    }}
                   >
-                    <option value="PCS">PCS</option>
-                    <option value="KG">KG</option>
-                    <option value="LTR">LTR</option>
-                    <option value="BOX">BOX</option>
-                  </select>
-                </div>
-                <div className="pd-form-row">
-                  <label>Qty On Hand</label>
-                  <input
-                    inputMode="decimal"
-                    value={productForm.qtyOnHand}
-                    placeholder="0"
-                    onChange={(e) =>
-                      setProductForm((f) => ({ ...f, qtyOnHand: e.target.value.replace(/[^\d.]/g, '') }))
-                    }
-                  />
-                </div>
+                    {label}
+                  </button>
+                ))}
               </div>
 
-              <div className="pd-form-row">
-                <label>Product Type</label>
-                <select
-                  value={productForm.productType}
-                  onChange={(e) => setProductForm((f) => ({ ...f, productType: e.target.value }))}
-                >
-                  <option value="NORMAL">NORMAL</option>
-                  <option value="COMBO">COMBO</option>
-                  <option value="RECIPE ITEM">RECIPE ITEM</option>
-                  <option value="RAW MATERIAL">RAW MATERIAL</option>
-                  <option value="VARIATION">VARIATION</option>
-                </select>
-              </div>
+              <section className="pd-pf-panel" role="tabpanel">
+                {productTab === 0 ? (
+                  <>
+                    <div className="pd-form-grid-3">
+                      <div className="pd-form-row">
+                        <label>Unit Cost</label>
+                        <input
+                          inputMode="decimal"
+                          value={productForm.unitCost}
+                          placeholder="0.00"
+                          onChange={(e) =>
+                            setProductForm((f) => ({ ...f, unitCost: decimal(e.target.value) }))
+                          }
+                        />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>VAT (IN) %</label>
+                        <input
+                          inputMode="decimal"
+                          className="pd-pf-pct"
+                          value={productForm.vatIn}
+                          onChange={(e) =>
+                            setProductForm((f) => ({ ...f, vatIn: percent(e.target.value) }))
+                          }
+                        />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Cost with VAT</label>
+                        <span className="pd-form-computed">AED {withVat(productForm.unitCost, productForm.vatIn)}</span>
+                      </div>
+                    </div>
 
-              <div className="pd-form-row">
-                <label>Item Description</label>
-                <textarea
-                  rows={3}
-                  value={productForm.itemDescription}
-                  onChange={(e) => setProductForm((f) => ({ ...f, itemDescription: e.target.value }))}
-                />
+                    <div className="pd-form-grid-3">
+                      <div className="pd-form-row">
+                        <label>Pack Qty</label>
+                        <input
+                          inputMode="numeric"
+                          value={productForm.packQty}
+                          onChange={(e) =>
+                            setProductForm((f) => ({ ...f, packQty: digits(e.target.value) }))
+                          }
+                        />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Unit</label>
+                        <select
+                          value={productForm.unit}
+                          onChange={(e) => setProductForm((f) => ({ ...f, unit: e.target.value }))}
+                        >
+                          <option value="PCS">PCS</option>
+                          <option value="KG">KG</option>
+                          <option value="LTR">LTR</option>
+                          <option value="BOX">BOX</option>
+                          {['PCS', 'KG', 'LTR', 'BOX'].includes(productForm.unit) ? null : (
+                            <option value={productForm.unit}>{productForm.unit}</option>
+                          )}
+                        </select>
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Qty On Hand</label>
+                        <input
+                          inputMode="decimal"
+                          value={productForm.qtyOnHand}
+                          placeholder="0"
+                          onChange={(e) =>
+                            setProductForm((f) => ({ ...f, qtyOnHand: decimal(e.target.value) }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pd-form-grid-3">
+                      <div className="pd-form-row">
+                        <label>Product Type</label>
+                        <select
+                          value={productForm.productType}
+                          onChange={(e) => setProductForm((f) => ({ ...f, productType: e.target.value }))}
+                        >
+                          <option value="NORMAL">NORMAL</option>
+                          <option value="COMBO">COMBO</option>
+                          <option value="RECIPE ITEM">RECIPE ITEM</option>
+                          <option value="RAW MATERIAL">RAW MATERIAL</option>
+                          <option value="VARIATION">VARIATION</option>
+                          {['NORMAL', 'COMBO', 'RECIPE ITEM', 'RAW MATERIAL', 'VARIATION'].includes(productForm.productType) ? null : (
+                            <option value={productForm.productType}>{productForm.productType}</option>
+                          )}
+                        </select>
+                      </div>
+                      <div className="pd-form-row">
+                        <label>Kitchen Location</label>
+                        <input
+                          value={productForm.kitchenLocation}
+                          onChange={(e) => setProductForm((f) => ({ ...f, kitchenLocation: e.target.value }))}
+                        />
+                      </div>
+                      <div className="pd-form-row">
+                        <label>KOT Priority</label>
+                        <select
+                          value={productForm.kotPriority}
+                          onChange={(e) => setProductForm((f) => ({ ...f, kotPriority: e.target.value }))}
+                        >
+                          <option value="NORMAL">NORMAL</option>
+                          <option value="HIGH">HIGH</option>
+                          <option value="LOW">LOW</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="pd-form-row">
+                      <label>Item Description</label>
+                      <textarea
+                        rows={2}
+                        value={productForm.itemDescription}
+                        onFocus={() => { productDescKey.current = '' }}
+                        onChange={(e) => setProductForm((f) => ({ ...f, itemDescription: e.target.value }))}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="pd-pf-hint">Alternate selling prices. Enter each amount including VAT.</p>
+                    <div className="pd-pf-levels">
+                      {productForm.priceLevels.map((value, i) => (
+                        <div className="pd-form-row" key={i}>
+                          <label>Price Level {i + 1} With Tax</label>
+                          <div className="pd-pf-money">
+                            <span>AED</span>
+                            <input
+                              inputMode="decimal"
+                              value={value}
+                              placeholder="0.00"
+                              onChange={(e) => {
+                                const v = decimal(e.target.value)
+                                setProductForm((f) => ({
+                                  ...f,
+                                  priceLevels: f.priceLevels.map((p, idx) => (idx === i ? v : p)),
+                                }))
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </section>
               </div>
             </div>
 
             <div className="pd-product-modal-foot">
               <button
                 type="button"
+                ref={productSaveRef}
                 className="pd-mod-foot-btn is-ok"
+                onKeyDown={(e) => {
+                  // End of the flow: Tab stays on Save instead of wandering out of the modal.
+                  if (e.key === 'Tab' && !e.shiftKey) e.preventDefault()
+                }}
                 disabled={productSaving}
                 onClick={() => void saveProductForm()}
               >
-                {productSaving ? 'Saving…' : 'Save'}
+                {productSaving ? 'Saving…' : productForm.id > 0 ? 'Update' : 'Save'}
               </button>
             </div>
           </div>
@@ -9088,13 +9438,7 @@ export default function PosMainPage() {
                   })()}
                 </div>
                 <div>
-                  <p className="pd-mod-kicker">
-                    {entryModal === 'productionEntry' || entryModal === 'productionList'
-                      ? 'Manufacturing'
-                      : entryModal === 'comboEdit' || entryModal === 'messList'
-                        ? 'Edit'
-                        : 'Creation'}
-                  </p>
+                  <p className="pd-mod-kicker">{navSectionOf(ENTRY_META[entryModal].label)}</p>
                   <h2 className="pd-mod-item-name">{ENTRY_META[entryModal].label}</h2>
                 </div>
               </div>
@@ -9186,11 +9530,11 @@ export default function PosMainPage() {
                   <div className="pd-form-grid-2">
                     <div className="pd-form-row">
                       <label>Table No</label>
-                      <input value={ef('tableNo')} onChange={(e) => setEf('tableNo', e.target.value.replace(/[^\d]/g, ''))} />
+                      <input value={ef('tableNo')} onChange={(e) => setEf('tableNo', digits(e.target.value))} />
                     </div>
                     <div className="pd-form-row">
                       <label>No. of Chair</label>
-                      <input value={ef('noOfChairs')} onChange={(e) => setEf('noOfChairs', e.target.value.replace(/[^\d]/g, ''))} />
+                      <input value={ef('noOfChairs')} onChange={(e) => setEf('noOfChairs', digits(e.target.value))} />
                     </div>
                   </div>
                   <div className="pd-form-row">
@@ -9270,14 +9614,15 @@ export default function PosMainPage() {
                 <>
                   <div className="pd-form-row">
                     <label>Master Group</label>
-                    <select value={ef('grpMaster')} onChange={(e) => setEf('grpMaster', e.target.value)}>
-                      <option value="">Select…</option>
-                      {groups.map((g) => (
-                        <option key={g.id} value={g.name}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchSelect
+                      id="pd-grp-master"
+                      value={ef('grpMaster') || null}
+                      valueLabel={ef('grpMaster')}
+                      options={groups.map((g) => ({ id: g.name, name: g.name, code: g.code }))}
+                      onChange={(o) => setEf('grpMaster', o.name)}
+                      placeholder="Select master group"
+                      emptyText="No main groups yet"
+                    />
                   </div>
                   <div className="pd-form-row">
                     <label>Group Name</label>
@@ -9299,14 +9644,15 @@ export default function PosMainPage() {
                 <>
                   <div className="pd-form-row">
                     <label>Group</label>
-                    <select value={ef('sgMaster')} onChange={(e) => setEf('sgMaster', e.target.value)}>
-                      <option value="">Select…</option>
-                      {allSubGroups.map((s) => (
-                        <option key={s.id} value={s.name}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchSelect
+                      id="pd-sg-master"
+                      value={ef('sgMaster') || null}
+                      valueLabel={ef('sgMaster')}
+                      options={allSubGroups.map((s) => ({ id: s.name, name: s.name }))}
+                      onChange={(o) => setEf('sgMaster', o.name)}
+                      placeholder="Select group"
+                      emptyText="No groups yet"
+                    />
                   </div>
                   <div className="pd-form-row">
                     <label>Sub Group Name</label>
@@ -9369,7 +9715,7 @@ export default function PosMainPage() {
                     </div>
                     <div className="pd-form-row">
                       <label>Price</label>
-                      <input value={ef('comboPrice')} onChange={(e) => setEf('comboPrice', e.target.value.replace(/[^\d.]/g, ''))} />
+                      <input value={ef('comboPrice')} onChange={(e) => setEf('comboPrice', decimal(e.target.value))} />
                     </div>
                   </div>
                   <div className="pd-form-row">
@@ -9450,17 +9796,17 @@ export default function PosMainPage() {
                     <input
                       placeholder="Cost"
                       value={recipeDraft.cost}
-                      onChange={(e) => setRecipeDraft((d) => ({ ...d, cost: e.target.value.replace(/[^\d.]/g, '') }))}
+                      onChange={(e) => setRecipeDraft((d) => ({ ...d, cost: decimal(e.target.value) }))}
                     />
                     <input
                       placeholder="Pack Qty"
                       value={recipeDraft.packQty}
-                      onChange={(e) => setRecipeDraft((d) => ({ ...d, packQty: e.target.value.replace(/[^\d.]/g, '') }))}
+                      onChange={(e) => setRecipeDraft((d) => ({ ...d, packQty: decimal(e.target.value) }))}
                     />
                     <input
                       placeholder="Qty"
                       value={recipeDraft.qty}
-                      onChange={(e) => setRecipeDraft((d) => ({ ...d, qty: e.target.value.replace(/[^\d.]/g, '') }))}
+                      onChange={(e) => setRecipeDraft((d) => ({ ...d, qty: decimal(e.target.value) }))}
                     />
                     <select value={recipeDraft.unit} onChange={(e) => setRecipeDraft((d) => ({ ...d, unit: e.target.value }))}>
                       <option value="GM">GM</option>
@@ -9546,7 +9892,7 @@ export default function PosMainPage() {
                   </div>
                   <div className="pd-form-row">
                     <label>Print Count</label>
-                    <input value={ef('printCount')} onChange={(e) => setEf('printCount', e.target.value.replace(/[^\d]/g, ''))} />
+                    <input value={ef('printCount')} onChange={(e) => setEf('printCount', digits(e.target.value))} />
                   </div>
                 </>
               ) : null}
@@ -9743,45 +10089,22 @@ export default function PosMainPage() {
                     </div>
                     <div className="pd-form-row">
                       <label>Mess Amount</label>
-                      <input value={ef('messAmount')} onChange={(e) => setEf('messAmount', e.target.value.replace(/[^\d.]/g, ''))} />
+                      <input value={ef('messAmount')} onChange={(e) => setEf('messAmount', decimal(e.target.value))} />
                     </div>
                   </div>
                   <div className="pd-form-row">
                     <label>Item</label>
-                    <div className="pd-combo-pick">
-                      <span className="pd-combo-select">
-                        <SearchSelect
-                          id="pd-mess-item"
-                          value={ef('messAddLine') || null}
-                          options={messItemOptions}
-                          onChange={(o) => setEf('messAddLine', o.name)}
-                          placeholder="Select…"
-                          searchPlaceholder="Search item"
-                          emptyText="No products loaded"
-                        />
-                        {ef('messAddLine') ? (
-                          <button
-                            type="button"
-                            className="pd-combo-clear"
-                            aria-label="Clear item"
-                            title="Clear"
-                            onClick={() => setEf('messAddLine', '')}
-                          >
-                            <X size={12} strokeWidth={2.6} />
-                          </button>
-                        ) : null}
-                      </span>
-                      <button
-                        type="button"
-                        className="pd-combo-add"
-                        aria-label="Add item"
-                        title="Add item"
-                        disabled={!ef('messAddLine') || messLines.includes(ef('messAddLine'))}
-                        onClick={addMessLine}
-                      >
-                        <Plus size={16} strokeWidth={2.6} />
-                      </button>
-                    </div>
+                    {/* Picking an item adds it straight to the table; the
+                       picker then resets so the next item can be chosen. */}
+                    <SearchSelect
+                      id="pd-mess-item"
+                      value={null}
+                      options={messItemOptions}
+                      onChange={(o) => addMessLine(o.name)}
+                      placeholder="Select item to add…"
+                      searchPlaceholder="Search item"
+                      emptyText="No products loaded"
+                    />
                   </div>
                 </div>
                   <ScrollTable
@@ -9811,11 +10134,11 @@ export default function PosMainPage() {
                     <div className="pd-form-grid-2">
                       <div className="pd-form-row">
                         <label>Price Without Vat</label>
-                        <input value={ef('addOnPrice')} onChange={(e) => setEf('addOnPrice', e.target.value.replace(/[^\d.]/g, ''))} />
+                        <input value={ef('addOnPrice')} onChange={(e) => setEf('addOnPrice', decimal(e.target.value))} />
                       </div>
                       <div className="pd-form-row">
                         <label>Vat %</label>
-                        <input value={ef('addOnVat')} onChange={(e) => setEf('addOnVat', e.target.value.replace(/[^\d.]/g, ''))} />
+                        <input value={ef('addOnVat')} onChange={(e) => setEf('addOnVat', percent(e.target.value))} />
                       </div>
                     </div>
                     <div className="pd-form-row">
@@ -9886,16 +10209,16 @@ export default function PosMainPage() {
                   <div className="pd-form-grid-2">
                     <div className="pd-form-row">
                       <label>Mobile</label>
-                      <input value={ef('bookMobile')} onChange={(e) => setEf('bookMobile', e.target.value)} />
+                      <input value={ef('bookMobile')} onChange={(e) => setEf('bookMobile', phone(e.target.value))} />
                     </div>
                     <div className="pd-form-row">
                       <label>Party Size</label>
-                      <input value={ef('bookPartySize')} onChange={(e) => setEf('bookPartySize', e.target.value.replace(/[^\d]/g, ''))} />
+                      <input value={ef('bookPartySize')} onChange={(e) => setEf('bookPartySize', digits(e.target.value))} />
                     </div>
                   </div>
                   <div className="pd-form-row">
                     <label>Advance Amount</label>
-                    <input value={ef('bookAdvance')} onChange={(e) => setEf('bookAdvance', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <input value={ef('bookAdvance')} onChange={(e) => setEf('bookAdvance', decimal(e.target.value))} />
                   </div>
                 </>
               ) : null}
@@ -9987,7 +10310,7 @@ export default function PosMainPage() {
                         {tables
                           .filter((t) => t.areaId === floorAreaId)
                           .map((t) => (
-                            <TableCard key={t.id} label={t.name} seats={t.seats} status="free" />
+                            <TableCard key={t.id} label={t.name} seats={t.seats} shape={t.format} status="free" />
                           ))}
                       </div>
                     ) : (
@@ -10021,12 +10344,12 @@ export default function PosMainPage() {
                   <div className="pd-recipe-line-row">
                     <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
                     <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
-                    <input placeholder="Pkt Qty" value={td('pktQty')} onChange={(e) => setTd('pktQty', e.target.value)} />
+                    <input placeholder="Pkt Qty" value={td('pktQty')} onChange={(e) => setTd('pktQty', decimal(e.target.value))} />
                     <input placeholder="Pkt. details" value={td('pktDetails')} onChange={(e) => setTd('pktDetails', e.target.value)} />
-                    <input placeholder="System Qty" value={td('systemQty')} onChange={(e) => setTd('systemQty', e.target.value)} />
-                    <input placeholder="Adj. Qty" value={td('adjQty')} onChange={(e) => setTd('adjQty', e.target.value)} />
-                    <input placeholder="Entered Qty" value={td('enteredQty')} onChange={(e) => setTd('enteredQty', e.target.value)} />
-                    <input placeholder="Physical Qty" value={td('physicalQty')} onChange={(e) => setTd('physicalQty', e.target.value)} />
+                    <input placeholder="System Qty" value={td('systemQty')} onChange={(e) => setTd('systemQty', decimal(e.target.value))} />
+                    <input placeholder="Adj. Qty" value={td('adjQty')} onChange={(e) => setTd('adjQty', decimal(e.target.value))} />
+                    <input placeholder="Entered Qty" value={td('enteredQty')} onChange={(e) => setTd('enteredQty', decimal(e.target.value))} />
+                    <input placeholder="Physical Qty" value={td('physicalQty')} onChange={(e) => setTd('physicalQty', decimal(e.target.value))} />
                     <select value={td('reason')} onChange={(e) => setTd('reason', e.target.value)}>
                       <option value="Opening Stock">Opening Stock</option>
                       <option value="Stock Count">Stock Count</option>
@@ -10163,12 +10486,15 @@ export default function PosMainPage() {
                 <>
                   <div className="pd-txn-search-row">
                     <div className="pd-form-row">
-                      <label>From</label>
-                      <DatePicker value={ef('listFrom')} onChange={(v) => setEf('listFrom', v)} max={ef('listTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>To</label>
-                      <DatePicker value={ef('listTo')} onChange={(v) => setEf('listTo', v)} min={ef('listFrom')} />
+                      <label>From – To</label>
+                      <DateRangePicker
+                        from={ef('listFrom')}
+                        to={ef('listTo')}
+                        onChange={(from, to) => {
+                          setEf('listFrom', from)
+                          setEf('listTo', to)
+                        }}
+                      />
                     </div>
                     <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
                       Search
@@ -10188,118 +10514,6 @@ export default function PosMainPage() {
                         <tr>
                           <td colSpan={4}>No records found</td>
                         </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              ) : null}
-
-              {entryModal === 'productionEntry' ? (
-                <>
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>Production No</label>
-                      <input value={ef('txnNo')} onChange={(e) => setEf('txnNo', e.target.value)} placeholder="Auto" />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Production Date</label>
-                      <DatePicker value={ef('txnDate')} onChange={(v) => setEf('txnDate', v)} />
-                    </div>
-                  </div>
-                  <div className="pd-recipe-line-row">
-                    <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
-                    <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
-                    <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', e.target.value.replace(/[^\d.]/g, ''))} />
-                    <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
-                      Add
-                    </button>
-                    <button type="button" className="pd-form-code-btn" onClick={deleteSelectedTxnLine}>
-                      Del
-                    </button>
-                  </div>
-                  <div className="pd-grid-wrap">
-                    <table className="pd-grid">
-                      <thead>
-                        <tr>
-                          <th>Item Code</th>
-                          <th>Item Name</th>
-                          <th>Present Qty</th>
-                          <th>Qty</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {txnLines.length === 0 ? (
-                          <tr>
-                            <td colSpan={4}>No items added</td>
-                          </tr>
-                        ) : (
-                          txnLines.map((l, i) => (
-                            <tr
-                              key={i}
-                              className={txnSelected === i ? 'is-selected' : undefined}
-                              style={{ cursor: 'pointer' }}
-                              onClick={() => setTxnSelected(i)}
-                            >
-                              <td>{l.barcode}</td>
-                              <td>{l.shortDesc}</td>
-                              <td>—</td>
-                              <td>{l.qty}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              ) : null}
-
-              {entryModal === 'openingStock' ? (
-                <>
-                  <h3 className="pd-txn-title">Opening Stock Entry</h3>
-                  <div className="pd-recipe-line-row">
-                    <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
-                    <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
-                    <input placeholder="Pkt Qty" value={td('pktQty')} onChange={(e) => setTd('pktQty', e.target.value)} />
-                    <input placeholder="Pkt. details" value={td('pktDetails')} onChange={(e) => setTd('pktDetails', e.target.value)} />
-                    <input
-                      placeholder="Opening Stock"
-                      value={td('openingStockQty')}
-                      onChange={(e) => setTd('openingStockQty', e.target.value)}
-                    />
-                    <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
-                      ADD
-                    </button>
-                  </div>
-                  <div className="pd-grid-wrap">
-                    <table className="pd-grid">
-                      <thead>
-                        <tr>
-                          <th>Barcode</th>
-                          <th>Short Description</th>
-                          <th>Packet Details</th>
-                          <th>Opening Stock</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {txnLines.length === 0 ? (
-                          <tr>
-                            <td colSpan={4}>No lines added</td>
-                          </tr>
-                        ) : (
-                          txnLines.map((l, i) => (
-                            <tr
-                              key={i}
-                              className={txnSelected === i ? 'is-selected' : undefined}
-                              style={{ cursor: 'pointer' }}
-                              onClick={() => setTxnSelected(i)}
-                            >
-                              <td>{l.barcode}</td>
-                              <td>{l.shortDesc}</td>
-                              <td>{l.pktDetails}</td>
-                              <td>{l.openingStockQty}</td>
-                            </tr>
-                          ))
-                        )}
                       </tbody>
                     </table>
                   </div>
@@ -10671,15 +10885,15 @@ export default function PosMainPage() {
                   <div className="pd-recipe-line-row">
                     <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
                     <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
-                    <input placeholder="Pack Qty" value={td('packQty')} onChange={(e) => setTd('packQty', e.target.value)} />
-                    <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', e.target.value.replace(/[^\d.]/g, ''))} />
-                    <input placeholder="Unit Cost" value={td('unitCost')} onChange={(e) => setTd('unitCost', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <input placeholder="Pack Qty" value={td('packQty')} onChange={(e) => setTd('packQty', decimal(e.target.value))} />
+                    <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', decimal(e.target.value))} />
+                    <input placeholder="Unit Cost" value={td('unitCost')} onChange={(e) => setTd('unitCost', decimal(e.target.value))} />
                     <input
                       placeholder="Selling Price"
                       value={td('sellingPrice')}
-                      onChange={(e) => setTd('sellingPrice', e.target.value.replace(/[^\d.]/g, ''))}
+                      onChange={(e) => setTd('sellingPrice', decimal(e.target.value))}
                     />
-                    <input placeholder="Disc." value={td('disc')} onChange={(e) => setTd('disc', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <input placeholder="Disc." value={td('disc')} onChange={(e) => setTd('disc', decimal(e.target.value))} />
                     <select value={td('vatPct')} onChange={(e) => setTd('vatPct', e.target.value)}>
                       <option value="0">0%</option>
                       <option value="5">5%</option>
@@ -10742,7 +10956,7 @@ export default function PosMainPage() {
                     </div>
                     <div className="pd-form-row">
                       <label>Round Off Adjustment</label>
-                      <input value={ef('roundOff')} onChange={(e) => setEf('roundOff', e.target.value.replace(/[^\d.-]/g, ''))} />
+                      <input value={ef('roundOff')} onChange={(e) => setEf('roundOff', signedDecimal(e.target.value))} />
                     </div>
                     <div className="pd-form-row">
                       <label>Net Amount</label>
@@ -10924,21 +11138,21 @@ export default function PosMainPage() {
                   <div className="pd-recipe-line-row">
                     <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
                     <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
-                    <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <input placeholder="Qty" value={td('qty')} onChange={(e) => setTd('qty', decimal(e.target.value))} />
                     <input
                       placeholder="Return Qty"
                       value={td('returnQty')}
-                      onChange={(e) => setTd('returnQty', e.target.value.replace(/[^\d.]/g, ''))}
+                      onChange={(e) => setTd('returnQty', decimal(e.target.value))}
                     />
                     <input
                       placeholder="Actual Cost"
                       value={td('unitCost')}
-                      onChange={(e) => setTd('unitCost', e.target.value.replace(/[^\d.]/g, ''))}
+                      onChange={(e) => setTd('unitCost', decimal(e.target.value))}
                     />
                     <input
                       placeholder="Selling Price"
                       value={td('sellingPrice')}
-                      onChange={(e) => setTd('sellingPrice', e.target.value.replace(/[^\d.]/g, ''))}
+                      onChange={(e) => setTd('sellingPrice', decimal(e.target.value))}
                     />
                     <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
                       Add
@@ -10991,7 +11205,7 @@ export default function PosMainPage() {
                   <div className="pd-form-grid-2">
                     <div className="pd-form-row">
                       <label>RoundOff Adj.</label>
-                      <input value={ef('roundOff')} onChange={(e) => setEf('roundOff', e.target.value.replace(/[^\d.-]/g, ''))} />
+                      <input value={ef('roundOff')} onChange={(e) => setEf('roundOff', signedDecimal(e.target.value))} />
                     </div>
                     <div className="pd-form-row">
                       <label>Net Amount</label>
@@ -11030,7 +11244,7 @@ export default function PosMainPage() {
                       placeholder="Qty"
                       inputMode="decimal"
                       value={td('adjQty')}
-                      onChange={(e) => setTd('adjQty', e.target.value.replace(/[^\d.]/g, ''))}
+                      onChange={(e) => setTd('adjQty', decimal(e.target.value))}
                     />
                     <select value={td('reason')} onChange={(e) => setTd('reason', e.target.value)}>
                       <option value="Damage">Damage</option>
@@ -11084,7 +11298,7 @@ export default function PosMainPage() {
                   </div>
                   <div className="pd-form-row">
                     <label>Advance Amount</label>
-                    <input value={ef('apAmount')} onChange={(e) => setEf('apAmount', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <input value={ef('apAmount')} onChange={(e) => setEf('apAmount', decimal(e.target.value))} />
                   </div>
                 </>
               ) : null}
@@ -11286,7 +11500,7 @@ export default function PosMainPage() {
                     <div className="pd-form-grid-2">
                       <div className="pd-form-row">
                         <label>Counter No</label>
-                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
                       </div>
                       <div className="pd-form-row">
                         <label>Group</label>
@@ -11323,7 +11537,7 @@ export default function PosMainPage() {
                     <label>Counter Close No</label>
                     <input
                       value={ef('rCounterCloseNo')}
-                      onChange={(e) => setEf('rCounterCloseNo', e.target.value)}
+                      onChange={(e) => setEf('rCounterCloseNo', digits(e.target.value, 6))}
                       disabled={ef('rMode') !== 'counterClose'}
                     />
                   </div>
@@ -11347,7 +11561,7 @@ export default function PosMainPage() {
                     {entryModal === 'salesmanWise' ? (
                       <div className="pd-form-row">
                         <label>Counter No</label>
-                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
                       </div>
                     ) : null}
                     <div className="pd-form-row">
@@ -11417,7 +11631,7 @@ export default function PosMainPage() {
                     <div className="pd-form-grid-2">
                       <div className="pd-form-row">
                         <label>Counter No</label>
-                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
                       </div>
                       <div className="pd-form-row">
                         <label>Cashier Name</label>
@@ -11443,7 +11657,7 @@ export default function PosMainPage() {
                   <div className="pd-txn-search-row">
                     <div className="pd-form-row">
                       <label>Counter No</label>
-                      <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                      <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
                     </div>
                     <div className="pd-form-row">
                       <label>From</label>
@@ -11550,7 +11764,7 @@ export default function PosMainPage() {
                 <>
                   <div className="pd-form-row">
                     <label>Counter No</label>
-                    <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                    <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
                   </div>
                   <div className="pd-form-grid-2">
                     <div className="pd-form-row">
@@ -11718,7 +11932,7 @@ export default function PosMainPage() {
                 <>
                   <div className="pd-form-row">
                     <label>Counter No</label>
-                    <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)} />
+                    <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
                   </div>
                   <div className="pd-form-grid-2">
                     <div className="pd-form-row">
@@ -11754,7 +11968,7 @@ export default function PosMainPage() {
                   <div className="pd-txn-search-row">
                     <div className="pd-form-row">
                       <label>Counter No</label>
-                      <select value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', e.target.value)}>
+                      <select value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))}>
                         <option value="">All</option>
                       </select>
                     </div>
@@ -11855,7 +12069,7 @@ export default function PosMainPage() {
                     </div>
                     <div className="pd-form-row">
                       <label>Min</label>
-                      <input value={ef('rMin')} onChange={(e) => setEf('rMin', e.target.value.replace(/[^\d]/g, ''))} />
+                      <input value={ef('rMin')} onChange={(e) => setEf('rMin', digits(e.target.value))} />
                     </div>
                     <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
                       Search
@@ -11899,7 +12113,7 @@ export default function PosMainPage() {
                   <div className="pd-recipe-line-row">
                     <input placeholder="Account Name" value={td('accountName')} onChange={(e) => setTd('accountName', e.target.value)} />
                     <input placeholder="Remarks" value={td('remarks')} onChange={(e) => setTd('remarks', e.target.value)} />
-                    <input placeholder="Taxable Amount" value={td('taxableAmount')} onChange={(e) => setTd('taxableAmount', e.target.value.replace(/[^\d.]/g, ''))} />
+                    <input placeholder="Taxable Amount" value={td('taxableAmount')} onChange={(e) => setTd('taxableAmount', decimal(e.target.value))} />
                     <select value={ef('ieTaxRate')} onChange={(e) => setEf('ieTaxRate', e.target.value)}>
                       <option value="0.00">0.00</option>
                       <option value="5.00">5.00</option>
@@ -12021,7 +12235,7 @@ export default function PosMainPage() {
                       <input
                         placeholder="Discount Percentage"
                         value={ef('discPercent')}
-                        onChange={(e) => setEf('discPercent', e.target.value.replace(/[^\d.]/g, ''))}
+                        onChange={(e) => setEf('discPercent', percent(e.target.value))}
                       />
                     ) : null}
                     <button
@@ -12036,10 +12250,10 @@ export default function PosMainPage() {
                     <div className="pd-recipe-line-row">
                       <input placeholder="Barcode" value={td('barcode')} onChange={(e) => setTd('barcode', e.target.value)} />
                       <input placeholder="Short Description" value={td('shortDesc')} onChange={(e) => setTd('shortDesc', e.target.value)} />
-                      <input placeholder="Pack Qty" value={td('packQty')} onChange={(e) => setTd('packQty', e.target.value)} />
-                      <input placeholder="Selling Price" value={td('sellingPrice')} onChange={(e) => setTd('sellingPrice', e.target.value.replace(/[^\d.]/g, ''))} />
-                      <input placeholder="Dis. Amt" value={td('disAmt')} onChange={(e) => setTd('disAmt', e.target.value.replace(/[^\d.]/g, ''))} />
-                      <input placeholder="Disc. %" value={td('discPct')} onChange={(e) => setTd('discPct', e.target.value.replace(/[^\d.]/g, ''))} />
+                      <input placeholder="Pack Qty" value={td('packQty')} onChange={(e) => setTd('packQty', decimal(e.target.value))} />
+                      <input placeholder="Selling Price" value={td('sellingPrice')} onChange={(e) => setTd('sellingPrice', decimal(e.target.value))} />
+                      <input placeholder="Dis. Amt" value={td('disAmt')} onChange={(e) => setTd('disAmt', decimal(e.target.value))} />
+                      <input placeholder="Disc. %" value={td('discPct')} onChange={(e) => setTd('discPct', percent(e.target.value))} />
                       <button type="button" className="pd-form-code-btn" onClick={addTxnLine}>
                         Add
                       </button>
@@ -12223,7 +12437,7 @@ export default function PosMainPage() {
                   <div className="pd-cdp-fields">
                     <div className="pd-form-row">
                       <label>Total Amount</label>
-                      <input value={ef('cdpTotal')} onChange={(e) => setEf('cdpTotal', e.target.value.replace(/[^\d.]/g, ''))} />
+                      <input value={ef('cdpTotal')} onChange={(e) => setEf('cdpTotal', decimal(e.target.value))} />
                     </div>
                     <div className="pd-form-row">
                       <label>Discount Amount</label>
@@ -12231,7 +12445,7 @@ export default function PosMainPage() {
                     </div>
                     <div className="pd-form-row">
                       <label>Disc Percentage</label>
-                      <input value={ef('cdpPercent')} onChange={(e) => setEf('cdpPercent', e.target.value.replace(/[^\d.]/g, ''))} />
+                      <input value={ef('cdpPercent')} onChange={(e) => setEf('cdpPercent', percent(e.target.value))} />
                     </div>
                     <div className="pd-form-row">
                       <label>Net Amount</label>
@@ -12367,7 +12581,7 @@ export default function PosMainPage() {
               {entryModal === 'printerSetup' ? (
                 <>
                   <div className="pd-recipe-line-row">
-                    <input placeholder="Counter No" value={td('counterNo')} onChange={(e) => setTd('counterNo', e.target.value)} />
+                    <input placeholder="Counter No" value={td('counterNo')} onChange={(e) => setTd('counterNo', digits(e.target.value, 6))} />
                     <input placeholder="Kitchen Loc Name" value={td('kitchenLoc')} onChange={(e) => setTd('kitchenLoc', e.target.value)} />
                     <input placeholder="Printer Name" value={td('printerName')} onChange={(e) => setTd('printerName', e.target.value)} />
                     <button type="button" className="pd-form-code-btn" onClick={addPrinterRow}>
@@ -12519,7 +12733,7 @@ export default function PosMainPage() {
                       ))}
                       <div className="pd-form-row">
                         <label>Tax Reg. No</label>
-                        <input value={ef('cpTaxRegNo')} onChange={(e) => setEf('cpTaxRegNo', e.target.value)} />
+                        <input value={ef('cpTaxRegNo')} onChange={(e) => setEf('cpTaxRegNo', digits(e.target.value, 15))} />
                       </div>
                       <div className="pd-form-row">
                         <label>Footer1</label>
@@ -12658,7 +12872,7 @@ export default function PosMainPage() {
                     </div>
                     <div className="pd-form-row">
                       <label>Phone No</label>
-                      <input value={ef('poiPhone')} onChange={(e) => setEf('poiPhone', e.target.value)} />
+                      <input value={ef('poiPhone')} onChange={(e) => setEf('poiPhone', phone(e.target.value))} />
                     </div>
                     <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => toast('Order marked ready', 'success')}>
                       Order Ready
@@ -12833,7 +13047,7 @@ export default function PosMainPage() {
                 <input
                   ref={customerMobileRef}
                   value={customerEntryMobile}
-                  onChange={(e) => setCustomerEntryMobile(e.target.value.replace(/[^\d+]/g, '').slice(0, 15))}
+                  onChange={(e) => setCustomerEntryMobile(phone(e.target.value))}
                   inputMode="tel"
                   disabled={customerSaving}
                 />
@@ -12842,7 +13056,7 @@ export default function PosMainPage() {
                 <span>Telephone</span>
                 <input
                   value={customerEntryTel}
-                  onChange={(e) => setCustomerEntryTel(e.target.value.replace(/[^\d+]/g, '').slice(0, 15))}
+                  onChange={(e) => setCustomerEntryTel(phone(e.target.value))}
                   inputMode="tel"
                   disabled={customerSaving}
                 />
@@ -12920,7 +13134,7 @@ export default function PosMainPage() {
                   inputMode="numeric"
                   value={dragJoinPlan.pax}
                   onChange={(e) =>
-                    setDragJoinPlan((p) => (p ? { ...p, pax: e.target.value.replace(/[^\d]/g, '').slice(0, 4) } : p))
+                    setDragJoinPlan((p) => (p ? { ...p, pax: digits(e.target.value, 4) } : p))
                   }
                   autoFocus
                 />
@@ -13575,7 +13789,7 @@ export default function PosMainPage() {
                         className="pd-qty-input"
                         value={itemCancelQtyNew}
                         onChange={(e) =>
-                          setItemCancelQtyNew(e.target.value.replace(/[^\d.]/g, '').slice(0, 8))
+                          setItemCancelQtyNew(decimal(e.target.value).slice(0, 8))
                         }
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') onItemCancelQtyDone()
@@ -13845,32 +14059,7 @@ export default function PosMainPage() {
       {productListOpen ? (
         <ProductListDialog
           onClose={() => setProductListOpen(false)}
-          onEdit={(id) => {
-            setEditProductId(id)
-            setProductListOpen(false)
-            setProductEntryOpen(true)
-          }}
-        />
-      ) : null}
-
-      {productEntryOpen ? (
-        <ProductEntryDialog
-          key={editProductId ?? 'new'}
-          productId={editProductId}
-          taxRate={defaultTax1}
-          onMenuChanged={() => setCatalogueNonce((n) => n + 1)}
-          onClose={() => {
-            setProductEntryOpen(false)
-            if (editProductId) setProductListOpen(true)
-            setEditProductId(null)
-          }}
-          onSaved={() => {
-            const wasEdit = editProductId != null
-            setProductEntryOpen(false)
-            setEditProductId(null)
-            if (wasEdit) setProductListOpen(true)
-            toast(wasEdit ? 'Product updated' : 'Product saved', 'success')
-          }}
+          onEdit={(id) => void openEditProductModal(id)}
         />
       ) : null}
 
@@ -13890,6 +14079,20 @@ export default function PosMainPage() {
         />
       ) : null}
 
+      {openingStockOpen ? (
+        <OpeningStockDialog
+          onClose={() => setOpeningStockOpen(false)}
+          onSaved={() => toast('Opening Stock Entry saved', 'success')}
+        />
+      ) : null}
+
+      {productionEntryOpen ? (
+        <ProductionEntryDialog
+          onClose={() => setProductionEntryOpen(false)}
+          onSaved={() => toast('Production Entry saved', 'success')}
+        />
+      ) : null}
+
       {recipeEntryOpen ? (
         <RecipeEntryDialog
           key={recipeProductId ?? 'new'}
@@ -13897,10 +14100,6 @@ export default function PosMainPage() {
           onClose={() => {
             setRecipeEntryOpen(false)
             setRecipeProductId(null)
-          }}
-          onOpenList={() => {
-            setRecipeEntryOpen(false)
-            setRecipeListOpen(true)
           }}
         />
       ) : null}
@@ -13966,6 +14165,7 @@ export default function PosMainPage() {
       {floorDesignOpen ? (
         <FloorDesignDialog
           onClose={() => setFloorDesignOpen(false)}
+          onSaved={() => toast('Floor design saved.', 'success')}
         />
       ) : null}
 

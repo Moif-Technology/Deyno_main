@@ -1,10 +1,16 @@
 /**
  * Recipe Details Entry — same units and cost rules as the VB form.
  * GM/ML are stored as KG/LT. Line cost uses the ingredient average cost.
+ *
+ * Layout: finished product on top; recipe table on the left; a home-screen style
+ * grid of raw-material tiles on the right. Tapping a tile opens a
+ * qty + unit pad, and Done puts the line in the table.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { ChefHat, Plus, Search, Trash2, X } from 'lucide-react'
+import { ChefHat, Hash, Search, Trash2, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { decimal } from '../../utils/validate'
+import './RecipeEntryDialog.css'
 
 type ProductHit = {
   productId: number
@@ -15,6 +21,8 @@ type ProductHit = {
   packQty: number
   averageCost: number
   uniqueId: number
+  /** Stock unit, when the row carries one — picks the pad's starting unit. */
+  unit?: string
 }
 
 type Line = {
@@ -24,6 +32,7 @@ type Line = {
   productName: string
   packDescription: string
   packQty: number
+  averageCost: number
   unit: string
   enteredQty: number
   qtyDisplay: string
@@ -33,10 +42,11 @@ type Line = {
 type Props = {
   finishedProductId?: number | null
   onClose: () => void
-  onOpenList: () => void
 }
 
+
 const UNITS = ['GM', 'KG', 'ML', 'LT', 'METER', 'PCS'] as const
+const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const
 
 function errMessage(err: unknown, fallback: string) {
   if (err instanceof ApiError && err.message) return err.message
@@ -68,6 +78,23 @@ function lineAmounts(averageCost: number, enteredQty: number, unit: string) {
   return null
 }
 
+/** Average cost back out of a saved line (GM/ML lines are priced per 1000). */
+function costFromLine(lineCost: number, enteredQty: number, unit: string) {
+  if (!(enteredQty > 0)) return 0
+  const per = lineCost / enteredQty
+  const u = unit.toUpperCase()
+  return u === 'GM' || u === 'ML' ? per * 1000 : per
+}
+
+/** Pad's starting unit from the item's stock unit: KG → GM, LT → ML, else as-is. */
+function defaultUnit(stockUnit?: string): (typeof UNITS)[number] {
+  const u = String(stockUnit ?? '').trim().toUpperCase()
+  if (u === 'PCS' || u === 'NOS' || u === 'BOX') return 'PCS'
+  if (u === 'LT' || u === 'LTR' || u === 'ML') return 'ML'
+  if (u === 'METER') return 'METER'
+  return 'GM'
+}
+
 function mapHit(r: Record<string, unknown>): ProductHit {
   return {
     productId: Number(r.productId) || 0,
@@ -78,10 +105,15 @@ function mapHit(r: Record<string, unknown>): ProductHit {
     packQty: Number(r.packQty) || 1,
     averageCost: Number(r.averageCost) || 0,
     uniqueId: Number(r.uniqueId) || Number(r.productId) || 0,
+    unit: String(r.unitName ?? r.unit ?? ''),
   }
 }
 
-export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenList }: Props) {
+function displayName(p: ProductHit) {
+  return p.shortName || p.productName
+}
+
+export default function RecipeEntryDialog({ finishedProductId, onClose }: Props) {
   const [finished, setFinished] = useState<ProductHit | null>(null)
   const [finishedQuery, setFinishedQuery] = useState('')
   const [lines, setLines] = useState<Line[]>([])
@@ -91,19 +123,21 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
   const [error, setError] = useState<string | null>(null)
   const [hint, setHint] = useState<string | null>(null)
 
-  const [barcode, setBarcode] = useState('')
-  const [name, setName] = useState('')
-  const [packet, setPacket] = useState('')
-  const [packQty, setPackQty] = useState('')
-  const [cost, setCost] = useState('')
-  const [qty, setQty] = useState('')
-  const [unit, setUnit] = useState<(typeof UNITS)[number]>('GM')
-  const [picked, setPicked] = useState<ProductHit | null>(null)
   const [hits, setHits] = useState<ProductHit[]>([])
-  const [hitOpen, setHitOpen] = useState<'finished' | 'ingredient' | null>(null)
+  const [hitOpen, setHitOpen] = useState(false)
   const [hitIndex, setHitIndex] = useState(0)
   const lineKey = useRef(1)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Catalogue (right side)
+  const [tiles, setTiles] = useState<ProductHit[]>([])
+  const [tilesState, setTilesState] = useState<'loading' | 'ready' | 'error'>('loading')
+
+  // Qty pad
+  const [pad, setPad] = useState<{ product: ProductHit; lineKey: number | null } | null>(null)
+  const [padQty, setPadQty] = useState('')
+  const [padUnit, setPadUnit] = useState<(typeof UNITS)[number]>('GM')
+  const padInputRef = useRef<HTMLInputElement | null>(null)
 
   const unitCostTotal = useMemo(
     () => lines.reduce((sum, line) => sum + line.lineCost, 0),
@@ -128,6 +162,9 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
     setLines(
       rawLines.map((row) => {
         const line = row as Record<string, unknown>
+        const unit = String(line.unit ?? 'PCS')
+        const enteredQty = Number(line.enteredQty) || 0
+        const lineCost = Number(line.lineCost) || 0
         return {
           key: lineKey.current++,
           rawProductId: Number(line.rawProductId) || 0,
@@ -135,10 +172,11 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
           productName: String(line.productName ?? ''),
           packDescription: String(line.packDescription ?? ''),
           packQty: Number(line.packQty) || 1,
-          unit: String(line.unit ?? 'PCS'),
-          enteredQty: Number(line.enteredQty) || 0,
+          averageCost: Number(line.averageCost) || costFromLine(lineCost, enteredQty, unit),
+          unit,
+          enteredQty,
           qtyDisplay: String(line.qtyDisplay ?? ''),
-          lineCost: Number(line.lineCost) || 0,
+          lineCost,
         }
       }),
     )
@@ -165,18 +203,41 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
     }
   }, [finishedProductId])
 
-  function clearIngredient() {
-    setBarcode('')
-    setName('')
-    setPacket('')
-    setPackQty('')
-    setCost('')
-    setQty('')
-    setUnit('GM')
-    setPicked(null)
-    setHits([])
-    setHitOpen(null)
-  }
+  // Raw materials for the tile grid (loaded once).
+  useEffect(() => {
+    let alive = true
+    setTilesState('loading')
+    apiService
+      .searchRecipeProducts({ role: 'raw' })
+      .then((rows) => {
+        if (!alive) return
+        setTiles(rows.map((r) => mapHit(r)).filter((p) => p.productId > 0 && p.productName))
+        setTilesState('ready')
+      })
+      .catch(() => {
+        if (alive) setTilesState('error')
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!pad) return
+    const t = window.setTimeout(() => padInputRef.current?.focus(), 0)
+    return () => window.clearTimeout(t)
+  }, [pad])
+
+  const shownTiles = useMemo(
+    () => tiles.filter((p) => !finished || p.productId !== finished.productId),
+    [tiles, finished],
+  )
+
+  const qtyByProduct = useMemo(() => {
+    const m = new Map<number, Line>()
+    for (const line of lines) m.set(line.rawProductId, line)
+    return m
+  }, [lines])
 
   function clearForm() {
     setFinished(null)
@@ -186,22 +247,9 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
     setHasSaved(false)
     setHint(null)
     setError(null)
-    clearIngredient()
-  }
-
-  async function search(role: 'finished' | 'ingredient' | 'raw', text: string, exact = false) {
-    const q = text.trim()
-    if (!q) {
-      setHits([])
-      setHitOpen(null)
-      return []
-    }
-    const list = await apiService.searchRecipeProducts({
-      role,
-      q,
-      mode: exact ? 'exact' : 'contains',
-    })
-    return list.map((row) => mapHit(row as Record<string, unknown>)).filter((p) => p.productId > 0)
+    setHits([])
+    setHitOpen(false)
+    setPad(null)
   }
 
   async function onFinishedChange(value: string) {
@@ -209,11 +257,18 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
     setFinished(null)
     if (searchTimer.current) clearTimeout(searchTimer.current)
     searchTimer.current = setTimeout(async () => {
+      const q = value.trim()
+      if (!q) {
+        setHits([])
+        setHitOpen(false)
+        return
+      }
       try {
-        const found = await search('finished', value)
+        const list = await apiService.searchRecipeProducts({ role: 'finished', q, mode: 'contains' })
+        const found = list.map((row) => mapHit(row)).filter((p) => p.productId > 0)
         setHits(found)
         setHitIndex(0)
-        setHitOpen(found.length ? 'finished' : null)
+        setHitOpen(found.length > 0)
       } catch (err) {
         setError(errMessage(err, 'Product search failed'))
       }
@@ -221,10 +276,11 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
   }
 
   async function chooseFinished(product: ProductHit) {
-    setHitOpen(null)
+    setHitOpen(false)
     setHits([])
     setBusy(true)
     setError(null)
+    setHint(null)
     try {
       const res = await apiService.fetchRecipe(product.productId)
       const recipe = (res.recipe ?? res) as Record<string, unknown>
@@ -236,103 +292,92 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
     }
   }
 
-  function applyIngredient(product: ProductHit) {
-    setPicked(product)
-    setBarcode(product.barcode)
-    setName(product.shortName || product.productName)
-    setPacket(product.packDescription)
-    setPackQty(String(product.packQty))
-    setCost(String(product.averageCost))
-    setHits([])
-    setHitOpen(null)
-  }
-
-  async function lookupIngredient(field: 'barcode' | 'name') {
-    const value = (field === 'barcode' ? barcode : name).trim()
-    if (!value) return
-    try {
-      const found = field === 'barcode'
-        ? (await apiService.searchRecipeProducts({ role: 'ingredient', barcode: value, mode: 'exact' })).map((r) => mapHit(r))
-        : await search('ingredient', value, true)
-      if (found.length === 1) {
-        applyIngredient(found[0])
-        return
-      }
-      if (found.length === 0) {
-        setError('Item not found')
-        setHitOpen(null)
-        return
-      }
-      setHits(found)
-      setHitIndex(0)
-      setHitOpen('ingredient')
-    } catch (err) {
-      setError(errMessage(err, 'Item not found'))
-    }
-  }
-
-  function onHitKey(e: KeyboardEvent<HTMLInputElement>, choose: (p: ProductHit) => void) {
-    if (!hitOpen || hits.length === 0) return false
+  function onFinishedKey(e: KeyboardEvent<HTMLInputElement>) {
+    if (!hitOpen || hits.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setHitIndex((i) => Math.min(i + 1, hits.length - 1))
-      return true
-    }
-    if (e.key === 'ArrowUp') {
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setHitIndex((i) => Math.max(i - 1, 0))
-      return true
-    }
-    if (e.key === 'Enter') {
+    } else if (e.key === 'Enter') {
       e.preventDefault()
       const pick = hits[hitIndex] ?? hits[0]
-      if (pick) choose(pick)
-      return true
+      if (pick) void chooseFinished(pick)
+    } else if (e.key === 'Escape') {
+      setHitOpen(false)
     }
-    if (e.key === 'Escape') {
-      setHitOpen(null)
-      return true
-    }
-    return false
   }
 
-  function addLine() {
+  function openPad(product: ProductHit, existing?: Line) {
     setError(null)
-    if (!picked) {
-      setError('Select an item')
+    if (!finished) {
+      setError('Select finished product first')
       return
     }
-    const entered = Number(qty)
-    if (!(entered > 0)) {
-      setError('Enter qty')
-      return
-    }
-    if (finished && picked.productId === finished.productId) {
+    if (product.productId === finished.productId) {
       setError('Finished product cannot be added as its own raw material')
       return
     }
-    const amounts = lineAmounts(picked.averageCost, entered, unit)
-    if (!amounts) {
-      setError('Enter a valid qty and unit')
+    const line = existing ?? lines.find((l) => l.rawProductId === product.productId)
+    setPad({ product, lineKey: line?.key ?? null })
+    setPadQty(line ? qtyFmt(line.enteredQty) : '')
+    setPadUnit(line ? (UNITS.find((u) => u === line.unit.toUpperCase()) ?? 'GM') : defaultUnit(product.unit))
+  }
+
+  function openLine(line: Line) {
+    openPad(
+      {
+        productId: line.rawProductId,
+        barcode: line.barcode,
+        productName: line.productName,
+        shortName: '',
+        packDescription: line.packDescription,
+        packQty: line.packQty,
+        averageCost: line.averageCost,
+        uniqueId: line.rawProductId,
+      },
+      line,
+    )
+  }
+
+  function onPadKey(k: string) {
+    if (k === 'C') {
+      setPadQty((prev) => prev.slice(0, -1))
       return
     }
-    const lineCost = Math.round((amounts.lineCost + Number.EPSILON) * 100) / 100
-    setLines((prev) => [
-      ...prev,
-      {
-        key: lineKey.current++,
-        rawProductId: picked.productId,
-        barcode: picked.barcode,
-        productName: picked.shortName || picked.productName,
-        packDescription: picked.packDescription,
-        packQty: picked.packQty,
-        unit: amounts.unit,
-        enteredQty: entered,
-        qtyDisplay: `${qtyFmt(entered)}(${amounts.unit})`,
-        lineCost,
-      },
-    ])
-    clearIngredient()
+    if (k === '.' && padQty.includes('.')) return
+    setPadQty((prev) => (prev + k).slice(0, 10))
+  }
+
+  function applyPad() {
+    if (!pad) return
+    const entered = Number(padQty)
+    const amounts = lineAmounts(pad.product.averageCost, entered, padUnit)
+    if (!(entered > 0) || !amounts) {
+      setError('Enter qty')
+      padInputRef.current?.focus()
+      return
+    }
+    const p = pad.product
+    const next: Line = {
+      key: pad.lineKey ?? lineKey.current++,
+      rawProductId: p.productId,
+      barcode: p.barcode,
+      productName: displayName(p),
+      packDescription: p.packDescription,
+      packQty: p.packQty,
+      averageCost: p.averageCost,
+      unit: amounts.unit,
+      enteredQty: entered,
+      qtyDisplay: `${qtyFmt(entered)}(${amounts.unit})`,
+      lineCost: Math.round((amounts.lineCost + Number.EPSILON) * 100) / 100,
+    }
+    setLines((prev) =>
+      pad.lineKey != null ? prev.map((l) => (l.key === pad.lineKey ? next : l)) : [...prev, next],
+    )
+    setError(null)
+    setPad(null)
   }
 
   function removeLine(key: number) {
@@ -360,8 +405,9 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
           lineCost: line.lineCost,
         })),
       })
-      setHint(hasSaved ? 'Recipe details updated' : 'Recipe details saved')
+      const msg = hasSaved ? 'Recipe details updated' : 'Recipe details saved'
       clearForm()
+      setHint(msg)
     } catch (err) {
       setError(errMessage(err, 'Could not save recipe'))
     } finally {
@@ -369,18 +415,7 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
     }
   }
 
-  async function openRawPicker() {
-    try {
-      const list = await apiService.searchRecipeProducts({ role: 'raw', q: name.trim() || undefined })
-      const found = list.map((row) => mapHit(row)).filter((p) => p.productId > 0)
-      setHits(found)
-      setHitIndex(0)
-      setHitOpen(found.length ? 'ingredient' : null)
-      if (!found.length) setError('No raw material items')
-    } catch (err) {
-      setError(errMessage(err, 'Could not search raw materials'))
-    }
-  }
+  const padPreview = pad ? lineAmounts(pad.product.averageCost, Number(padQty), padUnit) : null
 
   return (
     <div
@@ -390,7 +425,7 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
         if (e.target === e.currentTarget && !busy) onClose()
       }}
     >
-      <div className="pd-ol-dialog pd-ol-wide pd-mfg" role="dialog" aria-modal="true" aria-labelledby="pd-recipe-title">
+      <div className="pd-ol-dialog pd-mfg pd-rcp" role="dialog" aria-modal="true" aria-labelledby="pd-recipe-title">
         <div className="pd-mod-header">
           <div className="pd-mod-header-left">
             <div className="pd-mod-header-icon">
@@ -406,178 +441,263 @@ export default function RecipeEntryDialog({ finishedProductId, onClose, onOpenLi
           </button>
         </div>
 
-        <div className="pd-ol-body">
-          <div className="pd-form-grid-2">
-            <div className="pd-form-row pd-mfg-search">
+        <div className="rcp-body">
+          {/* Top: finished product */}
+          <div className="rcp-top">
+            <div className="pd-form-row pd-mfg-search rcp-finished">
               <label>Finished Product</label>
               <span className="pd-mfg-search-box">
                 <Search size={14} />
                 <input
                   value={finishedQuery}
                   onChange={(e) => void onFinishedChange(e.target.value)}
-                  onKeyDown={(e) => onHitKey(e, (p) => void chooseFinished(p))}
+                  onKeyDown={onFinishedKey}
                   placeholder="Search finished product"
                   autoComplete="off"
+                  autoFocus
                 />
               </span>
-              {hitOpen === 'finished' && hits.length > 0 ? renderHits() : null}
+              {hitOpen && hits.length > 0 ? (
+                <div className="pd-stk-hits pd-mfg-hits" role="listbox" aria-label="Items">
+                  {hits.map((h, i) => (
+                    <button
+                      key={h.productId}
+                      type="button"
+                      role="option"
+                      aria-selected={i === hitIndex}
+                      className={i === hitIndex ? 'is-active' : undefined}
+                      onMouseEnter={() => setHitIndex(i)}
+                      onClick={() => void chooseFinished(h)}
+                    >
+                      <strong>{h.barcode || '—'}</strong>
+                      <span>{h.productName}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
-            <div className="pd-form-row">
+            <div className="pd-form-row rcp-remarks">
               <label>Remarks</label>
               <input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-            </div>
-          </div>
-
-          <p className="pd-mfg-section">Raw Materials</p>
-          <div className="pd-mfg-line">
-            <div className="pd-form-row">
-              <label>Barcode</label>
-              <input
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                onKeyDown={(e) => {
-                  if (onHitKey(e, applyIngredient)) return
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    void lookupIngredient('barcode')
-                  }
-                }}
-                autoComplete="off"
-              />
-            </div>
-            <div className="pd-form-row pd-mfg-search">
-              <label>Item Name</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (onHitKey(e, applyIngredient)) return
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    void lookupIngredient('name')
-                  }
-                }}
-                autoComplete="off"
-              />
-              {hitOpen && hitOpen !== 'finished' && hits.length > 0 ? renderHits() : null}
-            </div>
-            <div className="pd-form-row">
-              <label>Pack</label>
-              <input value={packet} readOnly />
-            </div>
-            <div className="pd-form-row">
-              <label>Pack Qty</label>
-              <input value={packQty} readOnly />
-            </div>
-            <div className="pd-form-row">
-              <label>Cost</label>
-              <input value={cost} readOnly />
-            </div>
-            <div className="pd-form-row">
-              <label>Qty</label>
-              <input
-                value={qty}
-                inputMode="decimal"
-                onChange={(e) => setQty(e.target.value.replace(/[^\d.]/g, ''))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addLine()
-                }}
-              />
-            </div>
-            <div className="pd-form-row">
-              <label>Unit</label>
-              <select value={unit} onChange={(e) => setUnit(e.target.value as (typeof UNITS)[number])}>
-                {UNITS.map((u) => (
-                  <option key={u} value={u}>{u}</option>
-                ))}
-              </select>
-            </div>
-            <div className="pd-mfg-line-btns">
-              <button type="button" className="pd-form-code-btn" onClick={() => void openRawPicker()} disabled={busy}>
-                Raw
-              </button>
-              <button type="button" className="pd-mfg-add" onClick={addLine} disabled={busy}>
-                <Plus size={14} /> Add
-              </button>
             </div>
           </div>
 
           {error ? <p className="pd-mfg-msg">{error}</p> : null}
           {hint ? <p className="pd-mfg-ok">{hint}</p> : null}
 
-          <div className="pd-grid-wrap">
-            <table className="pd-grid">
-              <thead>
-                <tr>
-                  <th>Barcode</th>
-                  <th>Product</th>
-                  <th>Pack</th>
-                  <th className="num">Qty</th>
-                  <th className="num">Cost</th>
-                  <th>Unit</th>
-                  <th className="col-menu" />
-                </tr>
-              </thead>
-              <tbody>
-                {lines.length === 0 ? (
-                  <tr>
-                    <td colSpan={7}>Choose a finished product, add raw materials, then Save</td>
-                  </tr>
-                ) : (
-                  lines.map((line) => (
-                    <tr key={line.key}>
-                      <td>{line.barcode}</td>
-                      <td>{line.productName}</td>
-                      <td>{line.packDescription}</td>
-                      <td className="num">{line.qtyDisplay}</td>
-                      <td className="num">{moneyFmt(line.lineCost)}</td>
-                      <td>{line.unit}</td>
-                      <td className="col-menu">
-                        <button type="button" className="pd-row-delete" onClick={() => removeLine(line.key)} aria-label="Delete">
-                          <Trash2 size={12} />
-                        </button>
-                      </td>
+          <div className="rcp-main">
+            {/* Left: recipe lines */}
+            <section className="rcp-lines">
+              <div className="pd-grid-wrap">
+                <table className="pd-grid">
+                  <thead>
+                    <tr>
+                      <th>Barcode</th>
+                      <th>Product</th>
+                      <th>Pack</th>
+                      <th className="num">Qty</th>
+                      <th className="num">Cost</th>
+                      <th>Unit</th>
+                      <th className="col-menu" />
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {lines.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="rcp-empty">
+                          {finished
+                            ? 'Tap a product on the right to add it'
+                            : 'Choose a finished product, add raw materials, then Save'}
+                        </td>
+                      </tr>
+                    ) : (
+                      lines.map((line) => (
+                        <tr key={line.key} className="rcp-row" onClick={() => openLine(line)}>
+                          <td>{line.barcode}</td>
+                          <td>{line.productName}</td>
+                          <td>{line.packDescription}</td>
+                          <td className="num rcp-qty">{qtyFmt(line.enteredQty)}</td>
+                          <td className="num">{moneyFmt(line.lineCost)}</td>
+                          <td>{line.unit}</td>
+                          <td className="col-menu">
+                            <button
+                              type="button"
+                              className="pd-row-delete"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                removeLine(line.key)
+                              }}
+                              aria-label="Delete"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* Right: product tiles, like the home screen */}
+            <section className="rcp-cat" aria-label="Products">
+              <div className="rcp-panel">
+                <div className="rcp-tiles">
+                  {!finished ? (
+                    <div className="rcp-tiles-wait">
+                      <Search size={22} />
+                      <strong>Search a finished product</strong>
+                      <span>Its raw materials will show here.</span>
+                    </div>
+                  ) : tilesState === 'loading' ? (
+                    <p className="pd-cat-msg">Loading items…</p>
+                  ) : tilesState === 'error' ? (
+                    <p className="pd-cat-msg">Could not load items</p>
+                  ) : shownTiles.length === 0 ? (
+                    <p className="pd-cat-msg">No items</p>
+                  ) : (
+                    shownTiles.map((p) => {
+                      const inRecipe = qtyByProduct.get(p.productId)
+                      return (
+                        <button
+                          key={p.productId}
+                          type="button"
+                          className={`pd-product rcp-tile${inRecipe ? ' is-in' : ''}`}
+                          onClick={() => openPad(p)}
+                          title={p.productName}
+                        >
+                          <span className="pd-product-name">{displayName(p).toLowerCase()}</span>
+                          <span className="pd-product-foot">
+                            <span className="pd-product-price">AED {moneyFmt(p.averageCost)}</span>
+                            {inRecipe ? (
+                              <span className="rcp-tile-qty">
+                                {qtyFmt(inRecipe.enteredQty)} {inRecipe.unit}
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </section>
           </div>
         </div>
 
         <div className="pd-mod-foot">
           <span className="pd-mfg-count">
-            Unit Cost: <strong>AED {moneyFmt(unitCostTotal)}</strong>
+            {lines.length} item{lines.length === 1 ? '' : 's'} · Unit Cost: <strong>AED {moneyFmt(unitCostTotal)}</strong>
           </span>
           <span className="pd-mod-foot-spacer" />
-          <button type="button" className="pd-mod-foot-btn" onClick={onOpenList}>List</button>
           <button type="button" className="pd-mod-foot-btn" onClick={clearForm} disabled={busy}>New</button>
           <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void save()} disabled={busy}>
             {busy ? 'Saving…' : hasSaved ? 'Update' : 'Save'}
           </button>
         </div>
       </div>
+
+      {pad ? (
+        <div
+          className="pd-mod-overlay rcp-pad-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPad(null)
+          }}
+        >
+          <div className="pd-qty-dialog rcp-pad" role="dialog" aria-modal="true" aria-labelledby="rcp-pad-title">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <Hash size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">{pad.lineKey != null ? 'Change Qty' : 'Raw Material Qty'}</p>
+                  <h2 id="rcp-pad-title" className="pd-mod-item-name">{displayName(pad.product)}</h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={() => setPad(null)} aria-label="Close">
+                <X size={13} />
+              </button>
+            </div>
+            <div className="pd-qty-body">
+              <div className="pd-qty-fields rcp-pad-fields">
+                <div className="rcp-pad-qty">
+                  <span>Qty</span>
+                  <input
+                    ref={padInputRef}
+                    className="pd-qty-input"
+                    value={padQty}
+                    inputMode="decimal"
+                    placeholder="0"
+                    onChange={(e) => setPadQty(decimal(e.target.value).slice(0, 10))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        applyPad()
+                      }
+                      if (e.key === 'Escape') setPad(null)
+                    }}
+                  />
+                </div>
+                <div className="rcp-units" role="radiogroup" aria-label="Unit">
+                  {UNITS.map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      role="radio"
+                      aria-checked={padUnit === u}
+                      className={`rcp-unit${padUnit === u ? ' is-on' : ''}`}
+                      onClick={() => {
+                        setPadUnit(u)
+                        padInputRef.current?.focus()
+                      }}
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+                <dl className="rcp-pad-info">
+                  <div>
+                    <dt>Barcode</dt>
+                    <dd>{pad.product.barcode || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>Pack</dt>
+                    <dd>{pad.product.packDescription || pad.product.packQty}</dd>
+                  </div>
+                  <div>
+                    <dt>Avg Cost</dt>
+                    <dd>AED {moneyFmt(pad.product.averageCost)}</dd>
+                  </div>
+                  <div className="is-total">
+                    <dt>Line Cost</dt>
+                    <dd>AED {moneyFmt(padPreview?.lineCost ?? 0)}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="pd-qty-pad">
+                <div className="pd-qty-keys">
+                  {KEYS.map((k) => (
+                    <button key={k} type="button" className="pd-key" onClick={() => onPadKey(k)}>
+                      {k}
+                    </button>
+                  ))}
+                </div>
+                <div className="pd-qty-actions">
+                  <button type="button" className="pd-qty-done" onClick={applyPad}>
+                    Done
+                  </button>
+                  <button type="button" className="pd-qty-cancel" onClick={() => setPad(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
-
-  function renderHits() {
-    return (
-      <div className="pd-stk-hits pd-mfg-hits" role="listbox" aria-label="Items">
-        {hits.map((h, i) => (
-          <button
-            key={h.productId}
-            type="button"
-            role="option"
-            aria-selected={i === hitIndex}
-            className={i === hitIndex ? 'is-active' : undefined}
-            onMouseEnter={() => setHitIndex(i)}
-            onClick={() => (hitOpen === 'finished' ? void chooseFinished(h) : applyIngredient(h))}
-          >
-            <strong>{h.barcode || '—'}</strong>
-            <span>{h.productName}</span>
-          </button>
-        ))}
-      </div>
-    )
-  }
 }

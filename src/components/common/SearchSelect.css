@@ -154,3 +154,36 @@
 @keyframes ui-ss-spin {
   to { transform: rotate(360deg); }
 }
+
+/* Typeahead — the field itself is the search input. */
+.ui-ss.is-typeahead {
+  cursor: text;
+}
+
+.ui-ss .ui-ss-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  color: inherit;
+  outline: none;
+}
+
+.ui-ss .ui-ss-input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.ui-ss .ui-ss-input::placeholder {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.ui-ss.is-disabled .ui-ss-input {
+  cursor: not-allowed;
+}

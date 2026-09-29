@@ -8,6 +8,7 @@ import { apiService, ApiError } from '../../api/apiService'
 import { Toggle } from '../../components/common/Toggle'
 import { useArabicAutoFill } from '../../utils/useArabicAutoFill'
 import { ArabicInput } from '../../components/common/ArabicInput'
+import { Toast, toastKindFor } from '../../components/common/Toast'
 
 const SUPPLY_TYPES = ['DINE IN', 'PARCEL', 'DELIVERY'] as const
 const PRICE_LEVELS = [
@@ -330,7 +331,11 @@ export default function AreaMasterDialog({ onClose, onSaved }: Props) {
           </button>
         </div>
       </div>
-      {hint ? <div className="pd-toast">{hint}</div> : null}
+      {hint ? (
+        <div className="pd-toast">
+          <Toast key={hint} message={hint} kind={toastKindFor(hint)} duration={3600} />
+        </div>
+      ) : null}
     </div>
   )
 }

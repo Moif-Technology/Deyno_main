@@ -1080,18 +1080,18 @@
 }
 
 .pd-area-btn.is-dine {
-  background: linear-gradient(180deg, #14b8a6 0%, #0f766e 100%);
+  background: linear-gradient(180deg, var(--brand-2) 0%, var(--brand) 100%);
   color: #fff;
 }
 
 .pd-area-btn.is-parcel {
-  background: linear-gradient(180deg, #bae6fd 0%, #7dd3fc 100%);
-  color: #0c4a6e;
+  background: linear-gradient(180deg, var(--brand-bg) 0%, var(--brand-tint) 100%);
+  color: var(--brand);
 }
 
 .pd-area-btn.is-delivery {
-  background: linear-gradient(180deg, #ddd6fe 0%, #c4b5fd 100%);
-  color: #4c1d95;
+  background: linear-gradient(180deg, var(--brand-tint) 0%, var(--brand-border) 100%);
+  color: var(--brand);
 }
 
 .pd-area-btn.is-dine .pd-area-ic {
@@ -1145,7 +1145,7 @@
 
 .pd-table-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   row-gap: 22px;
   column-gap: 12px;
   align-content: start;
@@ -1205,8 +1205,8 @@
   border-radius: 18px;
   display: grid;
   place-items: center;
-  color: #34c759;
-  background: linear-gradient(180deg, #e8fbef 0%, #d4f5de 100%);
+  color: var(--brand);
+  background: linear-gradient(180deg, var(--brand-bg) 0%, var(--brand-tint) 100%);
 }
 
 .pd-seat.is-busy .pd-seat-glyph {
@@ -1307,32 +1307,126 @@
   place-items: center;
 }
 
+/* Dine-in table picker — centred card, brand header with a free/occupied
+   legend, soft dotted "floor" behind the tables. */
 .pd-floor-dialog {
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  max-height: none;
+  width: min(1080px, 100%);
+  height: min(720px, calc(90vh / var(--ui-zoom, 1)));
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: #f5f5f7;
-  border-radius: 0;
-  box-shadow: none;
+  background: var(--surface);
+  border-radius: 24px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+  animation: slideUp 0.18s cubic-bezier(.22, .68, 0, 1.2);
 }
 
-.pd-floor-dialog .pd-mod-header {
-  padding-top: max(12px, env(safe-area-inset-top));
-  padding-left: max(16px, env(safe-area-inset-left));
-  padding-right: max(16px, env(safe-area-inset-right));
+.pd-floor-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 14px 18px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 92% -40%, rgba(255, 255, 255, 0.18) 0 90px, transparent 91px),
+    linear-gradient(135deg, var(--brand-2) 0%, var(--brand) 100%);
+}
+
+.pd-floor-head-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.pd-floor-head-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.pd-floor-kicker {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.pd-floor-title {
+  margin: 2px 0 0;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pd-floor-legend {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.pd-floor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--brand);
+}
+
+.pd-floor-chip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--brand-border);
+  background: #fff;
+}
+
+.pd-floor-chip.is-busy i {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+
+.pd-floor-x {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  transition: background 0.12s, transform 0.15s;
+}
+
+.pd-floor-x:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: rotate(90deg);
 }
 
 .pd-floor-canvas {
   flex: 1;
   min-height: 0;
-  padding: 14px;
+  padding: 22px 18px;
   overflow: auto;
   background:
-    radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.05) 1px, transparent 0) 0 0 / 18px 18px;
+    radial-gradient(circle at 1px 1px, var(--brand-tint) 1px, transparent 0) 0 0 / 20px 20px,
+    var(--brand-bg);
 }
 
 .pd-floor-canvas.is-map {
@@ -1349,41 +1443,90 @@
   font-weight: 600;
 }
 
+/* No. of Persons keypad — big soft keys in the brand theme. */
+.pd-covers-display {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin: 4px 0 14px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: var(--brand-bg);
+  border: 1.5px solid var(--brand-tint);
+}
+
 .pd-covers-value {
-  text-align: center;
-  font-size: 28px;
+  font-size: 34px;
   font-weight: 800;
-  margin: 8px 0 12px;
+  line-height: 1;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.pd-covers-display small {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand-light);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .pd-covers-keys {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 10px;
+}
+
+.pd-covers-keys .pd-key {
+  min-height: 54px;
+  border-radius: 16px;
+  border: 1px solid var(--brand-tint);
+  background: #fff;
+  color: var(--text-1);
+  font-size: 22px;
+  box-shadow: 0 2px 0 var(--brand-tint), 0 4px 10px rgba(120, 8, 41, 0.06);
+  transition: transform 0.08s ease, background 0.12s ease, box-shadow 0.08s ease;
+}
+
+.pd-covers-keys .pd-key:hover {
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+.pd-covers-keys .pd-key:active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 var(--brand-tint);
+}
+
+.pd-covers-keys .pd-key.is-clear {
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 18px;
 }
 
 .pd-covers-keys .pd-key.is-ok {
-  background: var(--pd-brand);
+  border-color: var(--brand);
+  background: linear-gradient(180deg, var(--brand-2) 0%, var(--brand) 100%);
   color: #fff;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  box-shadow: 0 2px 0 #4f0519, 0 6px 14px var(--brand-glow);
+}
+
+.pd-covers-keys .pd-key.is-ok:hover {
+  color: #fff;
+  filter: brightness(1.08);
 }
 
 @media (max-width: 820px) {
-  .pd-floor-dialog .pd-mod-header {
-    padding-top: max(8px, env(safe-area-inset-top));
-    padding-bottom: 10px;
-  }
   .pd-floor-canvas:not(.is-map) {
     padding: 10px;
   }
+  .pd-floor-head { flex-wrap: wrap; }
+  .pd-floor-legend { order: 3; width: 100%; }
   .pd-table-grid.is-floor {
     grid-template-columns: repeat(auto-fill, minmax(min(112px, 100%), 1fr));
-  }
-}
-
-@media (max-height: 720px) {
-  .pd-floor-dialog .pd-mod-header {
-    padding-top: max(8px, env(safe-area-inset-top));
-    padding-bottom: 8px;
   }
 }
 
@@ -2135,7 +2278,7 @@
 
 .pd-keypad-wrap {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 340px minmax(0, 1fr);
   gap: 8px;
   align-items: stretch;
 }
@@ -2316,7 +2459,6 @@
     font-size: 9.5px;
   }
   .pd-service-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pd-service-btn-end { margin-left: 0; }
   .pd-order-head { flex-wrap: nowrap; gap: 6px; }
   .pd-order-head h1 { font-size: 12px; }
   .pd-meta { gap: 4px; flex-wrap: nowrap; }
@@ -2328,7 +2470,7 @@
      every width and height. Only column layout (genuinely width-driven)
      stays here. */
   .pd-actions { gap: 10px; }
-  .pd-keypad-wrap { grid-template-columns: 270px minmax(0, 1fr); gap: 10px; }
+  .pd-keypad-wrap { grid-template-columns: 350px minmax(0, 1fr); gap: 10px; }
   .pd-keypad-left { gap: 8px; }
   .pd-keys { gap: 6px; }
   .pd-group-btns { padding: 8px; gap: 6px; }
@@ -2384,7 +2526,7 @@
 
   /* Column layout only — sizes come from the base clamp() rules. */
   .pd-actions { gap: 5px; }
-  .pd-keypad-wrap { grid-template-columns: 165px minmax(0, 1fr); gap: 5px; }
+  .pd-keypad-wrap { grid-template-columns: 195px minmax(0, 1fr); gap: 5px; }
   .pd-keypad-left { gap: 5px; }
   .pd-keys { gap: 3px; }
   .pd-group-btns { padding: 4px; gap: 4px; }
@@ -2403,7 +2545,7 @@
 
 /* Wide tills: widen the keypad column so the action tiles don't stretch
    into very wide, flat buttons. */
-:root.ui-w1600 .pd-keypad-wrap { grid-template-columns: 360px minmax(0, 1fr); }
+:root.ui-w1600 .pd-keypad-wrap { grid-template-columns: 400px minmax(0, 1fr); }
 
 :root.ui-w1800 .pd-products {
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -3399,18 +3541,38 @@
 }
 
 /* ── Product master ("Add New Item") ────────────────────────────── */
+/* Two columns so the whole form fits on screen without scrolling:
+   item details on the left, pricing / stock on the right. */
 .pd-product-dialog {
-  width: min(560px, 100%);
-  max-height: min(620px, calc(88vh / var(--ui-zoom, 1)));
+  width: min(980px, 100%);
+  max-height: calc(94vh / var(--ui-zoom, 1));
 }
 
 .pd-product-body {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
   padding: 14px 18px;
   overflow-y: auto;
   scrollbar-width: none;
+}
+
+.pd-product-col {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.pd-product-col + .pd-product-col {
+  padding-left: 18px;
+  border-left: 1px solid var(--pd-border);
+}
+
+@media (max-width: 760px) {
+  .pd-product-body { grid-template-columns: minmax(0, 1fr); }
+  .pd-product-col + .pd-product-col { padding-left: 0; border-left: 0; }
 }
 
 .pd-product-body::-webkit-scrollbar {
@@ -5808,7 +5970,6 @@
 }
 
 .pd-em-foot,
-.pd-fd-foot,
 .pd-sv-foot,
 .pd-sb-foot {
   flex: 0 0 auto;
@@ -8105,13 +8266,13 @@
   margin-right: 4px;
 }
 
-.pd-fd-tool,
-.pd-fd-save {
+.pd-fd-tool {
   height: 34px;
-  padding: 0 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  padding: 0 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
   background: #fff;
+  color: var(--text-1);
   font-size: 12px;
   font-weight: 800;
   display: inline-flex;
@@ -8120,15 +8281,21 @@
   cursor: pointer;
 }
 
-.pd-fd-tool:hover {
-  background: #f8f5f5;
-  border-color: #d6c8c8;
+.pd-fd-tool:hover:not(:disabled) {
+  background: var(--brand-bg);
+  border-color: var(--brand-border);
+  color: var(--brand);
+}
+
+.pd-fd-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .pd-fd-tool.is-on {
-  background: #400000;
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
   color: #fff;
-  border-color: #400000;
+  border-color: transparent;
 }
 
 .pd-fd-oval-ico {
@@ -8144,40 +8311,9 @@
 }
 
 .pd-fd-tool.is-danger {
-  color: #b91c1c;
-}
-
-.pd-fd-save {
-  background: #400000;
-  color: #fff;
-  border-color: #400000;
-  min-width: 92px;
-  justify-content: center;
-}
-
-.pd-fd-close {
-  height: 34px;
-  padding: 0 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #fff;
-  color: #b91c1c;
-  font-size: 13px;
-  font-weight: 800;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  min-width: 88px;
-  justify-content: center;
-}
-
-.pd-fd-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 8px 16px 12px;
-  background: #e5e5e5;
+  color: var(--red);
+  background: var(--red-bg);
+  border-color: var(--red-border);
 }
 
 .pd-fd-hint,
@@ -8358,7 +8494,12 @@
 .pd-fd-grip.is-sw { left: 0; top: 100%; cursor: nesw-resize; }
 .pd-fd-grip.is-w { left: 0; top: 50%; cursor: ew-resize; }
 
+/* Floor-map table — same top-down drawing as Table Entry's shape preview.
+   Vacant = soft rose table, occupied = maroon table + maroon chairs. */
 .pd-fd-mark {
+  --fd-hi: #f6e9ed;
+  --fd-lo: var(--brand-tint);
+  --fd-ink: var(--brand);
   position: relative;
   width: 100%;
   height: 100%;
@@ -8366,102 +8507,56 @@
   place-items: center;
   pointer-events: none;
   overflow: visible;
-}
-
-.pd-fd-cluster {
-  position: relative;
-  width: 70%;
-  height: 62%;
   container-type: size;
-  overflow: visible;
 }
 
-.pd-fd-cluster.is-round {
-  width: auto;
-  height: 62%;
-  aspect-ratio: 1;
-  max-width: 70%;
+.pd-fd-mark.is-busy {
+  --fd-hi: var(--brand-light);
+  --fd-lo: var(--brand);
+  --fd-ink: #fff;
 }
 
-.pd-fd-cluster.is-oval {
-  width: auto;
-  height: 52%;
-  aspect-ratio: 1.65 / 1;
-  max-width: 86%;
-}
-
-.pd-fd-cluster.is-rect {
-  width: 72%;
-  height: 56%;
-}
-
-.pd-fd-mark.is-live .pd-fd-cluster {
-  width: 76%;
-  height: 70%;
-}
-
-.pd-fd-mark.is-live .pd-fd-cluster.is-round {
-  width: auto;
-  height: 70%;
-  aspect-ratio: 1;
-  max-width: 76%;
-}
-
-.pd-fd-mark.is-live .pd-fd-cluster.is-oval {
-  width: auto;
-  height: 58%;
-  aspect-ratio: 1.65 / 1;
-  max-width: 90%;
-}
-
-.pd-fd-mark.is-live .pd-fd-cluster.is-rect {
-  width: 80%;
-  height: 66%;
-}
-
-.pd-fd-top {
+.pd-fd-table-svg {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(180deg, #c8f5c8 0%, #90ee90 52%, #74d174 100%);
-  border: 2px solid #1d1d1f;
-  color: #102010;
-  box-sizing: border-box;
-  padding: 3px 4px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    0 3px 8px rgba(0, 0, 0, 0.14);
-  overflow: hidden;
+  overflow: visible;
+  filter: drop-shadow(0 6px 8px rgba(80, 0, 20, 0.18));
 }
 
-.pd-fd-top.is-round,
-.pd-fd-top.is-oval {
-  border-radius: 999px;
+.pd-fd-top-hi { stop-color: var(--fd-hi); }
+.pd-fd-top-lo { stop-color: var(--fd-lo); }
+
+.pd-fd-mark.is-free .pd-fd-top > * {
+  stroke: var(--brand-border);
+  stroke-width: 2;
 }
 
-.pd-fd-top.is-rect {
-  border-radius: 10px;
-}
+.pd-fd-chair .tsp-chair-seat { fill: var(--brand-tint); }
+.pd-fd-chair .tsp-chair-cushion { fill: #fff; opacity: 0.7; }
+.pd-fd-chair .tsp-chair-back { fill: var(--brand-border); }
 
-.pd-fd-top.is-square {
-  border-radius: 2px;
-}
+.pd-fd-mark.is-busy .pd-fd-chair .tsp-chair-seat { fill: var(--brand-2); }
+.pd-fd-mark.is-busy .pd-fd-chair .tsp-chair-cushion { fill: var(--brand-light); opacity: 0.85; }
+.pd-fd-mark.is-busy .pd-fd-chair .tsp-chair-back { fill: var(--brand); }
 
 .pd-fd-face {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  width: 100%;
+  width: 44%;
   min-width: 0;
   text-align: center;
+  color: var(--fd-ink);
 }
 
-.pd-fd-name,
-.pd-fd-top strong {
-  font-size: clamp(9px, 22cqmin, 14px);
+.pd-fd-name {
+  font-size: clamp(9px, 11cqmin, 15px);
   font-weight: 800;
   line-height: 1.05;
   max-width: 100%;
@@ -8490,26 +8585,24 @@
   min-height: 14px;
   padding: 1px 6px;
   border-radius: 999px;
-  font-size: clamp(8px, 16cqmin, 11px);
+  font-size: clamp(8px, 8cqmin, 11px);
   font-weight: 800;
   font-style: normal;
   line-height: 1.15;
-  letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pd-fd-kot {
-  background: #1d1d1f;
-  color: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  background: #fff;
+  color: var(--brand);
 }
 
 .pd-fd-pax {
-  background: #fff;
-  color: #9b1c1c;
-  border: 1px solid rgba(155, 28, 28, 0.2);
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.45);
 }
 
 .pd-fd-pax-ico {
@@ -8520,101 +8613,12 @@
 
 .pd-fd-free {
   margin: 0;
-  font-size: clamp(7px, 14cqmin, 10px);
+  font-size: clamp(7px, 7cqmin, 10px);
   font-weight: 800;
   font-style: normal;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #166534;
-}
-
-.pd-fd-mark.is-busy .pd-fd-top {
-  background: linear-gradient(180deg, #ffc4bc 0%, #f08080 55%, #e57373 100%);
-  border-color: #5c1a16;
-  color: #3b0a0a;
-}
-
-.pd-fd-mark.is-live.is-busy .pd-fd-top {
-  color: #3b0a0a;
-}
-
-.pd-fd-table.is-pick.is-busy .pd-fd-cluster {
-  filter: drop-shadow(0 4px 8px rgba(180, 35, 24, 0.22));
-}
-
-.pd-fd-table.is-pick.is-free .pd-fd-cluster {
-  filter: drop-shadow(0 3px 6px rgba(22, 101, 52, 0.16));
-}
-
-.pd-fd-chairs {
-  position: absolute;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  pointer-events: none;
-}
-
-.pd-fd-chairs.is-one {
-  justify-content: center;
-}
-
-.pd-fd-chairs.is-top,
-.pd-fd-chairs.is-bottom {
-  left: 17.5%;
-  width: 65%;
-}
-
-.pd-fd-chairs.is-top {
-  bottom: calc(100% + 2px);
-}
-
-.pd-fd-chairs.is-bottom {
-  top: calc(100% + 2px);
-}
-
-.pd-fd-chairs.is-left,
-.pd-fd-chairs.is-right {
-  top: 17.5%;
-  height: 65%;
-  flex-direction: column;
-}
-
-.pd-fd-chairs.is-left {
-  right: calc(100% + 2px);
-}
-
-.pd-fd-chairs.is-right {
-  left: calc(100% + 2px);
-}
-
-.pd-fd-chair {
-  flex: 0 0 auto;
-  width: clamp(5px, 12cqmin, 11px);
-  height: clamp(4px, 10cqmin, 9px);
-  background: #000;
-  border-radius: 1px;
-}
-
-.pd-fd-chairs.is-top .pd-fd-chair {
-  border-radius: 2px 2px 1px 1px;
-}
-
-.pd-fd-chairs.is-bottom .pd-fd-chair {
-  border-radius: 1px 1px 2px 2px;
-}
-
-.pd-fd-chair.is-v {
-  width: clamp(4px, 10cqmin, 9px);
-  height: clamp(5px, 12cqmin, 11px);
-}
-
-.pd-fd-chairs.is-left .pd-fd-chair {
-  border-radius: 2px 1px 1px 2px;
-}
-
-.pd-fd-chairs.is-right .pd-fd-chair {
-  border-radius: 1px 2px 2px 1px;
+  color: var(--brand-light);
 }
 
 .pd-fd-prompt-wrap {
@@ -8654,20 +8658,6 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.pd-fd-prompt-actions button {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  font-weight: 800;
-}
-
-.pd-fd-prompt-actions .is-ok {
-  background: #400000;
-  color: #fff;
-  border-color: #400000;
 }
 
 @media (max-width: 820px) {
@@ -9303,6 +9293,38 @@
   align-items: end;
 }
 
+/* One shared DateRangePicker instead of separate From / To inputs. */
+.pd-stk-list-filters.is-range {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.pd-stk-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The filter-label span style above must not reach the picker's own text. */
+.pd-stk-list-filters .drp-field span {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-1);
+}
+
+.pd-stk-list-filters .drp-field .drp-field-placeholder {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.pd-stk-list-filters .drp-field {
+  height: 36px;
+  border-radius: 10px;
+  border-color: var(--border-2);
+}
+
 .pd-stk-entry {
   grid-template-columns: 1.1fr 1.4fr 0.7fr 0.7fr 0.8fr 0.8fr 0.8fr 1fr auto;
   position: relative;
@@ -9824,6 +9846,41 @@
 .pd-edm-inline > select {
   flex: 1;
   min-width: 0;
+}
+
+/* Buttons beside an input (e.g. Group → New) match the input's height. */
+.pd-edm-inline > .pd-form-code-btn {
+  align-self: stretch;
+  height: auto;
+  min-height: 33px;
+}
+
+/* Edit Product sections — an underlined tab bar, not separate buttons. */
+.pd-prd-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1.5px solid var(--pd-border);
+}
+
+.pd-prd-tab {
+  position: relative;
+  padding: 10px 16px;
+  margin-bottom: -1.5px;
+  border-bottom: 2.5px solid transparent;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 700;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.pd-prd-tab:hover {
+  color: var(--pd-text);
+}
+
+.pd-prd-tab.is-on {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+  font-weight: 800;
 }
 
 @media (max-width: 900px) {
@@ -10714,6 +10771,895 @@
 
   /* Keypad a bit narrower so the tiles get more of the full width. */
   .pd-keypad-wrap {
-    grid-template-columns: minmax(200px, 38%) minmax(0, 1fr);
+    grid-template-columns: minmax(230px, 42%) minmax(0, 1fr);
   }
+}
+
+/* Dine-in floor zoom: the content zooms inside a scrollable canvas; the
+   −/%/+ pill floats bottom-right and doesn't scroll with it. */
+.pd-floor-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.pd-floor-canvas.is-map {
+  overflow: auto;
+}
+
+.pd-floor-zoom {
+  flex: 1 0 auto;
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Zoom grows the layout (floor size / table size), not the text — labels
+   keep their normal size so tables just get roomier. */
+.pd-floor-canvas.is-map .pd-floor-zoom {
+  flex: 0 0 auto;
+  width: calc(100% * var(--floor-zoom, 1));
+  height: calc(100% * var(--floor-zoom, 1));
+  min-height: 0;
+  /* Zoomed out (< 100%) the floor is smaller than the canvas — centre it.
+     Auto margins collapse to 0 when zoomed in, so scrolling is unaffected. */
+  margin: auto;
+}
+
+/* Same floor colour + grid as the runtime floor (.pd-fd-canvas), so zooming out
+   doesn't leave an empty band round the shrunken floor. */
+.pd-floor-canvas.is-map {
+  background-color: #e0e0e0;
+  background-image:
+    repeating-linear-gradient(to right, #d3d3d3 0, #d3d3d3 1px, transparent 1px, transparent 20px),
+    repeating-linear-gradient(to bottom, #d3d3d3 0, #d3d3d3 1px, transparent 1px, transparent 20px);
+}
+
+.pd-floor-zoom .pd-table-grid.is-floor {
+  grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--floor-zoom, 1)), 1fr));
+}
+
+.pd-floor-zoomer {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--brand-tint);
+  box-shadow: 0 6px 18px rgba(80, 0, 20, 0.16);
+}
+
+.pd-floor-zoomer button {
+  height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--brand);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.pd-floor-zoomer button:hover:not(:disabled) {
+  background: var(--brand-bg);
+}
+
+.pd-floor-zoomer button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pd-floor-zoomer .pd-floor-zoom-pct {
+  min-width: 52px;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dine-in floor: fixed label sizes so zooming never enlarges the text. */
+.pd-fd-mark.is-live .pd-fd-name { font-size: 13px; }
+.pd-fd-mark.is-live .pd-fd-kot,
+.pd-fd-mark.is-live .pd-fd-pax { font-size: 10px; }
+.pd-fd-mark.is-live .pd-fd-free { font-size: 9px; }
+
+/* No. of Persons prompt — compact keypad-sized dialog. */
+.pd-ol-dialog.pd-covers-dialog {
+  width: min(320px, 100%);
+}
+
+/* Floor Design — close (✕) in the white header's top-right corner. */
+.pd-fd-bar .pd-mod-x {
+  align-self: flex-start;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-tint);
+  color: var(--brand);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, transform 0.15s;
+}
+
+.pd-fd-bar .pd-mod-x:hover:not(:disabled) {
+  background: var(--brand);
+  color: #fff;
+  transform: rotate(90deg);
+}
+
+/* Product Entry — Group picker fills its row beside the "New" button, and
+   the add-group strip spans the full width under Group / SubGroup. */
+.pd-form-code > :not(button) {
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-form-code > .pd-form-code-btn {
+  height: 33px;
+}
+
+.pd-form-add-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-radius: var(--r-md);
+  background: var(--brand-bg);
+  border: 1px dashed var(--brand-border);
+}
+
+.pd-form-add-group input {
+  height: 33px;
+  min-width: 0;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pd-text);
+}
+
+.pd-form-add-group input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.pd-form-add-group .pd-form-code-btn {
+  height: 33px;
+  min-width: 72px;
+}
+
+/* Product Entry — one field system: every input, select, picker, button and
+   read-only value box shares the same 36px height, radius, border and font,
+   so rows line up across both columns. */
+.pd-product-body {
+  --pf-h: 36px;
+}
+
+.pd-product-body .pd-form-row {
+  gap: 5px;
+  min-width: 0;
+}
+
+.pd-product-body .pd-form-row > label {
+  min-height: 14px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pd-product-body .pd-form-grid-2,
+.pd-product-body .pd-form-grid-3 {
+  gap: 10px;
+  align-items: start;
+}
+
+.pd-product-body input,
+.pd-product-body select,
+.pd-product-body .ui-ss,
+.pd-product-body .pd-form-computed,
+.pd-product-body .pd-form-code-btn {
+  box-sizing: border-box;
+  height: var(--pf-h);
+  min-height: var(--pf-h);
+  border-radius: var(--r-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+.pd-product-body input,
+.pd-product-body select,
+.pd-product-body .ui-ss {
+  width: 100%;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  font-weight: 600;
+  color: var(--pd-text);
+}
+
+.pd-product-body .ui-ss {
+  padding-right: 8px;
+}
+
+/* The typeahead input lives inside the .ui-ss box — no second border. */
+.pd-product-body .ui-ss .ui-ss-input {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.pd-product-body textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(var(--pf-h) * 2);
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  font-size: 13px;
+}
+
+.pd-product-body .pd-form-code {
+  align-items: stretch;
+  gap: 8px;
+}
+
+.pd-product-body .pd-form-code-btn {
+  flex-shrink: 0;
+  min-width: 76px;
+  padding: 0 12px;
+}
+
+/* VAT % box + computed AED amount: same height, amount gets a matching
+   (read-only) box instead of a borderless grey strip. */
+.pd-product-body .pd-form-vat-pair {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.pd-product-body .pd-form-vat-pair input {
+  width: 100%;
+  text-align: center;
+}
+
+.pd-product-body .pd-form-computed {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1.5px solid var(--pd-border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pd-product-body input[inputmode='decimal'],
+.pd-product-body input[inputmode='numeric'] {
+  font-variant-numeric: tabular-nums;
+}
+
+.pd-product-body .pd-form-add-group input,
+.pd-product-body .pd-form-add-group .pd-form-code-btn {
+  height: var(--pf-h);
+}
+
+/* Product Entry layout: fixed details on the left, tabbed panel on the right. */
+.pd-product-dialog {
+  width: min(1080px, 100%);
+}
+
+.pd-product-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+  padding: 16px 20px 18px;
+}
+
+.pd-pf-main {
+  padding-right: 20px;
+}
+
+.pd-pf-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-left: 20px;
+  border-left: 1px solid var(--pd-border);
+}
+
+.pd-pf-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pd-pf-req {
+  color: var(--brand);
+}
+
+.pd-product-body .pd-form-code-btn.is-on {
+  background: #fff;
+  color: var(--pd-text-2);
+  border-color: var(--pd-border);
+}
+
+.pd-product-body .pd-pf-pct {
+  text-align: center;
+}
+
+/* Tabs — segmented control: grey track, active tab is a raised brand pill. */
+.pd-pf-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--pd-border);
+}
+
+.pd-pf-tab {
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.pd-pf-tab:hover {
+  color: var(--brand);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.pd-pf-tab.is-on {
+  color: #fff;
+  background: linear-gradient(135deg, var(--pd-grad-start, var(--brand)) 0%, var(--pd-grad-end, var(--brand-2)) 100%);
+  box-shadow: 0 2px 8px rgba(120, 8, 41, 0.25);
+}
+
+/* Fixed min-height so switching tabs doesn't make the dialog jump. */
+.pd-pf-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 262px;
+  padding-top: 14px;
+}
+
+.pd-pf-hint {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.pd-pf-levels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pd-pf-money {
+  display: flex;
+  align-items: stretch;
+  height: var(--pf-h);
+  border: 1.5px solid var(--pd-border);
+  border-radius: var(--r-sm);
+  background: #fff;
+  overflow: hidden;
+}
+
+.pd-pf-money:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.pd-pf-money span {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: var(--surface-2);
+  border-right: 1.5px solid var(--pd-border);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-3);
+}
+
+.pd-product-body .pd-pf-money input {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 860px) {
+  .pd-product-body { grid-template-columns: minmax(0, 1fr); }
+  .pd-pf-main { padding-right: 0; }
+  .pd-pf-side { padding-left: 0; border-left: 0; margin-top: 18px; }
+}
+
+@media (max-width: 600px) {
+  .pd-product-body .pd-form-grid-2,
+  .pd-product-body .pd-form-grid-3,
+  .pd-pf-levels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ══ Transactions dialogs — match the Creation modal ══════════════════
+   Stock Adjustment / Damage / Additional Stock (entry + list), Stock report
+   and Movement report use the .pd-inv family; restyle it to the Creation
+   modal's white body, sentence-case labels, 33px fields, grey-header table
+   and grey footer. Also compacts .pd-grid tables inside any entry modal. */
+.pd-inv {
+  background: #fff;
+  border: none;
+  border-radius: 24px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+}
+
+.pd-inv-head {
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
+  border-bottom: none;
+}
+
+.pd-inv-head h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.pd-inv-body {
+  background: #fff;
+  padding: 12px 16px 16px;
+  gap: 10px;
+}
+
+.pd-inv-body-report {
+  padding: 0 16px 12px;
+}
+
+/* Filter forms sit directly on the body, like Creation fields. */
+.pd-inv-card {
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.pd-inv-options {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+/* Labels: sentence case, grey — not uppercase maroon. */
+.pd-inv-form label,
+.pd-inv-qty,
+.pd-stk-meta span,
+.pd-stk-list-filters span,
+.pd-stk-entry span:not(.pd-inv-search) {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  text-transform: none;
+  color: var(--pd-text-2);
+}
+
+.pd-inv-form,
+.pd-stk-meta,
+.pd-stk-list-filters,
+.pd-stk-entry {
+  gap: 9px;
+}
+
+.pd-inv-form label,
+.pd-stk-meta label,
+.pd-stk-list-filters label,
+.pd-stk-entry label {
+  gap: 5px;
+}
+
+/* Fields: 33px, same border/radius/font as .pd-form-row inputs. */
+.pd-inv-form select,
+.pd-inv-form input,
+.pd-inv-qty select,
+.pd-inv-qty input,
+.pd-stk-meta input,
+.pd-stk-list-filters input,
+.pd-stk-list-filters select,
+.pd-stk-entry input,
+.pd-stk-entry select,
+.pd-stk-entry .pd-inv-search {
+  height: 33px;
+}
+
+.pd-inv-form select,
+.pd-inv-form input,
+.pd-inv-qty select,
+.pd-inv-qty input,
+.pd-stk-meta input,
+.pd-stk-list-filters input,
+.pd-stk-list-filters select,
+.pd-stk-entry input,
+.pd-stk-entry select {
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pd-text);
+}
+
+.pd-stk-meta input:focus,
+.pd-stk-list-filters input:focus,
+.pd-stk-list-filters select:focus,
+.pd-stk-entry input:focus,
+.pd-stk-entry select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.pd-stk-meta input[readonly],
+.pd-stk-entry input[readonly] {
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+
+/* In-body action buttons (Search, Add) — the Creation "code button". */
+.pd-inv-body .pd-inv-go,
+.pd-stk-list-filters .pd-inv-go,
+.pd-stk-entry .pd-inv-go {
+  height: 33px;
+  padding: 0 14px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--brand-border);
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.pd-inv-body .pd-inv-go:hover:not(:disabled),
+.pd-stk-list-filters .pd-inv-go:hover:not(:disabled),
+.pd-stk-entry .pd-inv-go:hover:not(:disabled) {
+  filter: none;
+  background: var(--brand-tint);
+}
+
+/* Line table: white box, grey sticky header, 1px row lines (ScrollTable). */
+.pd-stk-grid-wrap {
+  flex: 1 1 auto;
+  min-height: 160px;
+  margin: 12px 16px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.pd-stk-grid-wrap .pd-inv-grid th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 12px;
+  border-bottom: none;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.pd-stk-grid-wrap .pd-inv-grid td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  background: #fff;
+}
+
+.pd-stk-grid-wrap .pd-inv-grid tbody tr:nth-child(even) td {
+  background: #fff;
+}
+
+.pd-stk-grid-wrap .pd-inv-grid tbody tr:hover td {
+  background: var(--brand-bg);
+}
+
+.pd-stk-grid-wrap .pd-inv-grid tbody tr.is-sel td {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.pd-stk-grid-wrap .pd-inv-grid tbody tr.is-sel td:first-child {
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+.pd-inv-empty {
+  font-weight: 500;
+  border-bottom: none !important;
+}
+
+/* Footer: grey bar with compact buttons, like .pd-mod-foot. */
+.pd-inv-foot {
+  background: var(--surface-2);
+  padding: 12px 16px;
+  gap: 8px;
+}
+
+.pd-inv-foot .pd-inv-ghost,
+.pd-inv-foot .pd-inv-go {
+  height: 36px;
+  min-width: 93px;
+  padding: 0 14px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 800;
+  justify-content: center;
+}
+
+.pd-inv-foot .pd-inv-ghost {
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--text-1);
+}
+
+.pd-inv-foot .pd-inv-go {
+  background: linear-gradient(135deg, var(--pd-grad-start) 0%, var(--pd-grad-end) 100%);
+  box-shadow: 0 4px 14px rgba(107, 0, 0, 0.22);
+}
+
+/* .pd-grid inside entry modals (Opening Stock, Transfers, Purchase,
+   Supplier List…): compact ScrollTable look instead of 58px POS rows. */
+.pd-ol-dialog .pd-grid-wrap {
+  flex: none;
+  min-height: 150px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.pd-ol-dialog .pd-grid {
+  border-collapse: collapse;
+}
+
+.pd-ol-dialog .pd-grid th {
+  height: auto;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 0 !important;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pd-ol-dialog .pd-grid td,
+.pd-ol-dialog .pd-edm .pd-grid td,
+.pd-edm .pd-grid td {
+  height: auto;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 !important;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.pd-ol-dialog .pd-grid tbody tr td:first-child {
+  padding-left: 12px;
+}
+
+.pd-ol-dialog .pd-grid tbody tr:hover td {
+  background: var(--brand-bg);
+}
+
+.pd-ol-dialog .pd-grid tbody tr.is-selected td {
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.pd-ol-dialog .pd-grid tbody tr.is-selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+/* "No lines added"-style single-cell rows. */
+.pd-ol-dialog .pd-grid tbody td[colspan] {
+  padding: 24px 12px;
+  border-bottom: none;
+  text-align: center;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+/* ══ Product Entry — fixed item card on top, tabbed details below. ═══════ */
+.pd-prd-edit .pd-ol-body {
+  gap: 14px;
+}
+
+.pd-pe-card {
+  padding: 14px;
+  border: 1.5px solid var(--pd-border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.pd-pe-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pd-pe-grid .pd-form-row input,
+.pd-pe-grid .pd-form-row select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.pd-pe-grid .pd-form-row input:disabled {
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.pd-pe-half {
+  grid-column: span 2;
+}
+
+.pd-pe-req {
+  color: var(--red);
+}
+
+/* Auto / Manual switch beside Item Code. */
+.pd-pe-seg {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-self: stretch;
+  padding: 2px;
+  border: 1.5px solid var(--pd-border);
+  border-radius: var(--r-sm);
+  background: #fff;
+}
+
+.pd-pe-seg button {
+  padding: 0 12px;
+  border-radius: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pd-pe-seg button.is-on {
+  background: var(--brand);
+  color: #fff;
+}
+
+.pd-pe-total {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pd-pe-grid .pd-pe-total input {
+  flex: 1;
+  border-color: var(--brand-border);
+  color: var(--brand);
+  font-weight: 800;
+}
+
+.pd-pe-hint {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.pd-pe-levels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-pe-levels-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pd-pe-levels-head p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.pd-pe-levels-head .pd-form-code-btn {
+  height: 30px;
+}
+
+.pd-pe-levels-head .pd-form-code-btn:disabled {
+  opacity: 0.5;
+}
+
+.pd-pe-level {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) 130px;
+  align-items: center;
+  gap: 12px;
+}
+
+.pd-pe-level label {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--pd-text-2);
+}
+
+.pd-pe-level label small {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-4);
+}
+
+.pd-pe-level input {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--pd-text);
+  text-align: right;
+}
+
+.pd-pe-level input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.pd-pe-level .pd-pe-hint {
+  text-align: right;
+}
+
+@media (max-width: 700px) {
+  .pd-pe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pd-pe-level { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pd-pe-level .pd-pe-hint { grid-column: 2; }
 }

@@ -103,6 +103,23 @@ button { cursor: pointer; border: none; background: none; font-weight: var(--fw-
 ::-webkit-scrollbar-thumb   { background: var(--border-2); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-4); }
 
+/* Modals: hide every scrollbar (tables, lists, bodies) but keep wheel,
+   touch and keyboard scrolling. !important beats the per-component
+   `scrollbar-width: thin` rules that load after this file. */
+[role="dialog"],
+[role="dialog"] *,
+[class*="overlay"] * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none;
+}
+[role="dialog"]::-webkit-scrollbar,
+[role="dialog"] *::-webkit-scrollbar,
+[class*="overlay"] *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
 @keyframes slideUp {
   from { opacity: 0; transform: scale(0.96) translateY(10px) }

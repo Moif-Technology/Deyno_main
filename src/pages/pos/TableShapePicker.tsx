@@ -1,19 +1,56 @@
 /**
- * Table Entry's right-hand panel: pick Round / Rectangle / Square and see a
- * top-down preview of the table with the entered number of chairs.
+ * Table Entry's right-hand panel: pick a table shape (three cards show, the rest
+ * scroll sideways) and, on Demo, see a top-down preview with the entered chairs.
  */
-import { Armchair, Check } from 'lucide-react'
+import { useState, type MouseEvent } from 'react'
+import { Armchair, Check, Eye, EyeOff } from 'lucide-react'
 import './TableShapePicker.css'
 
-export type TableShape = 'ROUND' | 'RECTANGLE' | 'SQUARE'
+export type TableShape = 'ROUND' | 'RECTANGLE' | 'SQUARE' | 'OVAL' | 'HEXAGON' | 'OCTAGON'
 
-const SHAPES: { id: TableShape; label: string }[] = [
-  { id: 'ROUND', label: 'Round' },
-  { id: 'RECTANGLE', label: 'Rectangle' },
-  { id: 'SQUARE', label: 'Square' },
+const SHAPES: { id: TableShape; label: string; sample: number }[] = [
+  { id: 'ROUND', label: 'Round', sample: 6 },
+  { id: 'RECTANGLE', label: 'Rectangle', sample: 6 },
+  { id: 'SQUARE', label: 'Square', sample: 4 },
+  { id: 'OVAL', label: 'Oval', sample: 6 },
+  { id: 'HEXAGON', label: 'Hexagon', sample: 6 },
+  { id: 'OCTAGON', label: 'Octagon', sample: 8 },
 ]
 
-type Seat = { x: number; y: number; angle: number }
+/** Saved table format text → a shape we can draw (unknown → Square). */
+export function toTableShape(format?: string): TableShape {
+  const f = String(format ?? '').trim().toUpperCase()
+  return SHAPES.some((s) => s.id === f) ? (f as TableShape) : 'SQUARE'
+}
+
+/** Regular polygon points round the centre, first vertex at `start` degrees. */
+function polygon(sides: number, r: number, start: number) {
+  return Array.from({ length: sides }, (_, i) => {
+    const a = ((start + (i * 360) / sides) * Math.PI) / 180
+    return `${(100 + Math.cos(a) * r).toFixed(1)},${(100 + Math.sin(a) * r).toFixed(1)}`
+  }).join(' ')
+}
+
+/** Table top drawn in the shared 200x200 view box. */
+export function TableTop({ shape, fill }: { shape: TableShape; fill: string }) {
+  switch (shape) {
+    case 'ROUND':
+      return <circle cx={100} cy={100} r={50} fill={fill} />
+    case 'RECTANGLE':
+      return <rect x={22} y={60} width={156} height={80} rx={10} fill={fill} />
+    case 'OVAL':
+      return <ellipse cx={100} cy={100} rx={66} ry={42} fill={fill} />
+    case 'HEXAGON':
+      // Flat top, so a chair sits square to each side.
+      return <polygon points={polygon(6, 58, 0)} fill={fill} />
+    case 'OCTAGON':
+      return <polygon points={polygon(8, 56, 22.5)} fill={fill} />
+    default:
+      return <rect x={45} y={45} width={110} height={110} rx={10} fill={fill} />
+  }
+}
+
+export type Seat = { x: number; y: number; angle: number }
 
 /** Spread `n` seats evenly along a straight edge from (x1,y1) to (x2,y2). */
 function along(n: number, x1: number, y1: number, x2: number, y2: number, angle: number): Seat[] {
@@ -24,9 +61,17 @@ function along(n: number, x1: number, y1: number, x2: number, y2: number, angle:
 }
 
 /** Chair positions around the table. `angle` points the chair back outward. */
-function seatsFor(shape: TableShape, chairs: number): Seat[] {
+export function seatsFor(shape: TableShape, chairs: number): Seat[] {
   const c = 100
-  if (shape === 'ROUND') {
+  if (shape === 'OVAL') {
+    // Round the ellipse; each chair back follows the outward normal.
+    return Array.from({ length: chairs }, (_, i) => {
+      const a = (i / chairs) * Math.PI * 2 - Math.PI / 2
+      const normal = Math.atan2(Math.sin(a) / 66, Math.cos(a) / 90)
+      return { x: c + Math.cos(a) * 90, y: c + Math.sin(a) * 66, angle: (normal * 180) / Math.PI + 90 }
+    })
+  }
+  if (shape === 'ROUND' || shape === 'HEXAGON' || shape === 'OCTAGON') {
     return Array.from({ length: chairs }, (_, i) => {
       const a = (i / chairs) * Math.PI * 2 - Math.PI / 2
       return { x: c + Math.cos(a) * 70, y: c + Math.sin(a) * 70, angle: (a * 180) / Math.PI + 90 }
@@ -54,7 +99,7 @@ function seatsFor(shape: TableShape, chairs: number): Seat[] {
 }
 
 /** Shrink chairs when neighbours would overlap (a chair is ~34 units wide). */
-function chairScale(seats: Seat[]) {
+export function chairScale(seats: Seat[]) {
   let min = Infinity
   for (let i = 0; i < seats.length; i++)
     for (let j = i + 1; j < seats.length; j++)
@@ -62,9 +107,26 @@ function chairScale(seats: Seat[]) {
   return Math.max(0.5, Math.min(1, min / 36))
 }
 
-function Chair({ seat, scale }: { seat: Seat; scale: number }) {
+export function Chair({
+  seat,
+  scale,
+  className,
+  title,
+  onClick,
+}: {
+  seat: Seat
+  scale: number
+  className?: string
+  title?: string
+  onClick?: (e: MouseEvent<SVGGElement>) => void
+}) {
   return (
-    <g transform={`translate(${seat.x} ${seat.y}) rotate(${seat.angle}) scale(${scale})`}>
+    <g
+      transform={`translate(${seat.x} ${seat.y}) rotate(${seat.angle}) scale(${scale})`}
+      className={className}
+      onClick={onClick}
+    >
+      {title ? <title>{title}</title> : null}
       {/* soft floor shadow */}
       <ellipse cx={0} cy={3} rx={16} ry={14} className="tsp-chair-shadow" />
       {/* seat */}
@@ -92,13 +154,7 @@ export function TableSvg({ shape, chairs, plant = false }: { shape: TableShape; 
         <Chair key={i} seat={s} scale={scale} />
       ))}
       <g className="tsp-table">
-        {shape === 'ROUND' ? (
-          <circle cx={100} cy={100} r={50} fill={`url(#tsp-top-${shape})`} />
-        ) : shape === 'RECTANGLE' ? (
-          <rect x={22} y={60} width={156} height={80} rx={10} fill={`url(#tsp-top-${shape})`} />
-        ) : (
-          <rect x={45} y={45} width={110} height={110} rx={10} fill={`url(#tsp-top-${shape})`} />
-        )}
+        <TableTop shape={shape} fill={`url(#tsp-top-${shape})`} />
       </g>
       {plant ? (
         <g className="tsp-plant" transform="translate(100 100)">
@@ -119,17 +175,24 @@ type Props = {
 }
 
 export function TableShapePicker({ value, onChange, chairs }: Props) {
-  const shape: TableShape = SHAPES.some((s) => s.id === value) ? (value as TableShape) : 'SQUARE'
+  const shape = toTableShape(value)
+  const [demo, setDemo] = useState(false)
   const seatCount = Math.min(Math.max(chairs || 4, 1), 16)
   const label = SHAPES.find((s) => s.id === shape)!.label
 
   return (
     <section className="tsp" aria-label="Table shape">
       <header className="tsp-head">
-        <div>
-          <h3>Choose Table Shape</h3>
-          <p>Select the shape and see the preview below.</p>
-        </div>
+        <h3>Choose Table Shape</h3>
+        <button
+          type="button"
+          className={`tsp-demo${demo ? ' is-on' : ''}`}
+          aria-expanded={demo}
+          onClick={() => setDemo((v) => !v)}
+        >
+          {demo ? <EyeOff size={14} /> : <Eye size={14} />}
+          {demo ? 'Hide Demo' : 'Demo'}
+        </button>
       </header>
 
       <div className="tsp-options" role="radiogroup" aria-label="Table shape">
@@ -147,23 +210,25 @@ export function TableShapePicker({ value, onChange, chairs }: Props) {
                 <Check size={11} strokeWidth={3} />
               </span>
             ) : null}
-            <TableSvg shape={s.id} chairs={s.id === 'ROUND' ? 6 : s.id === 'RECTANGLE' ? 6 : 4} />
+            <TableSvg shape={s.id} chairs={s.sample} />
             <span>{s.label}</span>
           </button>
         ))}
       </div>
 
-      <div className="tsp-preview">
-        <span className="tsp-badge">
-          <i /> {label} Table
-        </span>
-        <span className="tsp-count">
-          <Armchair size={16} />
-          <b>{seatCount}</b>
-          <small>Chairs</small>
-        </span>
-        <TableSvg shape={shape} chairs={seatCount} plant />
-      </div>
+      {demo ? (
+        <div className="tsp-preview">
+          <span className="tsp-badge">
+            <i /> {label} Table
+          </span>
+          <span className="tsp-count">
+            <Armchair size={16} />
+            <b>{seatCount}</b>
+            <small>Chairs</small>
+          </span>
+          <TableSvg shape={shape} chairs={seatCount} plant />
+        </div>
+      ) : null}
     </section>
   )
 }

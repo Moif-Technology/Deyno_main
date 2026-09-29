@@ -132,6 +132,15 @@ export default function ProductListDialog({ onClose, onEdit }: Props) {
         <div className="pd-ol-body">
           <div className="pd-form-grid-3">
             <div className="pd-form-row">
+              <label>Search</label>
+              <input
+                value={search}
+                placeholder="Barcode, description or price"
+                autoFocus
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="pd-form-row">
               <label>Group</label>
               <select
                 value={groupId}
@@ -158,10 +167,6 @@ export default function ProductListDialog({ onClose, onEdit }: Props) {
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="pd-form-row">
-              <label>Search</label>
-              <input value={search} placeholder="Barcode, description or price" onChange={(e) => setSearch(e.target.value)} />
             </div>
           </div>
 

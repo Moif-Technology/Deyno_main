@@ -5,6 +5,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { Toast, toastKindFor } from '../../components/common/Toast'
+import { decimal, digits } from '../../utils/validate'
+
 
 const AREA_PALETTE = [
   '#90EE90',
@@ -510,7 +513,11 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
         </div>
       </div>
 
-      {hint ? <div className="pd-toast pd-ks-toast">{hint}</div> : null}
+      {hint ? (
+        <div className="pd-toast pd-ks-toast">
+          <Toast key={hint} message={hint} kind={toastKindFor(hint)} duration={3600} />
+        </div>
+      ) : null}
 
       {vacantOpen ? (
         <div className="pd-mod-overlay pd-ks-pop" role="presentation">
@@ -597,7 +604,7 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
                     ref={qtyRef}
                     className="pd-qty-input"
                     value={qtyDraft}
-                    onChange={(e) => setQtyDraft(e.target.value.replace(/[^\d.]/g, '').slice(0, 8))}
+                    onChange={(e) => setQtyDraft(decimal(e.target.value).slice(0, 8))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') onQtyDone()
                       if (e.key === 'Escape') onQtyCancel()
@@ -664,7 +671,7 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
                     ref={paxRef}
                     className="pd-qty-input"
                     value={paxDraft}
-                    onChange={(e) => setPaxDraft(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                    onChange={(e) => setPaxDraft(digits(e.target.value, 6))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') onPaxDone()
                       if (e.key === 'Escape') onPaxCancel()
