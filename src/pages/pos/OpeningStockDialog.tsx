@@ -328,7 +328,7 @@ export default function OpeningStockDialog({ onClose, onSaved }: Props) {
                     ref={padInputRef}
                     className="pd-qty-input"
                     value={padQty}
-                    inputMode="decimal"
+                    inputMode="none"
                     placeholder="0"
                     onChange={(e) => setPadQty(decimal(e.target.value).slice(0, 10))}
                     onKeyDown={(e) => {

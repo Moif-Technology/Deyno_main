@@ -1,10 +1,13 @@
 /**
- * Product list / edit — group and sub-group filters, same columns as Saloon POS.
+ * Product list / edit — minimal list layout: search (filters as you type) ·
+ * group · sub-group in one toolbar row, the common table, count in the footer.
+ * Double-click a row (or Edit Product) to open it.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Package, X } from 'lucide-react'
+import { Package, Pencil, Search, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
 import { ownMenuGroups } from './ProductEntryDialog'
+import './ListToolbar.css'
 
 type Props = {
   onClose: () => void
@@ -113,7 +116,7 @@ export default function ProductListDialog({ onClose, onEdit }: Props) {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="pd-ol-dialog pd-ol-wide pd-edm" role="dialog" aria-modal="true" aria-labelledby="pd-prd-list-title">
+      <div className="pd-ol-dialog pd-ol-wide pd-edm lst-dialog" role="dialog" aria-modal="true" aria-labelledby="pd-prd-list-title">
         <div className="pd-mod-header">
           <div className="pd-mod-header-left">
             <div className="pd-mod-header-icon">
@@ -130,44 +133,54 @@ export default function ProductListDialog({ onClose, onEdit }: Props) {
         </div>
 
         <div className="pd-ol-body">
-          <div className="pd-form-grid-3">
-            <div className="pd-form-row">
-              <label>Search</label>
+          <div className="lst-bar">
+            <span className="lst-search">
+              <Search size={14} />
               <input
                 value={search}
-                placeholder="Barcode, description or price"
+                placeholder="Search barcode, name or price"
                 autoFocus
                 onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <div className="pd-form-row">
-              <label>Group</label>
-              <select
-                value={groupId}
-                onChange={(e) => {
-                  setGroupId(e.target.value)
-                  setSubGroupId('')
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && filtered.length === 1) openSelected(filtered[0].productId)
                 }}
-              >
-                <option value="">All groups</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="pd-form-row">
-              <label>Sub Group</label>
-              <select value={subGroupId} onChange={(e) => setSubGroupId(e.target.value)} disabled={!groupId}>
-                <option value="">All sub groups</option>
-                {subGroups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+              />
+              {search ? (
+                <button type="button" onClick={() => setSearch('')} aria-label="Clear search">
+                  <X size={12} />
+                </button>
+              ) : null}
+            </span>
+            <select
+              className="lst-select"
+              value={groupId}
+              aria-label="Group"
+              onChange={(e) => {
+                setGroupId(e.target.value)
+                setSubGroupId('')
+              }}
+            >
+              <option value="">All groups</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="lst-select"
+              value={subGroupId}
+              aria-label="Sub group"
+              onChange={(e) => setSubGroupId(e.target.value)}
+              disabled={!groupId}
+            >
+              <option value="">All sub groups</option>
+              {subGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {error ? <p className="pd-mfg-msg">{error}</p> : null}
@@ -181,7 +194,7 @@ export default function ProductListDialog({ onClose, onEdit }: Props) {
                   <th>Arabic</th>
                   <th className="num">Qty</th>
                   <th className="num">Price</th>
-                  <th className="num">Order</th>
+                  <th>Popup</th>
                 </tr>
               </thead>
               <tbody>
@@ -206,8 +219,8 @@ export default function ProductListDialog({ onClose, onEdit }: Props) {
                       <td>{row.description || '—'}</td>
                       <td>{row.arabic || '—'}</td>
                       <td className="num">{row.qty || '—'}</td>
-                      <td className="num">{row.price || '—'}</td>
-                      <td className="num">{row.orderNo || '—'}</td>
+                      <td className="num">{row.price ? Number(row.price).toFixed(2) : '—'}</td>
+                      <td>{row.orderNo || '—'}</td>
                     </tr>
                   ))
                 )}
@@ -217,10 +230,13 @@ export default function ProductListDialog({ onClose, onEdit }: Props) {
         </div>
 
         <div className="pd-mod-foot">
-          <span className="pd-mfg-count">{selected ? '1 selected' : `${filtered.length} items`}</span>
+          <span className="pd-mfg-count lst-count">
+            Count <b>{filtered.length}</b>
+            {filtered.length !== rows.length ? ` of ${rows.length}` : ''}
+          </span>
           <span className="pd-mod-foot-spacer" />
           <button type="button" className="pd-mod-foot-btn is-ok" disabled={!selected} onClick={() => openSelected()}>
-            Edit Product
+            <Pencil size={14} /> Edit Product
           </button>
         </div>
       </div>

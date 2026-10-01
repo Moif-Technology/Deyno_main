@@ -1,9 +1,12 @@
 /**
  * Recipe list — products that already have a recipe. Double-click opens entry.
+ * Minimal list layout: one search (filters live; Enter asks the server), the
+ * common table, count in the footer.
  */
-import { useEffect, useState } from 'react'
-import { ClipboardList, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ClipboardList, Plus, Search, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import './ListToolbar.css'
 
 type Props = {
   onClose: () => void
@@ -31,21 +34,17 @@ function moneyFmt(n: number) {
 }
 
 export default function RecipeListDialog({ onClose, onSelect, onNew }: Props) {
-  const [name, setName] = useState('')
-  const [barcode, setBarcode] = useState('')
+  const [search, setSearch] = useState('')
   const [rows, setRows] = useState<Row[]>([])
   const [selected, setSelected] = useState<number | null>(null)
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
 
-  async function load(filters = { name, barcode }) {
+  async function load(q = '') {
     setState('loading')
     setError(null)
     try {
-      const list = await apiService.fetchRecipes({
-        q: filters.name.trim() || undefined,
-        barcode: filters.barcode.trim() || undefined,
-      })
+      const list = await apiService.fetchRecipes({ q: q.trim() || undefined })
       setRows(
         list.map((r) => ({
           finishedProductId: Number(r.finishedProductId) || 0,
@@ -66,9 +65,15 @@ export default function RecipeListDialog({ onClose, onSelect, onNew }: Props) {
   }
 
   useEffect(() => {
-    void load({ name: '', barcode: '' })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void load()
   }, [])
+
+  // Live filter on what's loaded: name or barcode.
+  const shown = useMemo(() => {
+    const n = search.trim().toLowerCase()
+    if (!n) return rows
+    return rows.filter((r) => r.productName.toLowerCase().includes(n) || r.barcode.toLowerCase().includes(n))
+  }, [rows, search])
 
   async function removeSelected() {
     if (!selected) return
@@ -77,7 +82,7 @@ export default function RecipeListDialog({ onClose, onSelect, onNew }: Props) {
     if (!window.confirm(`Delete the recipe for ${row.productName}?`)) return
     try {
       await apiService.deleteRecipe(selected)
-      await load()
+      await load(search)
     } catch (err) {
       setError(errMessage(err, 'Could not delete recipe'))
     }
@@ -91,7 +96,7 @@ export default function RecipeListDialog({ onClose, onSelect, onNew }: Props) {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="pd-ol-dialog pd-ol-table pd-mfg" role="dialog" aria-modal="true" aria-labelledby="pd-recipe-list-title">
+      <div className="pd-ol-dialog pd-ol-table pd-mfg lst-dialog" role="dialog" aria-modal="true" aria-labelledby="pd-recipe-list-title">
         <div className="pd-mod-header">
           <div className="pd-mod-header-left">
             <div className="pd-mod-header-icon">
@@ -108,22 +113,34 @@ export default function RecipeListDialog({ onClose, onSelect, onNew }: Props) {
         </div>
 
         <div className="pd-ol-body">
-          <div className="pd-txn-search-row">
-            <div className="pd-form-row">
-              <label>Product Name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="pd-form-row">
-              <label>Barcode</label>
-              <input value={barcode} onChange={(e) => setBarcode(e.target.value)} />
-            </div>
-            <button
-              type="button"
-              className="pd-form-code-btn pd-txn-search-btn"
-              onClick={() => void load()}
-              disabled={state === 'loading'}
-            >
-              {state === 'loading' ? 'Loading…' : 'Search'}
+          <div className="lst-bar">
+            <span className="lst-search">
+              <Search size={14} />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void load(search)
+                }}
+                placeholder="Search product name or barcode"
+                autoFocus
+              />
+              {search ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch('')
+                    void load()
+                  }}
+                  aria-label="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              ) : null}
+            </span>
+            <button type="button" className="lst-btn is-primary" onClick={onNew}>
+              <Plus size={14} />
+              New Recipe
             </button>
           </div>
 
@@ -141,12 +158,16 @@ export default function RecipeListDialog({ onClose, onSelect, onNew }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {state !== 'loading' && rows.length === 0 ? (
+                {state === 'loading' && rows.length === 0 ? (
                   <tr>
-                    <td colSpan={5}>No recipes for this counter yet</td>
+                    <td colSpan={5}>Loading…</td>
+                  </tr>
+                ) : shown.length === 0 ? (
+                  <tr>
+                    <td colSpan={5}>{search.trim() ? 'No recipe matches this search' : 'No recipes for this counter yet'}</td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
+                  shown.map((row) => (
                     <tr
                       key={row.finishedProductId}
                       className={selected === row.finishedProductId ? 'is-selected' : undefined}
@@ -168,9 +189,17 @@ export default function RecipeListDialog({ onClose, onSelect, onNew }: Props) {
         </div>
 
         <div className="pd-mod-foot">
-          <span className="pd-mfg-count">Count: {rows.length}</span>
+          <span className="pd-mfg-count lst-count">
+            {state === 'loading' ? (
+              'Loading…'
+            ) : (
+              <>
+                Count <b>{shown.length}</b>
+                {shown.length !== rows.length ? ` of ${rows.length}` : ''}
+              </>
+            )}
+          </span>
           <span className="pd-mod-foot-spacer" />
-          <button type="button" className="pd-mod-foot-btn" onClick={onNew}>New</button>
           <button type="button" className="pd-mod-foot-btn is-close" onClick={() => void removeSelected()} disabled={!selected}>
             Delete
           </button>

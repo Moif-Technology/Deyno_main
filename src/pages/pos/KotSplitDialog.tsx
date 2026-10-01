@@ -3,29 +3,13 @@
  * Layout matches KotSplitFrm.Designer.vb; save matches Split_Save_ToChair1.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, GripVertical, MapPinned, Scissors, Users, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { ConfirmDialog } from '../../components/common/ConfirmDialog'
 import { Toast, toastKindFor } from '../../components/common/Toast'
 import { decimal, digits } from '../../utils/validate'
+import './KotSplitDialog.css'
 
-
-const AREA_PALETTE = [
-  '#90EE90',
-  '#ADD8E6',
-  '#FFFFE0',
-  '#FFB6C1',
-  '#48D1CC',
-  '#DDA0DD',
-  '#FFA07A',
-  '#D3D3D3',
-  '#9ACD32',
-  '#87CEFA',
-  '#98FB98',
-  '#F08080',
-  '#F0E68C',
-  '#FFE4E1',
-  '#E0FFFF',
-] as const
 
 const QTY_KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const
 const PAX_KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0'] as const
@@ -86,12 +70,6 @@ function errMessage(err: unknown, fallback: string) {
   if (err instanceof ApiError && err.message) return err.message
   if (err instanceof Error && err.message) return err.message
   return fallback
-}
-
-function areaSwatch(areaId: number, areaName = '') {
-  const seed =
-    areaId > 0 ? areaId : [...String(areaName)].reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  return AREA_PALETTE[Math.abs(seed) % AREA_PALETTE.length]
 }
 
 function getAreaName(areas: AreaRow[], areaId: number) {
@@ -172,9 +150,9 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
   const [vacantOpen, setVacantOpen] = useState(false)
   const [vacantAreaId, setVacantAreaId] = useState(0)
   const [occupiedTableIds, setOccupiedTableIds] = useState<Set<number>>(new Set())
-  const [vacantConfirmTable, setVacantConfirmTable] = useState<TableRow | null>(null)
-  const [confirm, setConfirm] = useState<'picker' | 'use-table' | 'save' | null>(null)
-  const [pendingTable, setPendingTable] = useState<{ areaId: number; tableId: number } | null>(null)
+  const [confirmSave, setConfirmSave] = useState(false)
+  /** Split Save was pressed before a table was chosen — continue to the save once it is. */
+  const saveAfterPick = useRef(false)
   const [qtyOpen, setQtyOpen] = useState(false)
   const [qtyDraft, setQtyDraft] = useState('')
   const [qtyNode, setQtyNode] = useState<{ node: SplitItem; idx: number } | null>(null)
@@ -182,6 +160,10 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
   const [paxDraft, setPaxDraft] = useState('')
   const [saveBusy, setSaveBusy] = useState(false)
   const qtyRef = useRef<HTMLInputElement | null>(null)
+  /** Item being dragged (which side + its index) and the side it is hovering over. */
+  const dragRef = useRef<{ from: 'stay' | 'move'; idx: number } | null>(null)
+  const [dragFrom, setDragFrom] = useState<'stay' | 'move' | null>(null)
+  const [dropOver, setDropOver] = useState<'stay' | 'move' | null>(null)
   const paxRef = useRef<HTMLInputElement | null>(null)
 
   const floorAreas = useMemo(
@@ -198,10 +180,6 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
   )
   const sourceTotal = stay.reduce((s, n) => s + n.lineTotal, 0)
   const newTotal = move.reduce((s, n) => s + n.lineTotal, 0)
-  const targetStr =
-    targetAreaId > 0 && targetTableId > 0
-      ? `A:${getAreaName(areas, targetAreaId)}  T:${getTableName(tables, targetTableId)}  C:1`
-      : '-'
 
   useEffect(() => {
     if (source.kotMasterId <= 0) {
@@ -299,6 +277,28 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
     setStay((list) => mergeNode(list, node))
   }
 
+  /** Drop on a side: moves the dragged item there (same rules as tapping it). */
+  function onDropTo(side: 'stay' | 'move') {
+    const drag = dragRef.current
+    dragRef.current = null
+    setDragFrom(null)
+    setDropOver(null)
+    if (!drag || drag.from === side) return
+    if (drag.from === 'stay') {
+      const node = stay[drag.idx]
+      if (node) moveFromStay(node, drag.idx)
+    } else {
+      const node = move[drag.idx]
+      if (node) moveFromNew(node, drag.idx)
+    }
+  }
+
+  function endDrag() {
+    dragRef.current = null
+    setDragFrom(null)
+    setDropOver(null)
+  }
+
   function onQtyDone() {
     const splitQty = Number(qtyDraft)
     const current = qtyNode
@@ -338,48 +338,38 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
       setOccupiedTableIds(new Set())
     }
     setVacantAreaId(start)
-    setVacantConfirmTable(null)
     setVacantOpen(true)
   }
 
+  /** Tap a vacant table: it becomes the new KOT's table, then ask the persons. */
   function onVacantTableClick(table: TableRow) {
     if (occupiedTableIds.has(table.id)) return
-    setVacantConfirmTable(table)
-    setConfirm('picker')
-  }
-
-  function onPickerConfirm(yes: boolean) {
-    setConfirm(null)
-    if (!yes || !vacantConfirmTable) {
-      setVacantConfirmTable(null)
-      return
-    }
-    setPendingTable({ areaId: vacantAreaId, tableId: vacantConfirmTable.id })
+    setTargetAreaId(vacantAreaId)
+    setTargetTableId(table.id)
     setVacantOpen(false)
-    setVacantConfirmTable(null)
-    setConfirm('use-table')
-  }
-
-  function onUseTableConfirm(yes: boolean) {
-    setConfirm(null)
-    if (!yes || !pendingTable) {
-      setPendingTable(null)
-      return
-    }
-    setTargetAreaId(pendingTable.areaId)
-    setTargetTableId(pendingTable.tableId)
     setPaxDraft(String(Math.max(1, targetPax)))
     setPaxOpen(true)
+  }
+
+  function closeVacantPicker() {
+    setVacantOpen(false)
+    saveAfterPick.current = false
   }
 
   function onPaxDone() {
     const value = Math.trunc(Number(paxDraft))
     if (Number.isFinite(value) && value > 0) setTargetPax(Math.max(1, value))
     setPaxOpen(false)
+    // Came here from Split Save → carry on to the save.
+    if (saveAfterPick.current) {
+      saveAfterPick.current = false
+      setConfirmSave(true)
+    }
   }
 
   function onPaxCancel() {
     setPaxOpen(false)
+    saveAfterPick.current = false
   }
 
   function onSplitSaveClick() {
@@ -387,11 +377,13 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
       toast('Please move at least one item to New KOT side.')
       return
     }
+    // No table yet → open the picker straight away, then continue to the save.
     if (targetAreaId <= 0 || targetTableId <= 0) {
-      toast('Please select a target table first.')
+      saveAfterPick.current = true
+      void openVacantPicker()
       return
     }
-    setConfirm('save')
+    setConfirmSave(true)
   }
 
   async function runSplitSave() {
@@ -412,7 +404,7 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
         })),
       })
       const msg = String(out.msg || `Bill Splitted Successfully. New KOT: ${out.newKotNo} (Chair 1)`)
-      setConfirm(null)
+      setConfirmSave(false)
       onSplit({
         sourceKotId: source.kotMasterId,
         newKotId: num(out.newKotId),
@@ -427,89 +419,167 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
     }
   }
 
-  const confirmCopy = (() => {
-    if (confirm === 'picker' && vacantConfirmTable) {
-      return {
-        title: 'Select this table ?',
-        body: `Select this table ?\n\nArea : ${getAreaName(areas, vacantAreaId)}\nTable: ${getTableName(tables, vacantConfirmTable.id)}\n\nProceed ?`,
-      }
-    }
-    if (confirm === 'use-table' && pendingTable) {
-      return {
-        title: 'Use this table for NEW KOT ?',
-        body: `Use this table for NEW KOT ?\n\nArea: ${getAreaName(areas, pendingTable.areaId)}\nTable: ${getTableName(tables, pendingTable.tableId)}\nChairNo: 1`,
-      }
-    }
-    if (confirm === 'save') {
-      const pax = targetPax <= 0 ? 1 : targetPax
-      return {
-        title: 'Confirm SPLIT ?',
-        body:
-          `Confirm SPLIT ?\n\nNew KOT items: ${move.length}\nNew Total: ${money(newTotal)}\nTarget: Area ${getAreaName(areas, targetAreaId)} / Table ${getTableName(tables, targetTableId)} / Chair 1\nPAX: ${pax}\n\nProceed ?`,
-      }
-    }
-    return null
-  })()
-
   return (
     <div className="pd-mod-overlay pd-ks-overlay" role="presentation">
-      <div className="pd-ks-dialog" role="dialog" aria-modal="true">
-        <div className="pd-ks-top">
-          <h2>SPLIT: {source.kotNo || ''}</h2>
+      <div className="ksx" role="dialog" aria-modal="true" aria-labelledby="ksx-title">
+        <div className="pd-mod-header">
+          <div className="pd-mod-header-left">
+            <div className="pd-mod-header-icon">
+              <Scissors size={15} strokeWidth={2} />
+            </div>
+            <div>
+              <p className="pd-mod-kicker">Split KOT</p>
+              <h2 id="ksx-title" className="pd-mod-item-name">{source.kotNo || 'KOT'}</h2>
+            </div>
+          </div>
+          <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close" disabled={saveBusy}>
+            <X size={13} />
+          </button>
         </div>
-        <div className="pd-ks-lists">
-          <div className="pd-ks-col">
-            {loadState === 'loading' ? <p className="pd-cat-msg">Loading items…</p> : null}
-            {loadState === 'error' ? <p className="pd-cat-msg">{loadError}</p> : null}
-            {stay.map((node, idx) => (
-              <button
-                key={`stay-${itemKey(node)}-${idx}`}
-                type="button"
-                className="pd-ks-card"
-                onClick={() => moveFromStay(node, idx)}
-              >
-                <strong>{node.itemName}</strong>
-                <span>
-                  Qty: {formatQty(node.qty)}    Amount: {money(node.lineTotal)}
-                </span>
-              </button>
-            ))}
+
+        <div className="ksx-body">
+          {/* Left: what stays */}
+          <section
+            className={`ksx-col${dropOver === 'stay' && dragFrom === 'move' ? ' is-drop' : ''}`}
+            onDragOver={(e) => {
+              if (dragFrom !== 'move') return
+              e.preventDefault()
+              setDropOver('stay')
+            }}
+            onDragLeave={() => setDropOver((cur) => (cur === 'stay' ? null : cur))}
+            onDrop={(e) => {
+              e.preventDefault()
+              onDropTo('stay')
+            }}
+          >
+            <header className="ksx-col-head">
+              <span>
+                <b>Stays on this KOT</b>
+                <small>{stay.length} item{stay.length === 1 ? '' : 's'}</small>
+              </span>
+              <strong>AED {money(sourceTotal)}</strong>
+            </header>
+            <div className="ksx-list">
+              {loadState === 'loading' ? <p className="ksx-msg">Loading items…</p> : null}
+              {loadState === 'error' ? <p className="ksx-msg">{loadError}</p> : null}
+              {loadState === 'idle' && stay.length === 0 ? <p className="ksx-msg">Everything is moved to the new KOT</p> : null}
+                {stay.map((node, idx) => (
+                  <button
+                    key={`stay-${itemKey(node)}-${idx}`}
+                    type="button"
+                    className="ksx-card"
+                    draggable
+                    onDragStart={(e) => {
+                      dragRef.current = { from: 'stay', idx }
+                      setDragFrom('stay')
+                      e.dataTransfer.effectAllowed = 'move'
+                      e.dataTransfer.setData('text/plain', node.itemName)
+                    }}
+                    onDragEnd={endDrag}
+                    onClick={() => moveFromStay(node, idx)}
+                    title={'Drag to New KOT, or tap'}
+                  >
+                    <GripVertical size={14} className="ksx-grip" />
+                    <span className="ksx-card-main">
+                      <strong>{node.itemName}</strong>
+                      <small>AED {money(node.lineTotal)}</small>
+                    </span>
+                    <span className="ksx-qty">× {formatQty(node.qty)}</span>
+                    <ArrowRight size={15} className="ksx-go" />
+                  </button>
+                ))}
+            </div>
+          </section>
+
+          <div className="ksx-mid" aria-hidden="true">
+            <ArrowRight size={18} />
           </div>
-          <div className="pd-ks-col">
-            {move.map((node, idx) => (
-              <button
-                key={`move-${itemKey(node)}-${idx}`}
-                type="button"
-                className="pd-ks-card"
-                onClick={() => moveFromNew(node, idx)}
-              >
-                <strong>{node.itemName}</strong>
-                <span>
-                  Qty: {formatQty(node.qty)}    Amount: {money(node.lineTotal)}
-                </span>
-              </button>
-            ))}
-          </div>
+
+          {/* Right: the new KOT */}
+          <section
+            className={`ksx-col is-new${dropOver === 'move' && dragFrom === 'stay' ? ' is-drop' : ''}`}
+            onDragOver={(e) => {
+              if (dragFrom !== 'stay') return
+              e.preventDefault()
+              setDropOver('move')
+            }}
+            onDragLeave={() => setDropOver((cur) => (cur === 'move' ? null : cur))}
+            onDrop={(e) => {
+              e.preventDefault()
+              onDropTo('move')
+            }}
+          >
+            <header className="ksx-col-head">
+              <span>
+                <b>New KOT</b>
+                <small>{move.length} item{move.length === 1 ? '' : 's'}</small>
+              </span>
+              <strong>AED {money(newTotal)}</strong>
+            </header>
+            <div className="ksx-list">
+              {move.length === 0 ? (
+                <p className="ksx-msg is-hint">
+                  Drag items here
+                  <br />
+                  or tap an item to move it
+                </p>
+              ) : null}
+                {move.map((node, idx) => (
+                  <button
+                    key={`move-${itemKey(node)}-${idx}`}
+                    type="button"
+                    className="ksx-card"
+                    draggable
+                    onDragStart={(e) => {
+                      dragRef.current = { from: 'move', idx }
+                      setDragFrom('move')
+                      e.dataTransfer.effectAllowed = 'move'
+                      e.dataTransfer.setData('text/plain', node.itemName)
+                    }}
+                    onDragEnd={endDrag}
+                    onClick={() => moveFromNew(node, idx)}
+                    title={'Drag back, or tap'}
+                  >
+                    <GripVertical size={14} className="ksx-grip" />
+                    <span className="ksx-card-main">
+                      <strong>{node.itemName}</strong>
+                      <small>AED {money(node.lineTotal)}</small>
+                    </span>
+                    <span className="ksx-qty">× {formatQty(node.qty)}</span>
+                    <ArrowLeft size={15} className="ksx-go" />
+                  </button>
+                ))}
+            </div>
+          </section>
         </div>
-        <div className="pd-ks-foot">
-          <p className="pd-ks-status">
-            Stay: {stay.length} items  |  New: {move.length} items  |  Target: {targetStr}  |  PAX: {targetPax}
-          </p>
-          <div className="pd-ks-row">
-            <button type="button" className="pd-ks-btn pd-ks-table" onClick={() => void openVacantPicker()}>
-              Select Table
-            </button>
-            <span className="pd-ks-total">Current Total: {money(sourceTotal)}</span>
-            <span className="pd-ks-total">New Total: {money(newTotal)}</span>
-            <button
-              type="button"
-              className="pd-ks-btn pd-ks-save"
-              disabled={move.length <= 0 || saveBusy}
-              onClick={onSplitSaveClick}
-            >
-              Split Save
-            </button>
-          </div>
+
+        <div className="ksx-foot">
+          <button type="button" className="ksx-table" onClick={() => void openVacantPicker()}>
+            <MapPinned size={15} />
+            {targetAreaId > 0 && targetTableId > 0 ? (
+              <span>
+                <b>{getTableName(tables, targetTableId)}</b>
+                <small>{getAreaName(areas, targetAreaId)} · Chair 1</small>
+              </span>
+            ) : (
+              <span>
+                <b>Select table</b>
+                <small>for the new KOT</small>
+              </span>
+            )}
+          </button>
+          <span className="ksx-pax">
+            <Users size={14} /> {targetPax}
+          </span>
+          <span className="ksx-foot-spacer" />
+          <button
+            type="button"
+            className="pd-mod-foot-btn is-ok ksx-save"
+            disabled={move.length <= 0 || saveBusy}
+            onClick={onSplitSaveClick}
+          >
+            <Scissors size={14} /> Split Save
+          </button>
         </div>
       </div>
 
@@ -520,58 +590,68 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
       ) : null}
 
       {vacantOpen ? (
-        <div className="pd-mod-overlay pd-ks-pop" role="presentation">
-          <div className="pd-floor-dialog pd-kj-vacant" role="dialog" aria-modal="true">
+        <div
+          className="pd-mod-overlay pd-ks-pop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeVacantPicker()
+          }}
+        >
+          <div className="ksp" role="dialog" aria-modal="true" aria-labelledby="ksp-title">
             <div className="pd-mod-header">
               <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <MapPinned size={15} strokeWidth={2} />
+                </div>
                 <div>
-                  <p className="pd-mod-kicker">Pick Vacant Table</p>
-                  <h2 className="pd-mod-item-name">{getAreaName(areas, vacantAreaId)}</h2>
+                  <p className="pd-mod-kicker">New KOT</p>
+                  <h2 id="ksp-title" className="pd-mod-item-name">Pick a table</h2>
                 </div>
               </div>
-              <button
-                type="button"
-                className="pd-mod-x"
-                onClick={() => {
-                  setVacantOpen(false)
-                  setVacantConfirmTable(null)
-                }}
-                aria-label="Close"
-              >
+              <button type="button" className="pd-mod-x" onClick={closeVacantPicker} aria-label="Close">
                 <X size={13} />
               </button>
             </div>
-            <div className="pd-kj-vacant-areas">
-              {floorAreas.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`pd-ol-area${vacantAreaId === a.id ? ' is-on' : ''}`}
-                  style={{ background: areaSwatch(a.id, a.name) }}
-                  onClick={() => setVacantAreaId(a.id)}
-                >
-                  {a.name}
-                </button>
-              ))}
-              <p className="pd-kj-vacant-hint">Pick a VACANT table → Confirm → Done</p>
-            </div>
-            <div className="pd-floor-canvas">
-              <div className="pd-table-grid is-floor">
+
+            <div className="ksp-body">
+              <div className="ksp-bar">
+                <div className="ksp-areas" role="tablist" aria-label="Area">
+                  {floorAreas.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={vacantAreaId === a.id}
+                      className={vacantAreaId === a.id ? 'is-on' : undefined}
+                      onClick={() => setVacantAreaId(a.id)}
+                    >
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+                <span className="ksp-legend">
+                  <i className="is-free" /> Vacant
+                  <i className="is-busy" /> Busy
+                </span>
+              </div>
+
+              <div className="ksp-grid">
                 {vacantTables.map((t) => {
                   const occupied = occupiedTableIds.has(t.id)
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      className={`pd-seat pd-seat-table${occupied ? ' is-busy' : ' is-free'}`}
+                      className={`ksp-table${occupied ? ' is-busy' : ''}${targetTableId === t.id ? ' is-on' : ''}`}
+                      disabled={occupied}
                       onClick={() => onVacantTableClick(t)}
                     >
-                      <span className="pd-seat-name">{t.name}</span>
-                      <small className="pd-seat-status">{occupied ? 'Busy' : 'Vacant'}</small>
+                      <b>{t.name}</b>
+                      <small>{occupied ? 'Busy' : t.seats > 0 ? `${t.seats} seats` : 'Vacant'}</small>
                     </button>
                   )
                 })}
-                {vacantTables.length === 0 ? <p className="pd-cat-msg">No tables in this area</p> : null}
+                {vacantTables.length === 0 ? <p className="ksx-msg">No tables in this area</p> : null}
               </div>
             </div>
           </div>
@@ -713,50 +793,24 @@ export default function KotSplitDialog({ source, areas, tables, onClose, onSplit
         </div>
       ) : null}
 
-      {confirm && confirmCopy ? (
-        <div className="pd-mod-overlay pd-ks-pop" role="presentation">
-          <div className="pd-ol-dialog pd-ol-narrow" role="dialog" aria-modal="true">
-            <div className="pd-mod-header">
-              <div className="pd-mod-header-left">
-                <div>
-                  <p className="pd-mod-kicker">Confirm</p>
-                  <h2 className="pd-mod-item-name">{confirmCopy.title}</h2>
-                </div>
-              </div>
-            </div>
-            <div className="pd-ol-body">
-              <p className="pd-confirm-msg pd-kj-confirm">{confirmCopy.body}</p>
-            </div>
-            <div className="pd-mod-foot">
-              <span className="pd-mod-foot-spacer" />
-              <button
-                type="button"
-                className="pd-mod-foot-btn is-ok"
-                disabled={saveBusy}
-                onClick={() => {
-                  if (confirm === 'picker') onPickerConfirm(true)
-                  else if (confirm === 'use-table') onUseTableConfirm(true)
-                  else void runSplitSave()
-                }}
-              >
-                {saveBusy ? 'Splitting…' : 'Yes'}
-              </button>
-              <button
-                type="button"
-                className="pd-mod-foot-btn is-close"
-                disabled={saveBusy}
-                onClick={() => {
-                  if (confirm === 'picker') onPickerConfirm(false)
-                  else if (confirm === 'use-table') onUseTableConfirm(false)
-                  else setConfirm(null)
-                }}
-              >
-                No
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmDialog
+        open={confirmSave}
+        title="Split this KOT?"
+        message={
+          <>
+            {move.length} item{move.length === 1 ? '' : 's'} · AED {money(newTotal)} will move to a new KOT on{' '}
+            {getTableName(tables, targetTableId)} ({getAreaName(areas, targetAreaId)}), {targetPax <= 0 ? 1 : targetPax} person
+            {(targetPax <= 0 ? 1 : targetPax) === 1 ? '' : 's'}.
+          </>
+        }
+        confirmLabel={saveBusy ? 'Splitting…' : 'Split'}
+        onConfirm={() => {
+          if (!saveBusy) void runSplitSave()
+        }}
+        onCancel={() => {
+          if (!saveBusy) setConfirmSave(false)
+        }}
+      />
     </div>
   )
 }

@@ -1,0 +1,231 @@
+/* ── Advance Amount / Receipt — left: customer details · right: mode, amount, keypad, Save ── */
+.pd-ol-dialog.adv3 {
+  width: min(660px, 100%);
+  max-height: calc(94vh / var(--ui-zoom, 1));
+}
+
+.adv3-body {
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+  padding: 14px;
+}
+
+.adv3-left {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adv3-right {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+
+/* Left: customer details card */
+.adv3-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.adv3-card.is-empty {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.adv3-name {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--text-1);
+}
+
+.adv3-card dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adv3-card dl div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.adv3-card dt {
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.adv3-card dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.adv3-totals {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.adv3-totals div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.adv3-totals span {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.adv3-totals b {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.adv3-totals .is-adv {
+  border-color: var(--brand-border);
+  background: var(--brand-bg);
+}
+
+.adv3-totals .is-adv b {
+  color: var(--brand);
+}
+
+.adv3-body .ui-ss {
+  height: 40px;
+  border-radius: 10px;
+}
+
+/* Pay mode: one row of text chips */
+.adv3-modes {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.adv3-modes button {
+  flex: 1;
+  height: 30px;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.adv3-modes button.is-on {
+  background: var(--brand);
+  color: #fff;
+}
+
+.adv3-amount {
+  display: flex;
+  align-items: center;
+  height: 50px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--brand);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.adv3-amount em {
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-3);
+}
+
+.adv3-amount input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  text-align: right;
+  font-family: var(--font-sans);
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.adv3-keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 6px;
+}
+
+.adv3-keys .pd-key {
+  height: auto;
+  min-height: 48px;
+  font-size: 17px;
+}
+
+.adv3-error {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--red, #b91c1c);
+}
+
+.adv3-save {
+  height: 46px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--pd-grad-start, var(--brand)) 0%, var(--pd-grad-end, var(--brand-2)) 100%);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  box-shadow: 0 4px 12px var(--brand-glow);
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  .adv3-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adv3-right {
+    padding-left: 0;
+    border-left: 0;
+  }
+}

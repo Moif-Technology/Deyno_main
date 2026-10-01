@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Ban, Hash, PackagePlus, RotateCcw, Trash2, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
 import { DatePicker } from '../../components/common/DatePicker'
+import { ConfirmDialog } from '../../components/common/ConfirmDialog'
 import { signedDecimal } from '../../utils/validate'
 import './RecipeEntryDialog.css'
 
@@ -660,7 +661,7 @@ export default function StockEntryDialog({ docType, entryId, onClose, onOpenList
                     ref={padInputRef}
                     className="pd-qty-input"
                     value={padQty}
-                    inputMode="decimal"
+                    inputMode="none"
                     placeholder="0"
                     onChange={(e) => setPadQty(signedDecimal(e.target.value).slice(0, 10))}
                     onKeyDown={(e) => {
@@ -748,33 +749,14 @@ export default function StockEntryDialog({ docType, entryId, onClose, onOpenList
         </div>
       ) : null}
 
-      {confirmPost ? (
-        <div className="pd-settle-tip" role="dialog" aria-modal="true">
-          <div className="pd-ol-dialog pd-ol-narrow">
-            <div className="pd-mod-header">
-              <div>
-                <p className="pd-mod-kicker">Posting</p>
-                <h2 className="pd-mod-item-name">Update Stock?</h2>
-              </div>
-            </div>
-            <div className="pd-ol-body">
-              <p className="pd-confirm-msg">
-                Posting Will Update Stock......
-                <br />
-                System will not allow any further modifications in this Transfer... Proceed .. ?
-              </p>
-              <div className="pd-admin-foot">
-                <button type="button" className="pd-mod-foot-btn is-close" onClick={() => setConfirmPost(false)}>
-                  NO
-                </button>
-                <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void runPost()}>
-                  YES
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmDialog
+        open={confirmPost}
+        title="Post this entry?"
+        message="Stock will be updated and the entry can't be edited after posting."
+        confirmLabel="Post"
+        onConfirm={() => void runPost()}
+        onCancel={() => setConfirmPost(false)}
+      />
     </div>
   )
 }

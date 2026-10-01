@@ -1,31 +1,58 @@
 /**
- * Production Entry — same layout as Recipe Entry: Production No / Date on top,
- * produced items table on the left, home-style product tiles
- * on the right. Tapping a tile opens the qty pad; Done puts the line in the table.
+ * Product Request / Receipt / Transfer — same layout as Recipe Entry: document
+ * No / Date / From / To (/ reference No) / Remarks on top, lines table on the
+ * left, product tiles on the right. Tapping a tile opens the qty pad; Done puts
+ * the line in the table. `kind` picks the labels and which fields are editable.
  *
- * There is no production endpoint yet, so Save only confirms locally (as before).
+ * There is no request / receipt / transfer endpoint yet, so Save / Print only confirm
+ * locally (as before).
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Factory, Hash, Trash2, X } from 'lucide-react'
+import { ArrowLeftRight, Hash, PackageCheck, Trash2, Truck, X } from 'lucide-react'
 import { apiService } from '../../api/apiService'
 import { DatePicker } from '../../components/common/DatePicker'
 import { decimal } from '../../utils/validate'
 import './RecipeEntryDialog.css'
 
+export type TransferDocKind = 'request' | 'receipt' | 'transfer'
+
+const KIND: Record<
+  TransferDocKind,
+  {
+    title: string
+    word: string
+    /** "From" is a picker (receipt) or this till's own area (request / transfer). */
+    fromEditable: boolean
+    /** Reference to the source document, if the form has one. */
+    refLabel: string | null
+    padKicker: string
+  }
+> = {
+  request: { title: 'Product Request', word: 'Request', fromEditable: false, refLabel: null, padKicker: 'Request Qty' },
+  receipt: { title: 'Product Receipt', word: 'Receipt', fromEditable: true, refLabel: 'Transfer No', padKicker: 'Received Qty' },
+  transfer: { title: 'Product Transfer', word: 'Transfer', fromEditable: false, refLabel: 'Request No', padKicker: 'Transfer Qty' },
+}
+
 type Item = {
   productId: number
   barcode: string
   name: string
-  /** Stock on hand when the row carries it; null → shown as "—". */
-  presentQty: number | null
+  qtyOnHand: number
+  unitCost: number
+  unitPrice: number
 }
 
 type Line = Item & { key: number; qty: number }
 
-
 type Props = {
+  kind: TransferDocKind
+  /** Area names for the From / To pickers. */
+  areas: string[]
+  /** This till's area — fixed "From" for a request / transfer, default "To" for a receipt. */
+  homeArea: string
   onClose: () => void
   onSaved: (lineCount: number) => void
+  onPrint: () => void
 }
 
 const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const
@@ -39,26 +66,37 @@ function qtyFmt(n: number) {
   return String(parseFloat(n.toFixed(3)))
 }
 
-
-function optNum(v: unknown): number | null {
-  if (v == null || v === '') return null
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
+function money(n: number) {
+  return Number.isFinite(n) ? n.toFixed(2) : '0.00'
 }
 
-/** Recipe search hit (role: finished). */
-function mapHit(r: Record<string, unknown>): Item {
+function asRow(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
+}
+
+/** Product master row (GET /products). */
+function mapProductRow(r: Record<string, unknown>): Item {
+  const inv = asRow(r.inventory)
   return {
-    productId: Number(r.productId) || 0,
-    barcode: String(r.barcode ?? ''),
-    name: String(r.shortName || r.productName || '').trim(),
-    presentQty: optNum(r.qtyOnHand ?? r.stockQty),
+    productId: Number(r.productId ?? r.ProductID) || 0,
+    barcode: String(r.barcode ?? r.BarCode ?? r.productCode ?? r.ProductCode ?? '').trim(),
+    name: String(r.shortName || r.shortDescription || r.productName || r.ProductName || '').trim(),
+    qtyOnHand: Number(inv.qtyOnHand ?? r.qtyOnHand) || 0,
+    unitCost: Number(inv.averageCost ?? inv.lastPurchaseCost ?? r.averageCost) || 0,
+    unitPrice: Number(inv.unitPrice ?? r.unitPrice) || 0,
   }
 }
 
-export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
-  const [productionNo, setProductionNo] = useState('')
-  const [productionDate, setProductionDate] = useState(isoToday)
+export default function TransferDocDialog({ kind, areas, homeArea, onClose, onSaved, onPrint }: Props) {
+  const meta = KIND[kind]
+  const defaultFrom = meta.fromEditable ? '' : homeArea
+  const defaultTo = meta.fromEditable ? homeArea : ''
+  const [docNo, setDocNo] = useState('')
+  const [docDate, setDocDate] = useState(isoToday)
+  const [fromArea, setFromArea] = useState(defaultFrom)
+  const [toArea, setToArea] = useState(defaultTo)
+  const [refNo, setRefNo] = useState('')
+  const [remarks, setRemarks] = useState('')
   const [lines, setLines] = useState<Line[]>([])
   const [error, setError] = useState<string | null>(null)
   const lineKey = useRef(1)
@@ -70,22 +108,22 @@ export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
   const [padQty, setPadQty] = useState('')
   const padInputRef = useRef<HTMLInputElement | null>(null)
 
-  const totalQty = useMemo(() => lines.reduce((sum, l) => sum + l.qty, 0), [lines])
+  const totalAmount = useMemo(() => lines.reduce((sum, l) => sum + l.qty * l.unitPrice, 0), [lines])
   const lineByProduct = useMemo(() => {
     const m = new Map<number, Line>()
     for (const line of lines) m.set(line.productId, line)
     return m
   }, [lines])
 
-  // Recipe items for the tile grid (loaded once).
+  // All items for the tile grid (loaded once).
   useEffect(() => {
     let alive = true
     setTilesState('loading')
     apiService
-      .searchRecipeProducts({ role: 'finished' })
+      .fetchProducts()
       .then((rows) => {
         if (!alive) return
-        setTiles(rows.map((r) => mapHit(r)).filter((p) => p.productId > 0 && p.name))
+        setTiles(rows.map(mapProductRow).filter((p) => p.productId > 0 && p.name))
         setTilesState('ready')
       })
       .catch(() => {
@@ -132,7 +170,9 @@ export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
       productId: item.productId,
       barcode: item.barcode,
       name: item.name,
-      presentQty: item.presentQty,
+      qtyOnHand: item.qtyOnHand,
+      unitCost: item.unitCost,
+      unitPrice: item.unitPrice,
       qty,
     }
     setLines((prev) =>
@@ -147,20 +187,53 @@ export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
   }
 
   function clearForm() {
-    setProductionNo('')
-    setProductionDate(isoToday())
+    setDocNo('')
+    setDocDate(isoToday())
+    setFromArea(defaultFrom)
+    setToArea(defaultTo)
+    setRefNo('')
+    setRemarks('')
     setLines([])
     setError(null)
     setPad(null)
   }
 
   function save() {
+    if (meta.fromEditable && !fromArea) {
+      setError(`Select ${meta.word} From`)
+      return
+    }
+    if (!toArea) {
+      setError(`Select ${meta.word} To`)
+      return
+    }
     if (lines.length === 0) {
       setError('Add at least one item')
       return
     }
     onSaved(lines.length)
     clearForm()
+  }
+
+  function print() {
+    if (lines.length === 0) {
+      setError('Add at least one item before printing')
+      return
+    }
+    onPrint()
+  }
+
+  function areaSelect(value: string, onChange: (v: string) => void) {
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Select…</option>
+        {areas.map((a) => (
+          <option key={a} value={a}>
+            {a}
+          </option>
+        ))}
+      </select>
+    )
   }
 
   return (
@@ -171,15 +244,21 @@ export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="pd-ol-dialog pd-mfg pd-rcp" role="dialog" aria-modal="true" aria-labelledby="pd-production-title">
+      <div className="pd-ol-dialog pd-mfg pd-rcp" role="dialog" aria-modal="true" aria-labelledby="pd-tdoc-title">
         <div className="pd-mod-header">
           <div className="pd-mod-header-left">
             <div className="pd-mod-header-icon">
-              <Factory size={15} strokeWidth={2} />
+              {kind === 'receipt' ? (
+                <PackageCheck size={15} strokeWidth={2} />
+              ) : kind === 'transfer' ? (
+                <Truck size={15} strokeWidth={2} />
+              ) : (
+                <ArrowLeftRight size={15} strokeWidth={2} />
+              )}
             </div>
             <div>
-              <p className="pd-mod-kicker">Production</p>
-              <h2 id="pd-production-title" className="pd-mod-item-name">Production Entry</h2>
+              <p className="pd-mod-kicker">Transactions</p>
+              <h2 id="pd-tdoc-title" className="pd-mod-item-name">{meta.title}</h2>
             </div>
           </div>
           <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
@@ -188,45 +267,67 @@ export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
         </div>
 
         <div className="rcp-body">
-          <div className="rcp-top">
+          <div className={`rcp-top req-top${meta.refLabel ? ' has-ref' : ''}`}>
             <div className="pd-form-row">
-              <label>Production No</label>
-              <input value={productionNo} onChange={(e) => setProductionNo(e.target.value)} placeholder="Auto" />
+              <label>{meta.word} No</label>
+              <input value={docNo} onChange={(e) => setDocNo(e.target.value)} placeholder="Auto" />
             </div>
             <div className="pd-form-row">
-              <label>Production Date</label>
-              <DatePicker value={productionDate} onChange={setProductionDate} />
+              <label>{meta.word} Date</label>
+              <DatePicker value={docDate} onChange={setDocDate} />
+            </div>
+            <div className="pd-form-row">
+              <label>{meta.word} From</label>
+              {meta.fromEditable ? areaSelect(fromArea, setFromArea) : <input value={fromArea} readOnly />}
+            </div>
+            <div className="pd-form-row">
+              <label>{meta.word} To</label>
+              {areaSelect(toArea, setToArea)}
+            </div>
+            {meta.refLabel ? (
+              <div className="pd-form-row">
+                <label>{meta.refLabel}</label>
+                <input value={refNo} onChange={(e) => setRefNo(e.target.value)} />
+              </div>
+            ) : null}
+            <div className="pd-form-row">
+              <label>Remarks</label>
+              <input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
             </div>
           </div>
 
           {error ? <p className="pd-mfg-msg">{error}</p> : null}
 
           <div className="rcp-main">
-            {/* Left: produced items */}
-            <section className="rcp-lines prd-lines">
+            {/* Left: document lines */}
+            <section className="rcp-lines req-lines">
               <div className="pd-grid-wrap">
                 <table className="pd-grid">
                   <thead>
                     <tr>
-                      <th>Item Code</th>
-                      <th>Item Name</th>
-                      <th className="num">Present Qty</th>
+                      <th>Barcode</th>
+                      <th>Short Description</th>
                       <th className="num">Qty</th>
+                      <th className="num">Unit Cost</th>
+                      <th className="num">Unit Price</th>
+                      <th className="num">Line Total</th>
                       <th className="col-menu" />
                     </tr>
                   </thead>
                   <tbody>
                     {lines.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="rcp-empty">Tap a product on the right to add it</td>
+                        <td colSpan={7} className="rcp-empty">Tap a product on the right to add it</td>
                       </tr>
                     ) : (
                       lines.map((line) => (
                         <tr key={line.key} className="rcp-row" onClick={() => openPad(line)}>
                           <td>{line.barcode}</td>
                           <td>{line.name}</td>
-                          <td className="num">{line.presentQty == null ? '—' : qtyFmt(line.presentQty)}</td>
                           <td className="num rcp-qty">{qtyFmt(line.qty)}</td>
+                          <td className="num">{money(line.unitCost)}</td>
+                          <td className="num">{money(line.unitPrice)}</td>
+                          <td className="num">{money(line.qty * line.unitPrice)}</td>
                           <td className="col-menu">
                             <button
                               type="button"
@@ -271,9 +372,7 @@ export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
                         >
                           <span className="pd-product-name">{p.name.toLowerCase()}</span>
                           <span className="pd-product-foot">
-                            <span className="pd-product-price">
-                              {p.presentQty == null ? p.barcode : `Stock ${qtyFmt(p.presentQty)}`}
-                            </span>
+                            <span className="pd-product-price">Stock {qtyFmt(p.qtyOnHand)}</span>
                             {line ? <span className="rcp-tile-qty">{qtyFmt(line.qty)}</span> : null}
                           </span>
                         </button>
@@ -288,9 +387,10 @@ export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
 
         <div className="pd-mod-foot">
           <span className="pd-mfg-count">
-            {lines.length} item{lines.length === 1 ? '' : 's'} · Total Qty: <strong>{qtyFmt(totalQty)}</strong>
+            {lines.length} item{lines.length === 1 ? '' : 's'} · Total Amount: <strong>AED {money(totalAmount)}</strong>
           </span>
           <span className="pd-mod-foot-spacer" />
+          <button type="button" className="pd-mod-foot-btn" onClick={print}>Print</button>
           <button type="button" className="pd-mod-foot-btn" onClick={clearForm}>New</button>
           <button type="button" className="pd-mod-foot-btn is-ok" onClick={save}>Save</button>
         </div>
@@ -304,15 +404,15 @@ export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
             if (e.target === e.currentTarget) setPad(null)
           }}
         >
-          <div className="pd-qty-dialog rcp-pad" role="dialog" aria-modal="true" aria-labelledby="prd-pad-title">
+          <div className="pd-qty-dialog rcp-pad" role="dialog" aria-modal="true" aria-labelledby="tdoc-pad-title">
             <div className="pd-mod-header">
               <div className="pd-mod-header-left">
                 <div className="pd-mod-header-icon">
                   <Hash size={15} color="#fff" />
                 </div>
                 <div>
-                  <p className="pd-mod-kicker">{pad.lineKey != null ? 'Change Qty' : 'Production Qty'}</p>
-                  <h2 id="prd-pad-title" className="pd-mod-item-name">{pad.item.name}</h2>
+                  <p className="pd-mod-kicker">{pad.lineKey != null ? 'Change Qty' : meta.padKicker}</p>
+                  <h2 id="tdoc-pad-title" className="pd-mod-item-name">{pad.item.name}</h2>
                 </div>
               </div>
               <button type="button" className="pd-mod-x" onClick={() => setPad(null)} aria-label="Close">
@@ -341,19 +441,25 @@ export default function ProductionEntryDialog({ onClose, onSaved }: Props) {
                 </div>
                 <dl className="rcp-pad-info">
                   <div>
-                    <dt>Item Code</dt>
+                    <dt>Barcode</dt>
                     <dd>{pad.item.barcode || '—'}</dd>
                   </div>
                   <div>
-                    <dt>Present Qty</dt>
-                    <dd>{pad.item.presentQty == null ? '—' : qtyFmt(pad.item.presentQty)}</dd>
+                    <dt>In Stock</dt>
+                    <dd>{qtyFmt(pad.item.qtyOnHand)}</dd>
                   </div>
-                  {pad.item.presentQty != null ? (
-                    <div className="is-total">
-                      <dt>After Production</dt>
-                      <dd>{qtyFmt(pad.item.presentQty + (Number(padQty) || 0))}</dd>
-                    </div>
-                  ) : null}
+                  <div>
+                    <dt>Unit Cost</dt>
+                    <dd>AED {money(pad.item.unitCost)}</dd>
+                  </div>
+                  <div>
+                    <dt>Unit Price</dt>
+                    <dd>AED {money(pad.item.unitPrice)}</dd>
+                  </div>
+                  <div className="is-total">
+                    <dt>Line Total</dt>
+                    <dd>AED {money((Number(padQty) || 0) * pad.item.unitPrice)}</dd>
+                  </div>
                 </dl>
               </div>
               <div className="pd-qty-pad">

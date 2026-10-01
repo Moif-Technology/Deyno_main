@@ -1,0 +1,420 @@
+/* ── Settlement — app modal style: maroon header, white body, shared keypad ── */
+.stl {
+  width: min(700px, 100%);
+  max-height: calc(94vh / var(--ui-zoom, 1));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+}
+
+.stl-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+/* Total due */
+.stl-due {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-tint);
+}
+
+.stl-due span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.stl-due strong {
+  margin-left: auto;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.stl-due em {
+  flex-basis: 100%;
+  text-align: right;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand-2);
+}
+
+.stl-due:has(em) {
+  flex-wrap: wrap;
+}
+
+/* Methods + Paid amount (next to Credit) */
+.stl-methods {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.5fr);
+  gap: 8px;
+}
+
+.stl-method {
+  height: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.stl-method:hover:not(:disabled) {
+  border-color: var(--brand-border);
+}
+
+.stl-method.is-on {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--pd-grad-start, var(--brand)) 0%, var(--pd-grad-end, var(--brand-2)) 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px var(--brand-glow);
+}
+
+.stl-paid,
+.stl-tip-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  font-family: var(--font-sans);
+  text-align: right;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.stl-paid {
+  height: 54px;
+}
+
+.stl-paid small,
+.stl-tip-box small {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.stl-paid b,
+.stl-tip-box b {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The box the keypad is typing into */
+.stl-paid.is-on,
+.stl-tip-box.is-on {
+  border-color: var(--brand);
+  background: var(--brand-bg);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.stl-paid.is-on small,
+.stl-tip-box.is-on small,
+.stl-paid.is-on b,
+.stl-tip-box.is-on b {
+  color: var(--brand);
+}
+
+/* Breakdown + tip (left) · keypad (right) */
+.stl-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 250px;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.stl-left {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stl-rows {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.stl-rows div {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.stl-rows div + div {
+  border-top: 1px solid var(--border);
+}
+
+.stl-rows b {
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.stl-rows .is-sum {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.stl-rows .is-due b {
+  color: var(--red, #dc2626);
+}
+
+/* Add tip */
+.stl-tip {
+  border-radius: 12px;
+  border: 1.5px dashed var(--brand-border);
+}
+
+.stl-tip.is-open {
+  border-style: solid;
+  background: #fdf8f9;
+}
+
+.stl-tip-toggle {
+  width: 100%;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--brand);
+  cursor: pointer;
+}
+
+.stl-tip-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 0 10px 10px;
+  animation: stlTipIn 0.2s ease-out;
+}
+
+@keyframes stlTipIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.stl-tip-box {
+  height: 48px;
+}
+
+.stl-tip-quick {
+  display: flex;
+  gap: 5px;
+}
+
+.stl-tip-quick button {
+  width: 42px;
+  height: 48px;
+  border-radius: 10px;
+  border: 1.5px solid var(--brand-border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--brand);
+  cursor: pointer;
+}
+
+.stl-pad .pd-key {
+  min-height: 46px;
+}
+
+.stl-err {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--red-bg, #fef2f2);
+  border: 1px solid var(--red-border, #fecaca);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--red, #dc2626);
+}
+
+/* Footer */
+.stl-foot {
+  flex-shrink: 0;
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.stl-foot .pd-mod-foot-btn {
+  height: 46px;
+}
+
+.stl-pay {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.stl button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .stl-methods {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .stl-paid {
+    grid-column: 1 / -1;
+  }
+
+  .stl-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Quick Cash: Bill amount · Paid amount · Balance, with the keypad ── */
+.stl.stl-quick {
+  width: min(560px, 100%);
+}
+
+.stlq-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.stlq-left {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stlq-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-2);
+}
+
+.stlq-line b {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.stlq-paid {
+  height: 64px;
+  cursor: default;
+}
+
+.stlq-paid b {
+  font-size: 26px;
+}
+
+.stlq-quick {
+  display: grid;
+  grid-template-columns: 1.3fr repeat(4, 1fr);
+  gap: 5px;
+}
+
+.stlq-quick button {
+  height: 34px;
+  border-radius: 9px;
+  border: 1.5px solid var(--brand-border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--brand);
+  cursor: pointer;
+}
+
+/* Balance = change to give back */
+.stlq-line.is-balance {
+  margin-top: auto;
+  border-color: var(--brand-tint);
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+.stlq-line.is-balance b {
+  font-size: 22px;
+  color: var(--brand);
+}
+
+.stlq-line.is-short {
+  border-color: var(--red-border, #fecaca);
+  background: var(--red-bg, #fef2f2);
+  color: var(--red, #dc2626);
+}
+
+.stlq-line.is-short b {
+  color: var(--red, #dc2626);
+}
+
+@media (max-width: 560px) {
+  .stlq-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
