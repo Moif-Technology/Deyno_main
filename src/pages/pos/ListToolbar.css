@@ -1670,3 +1670,16 @@
 .lst-bar-one > .rpf-inline {
   margin-right: auto;
 }
+
+/* Report form: a plain text box with a clear (x) button, no search icon */
+.rpf-clearable {
+  flex: none;
+}
+
+.rpf-clearable input {
+  height: 38px;
+  padding-left: 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
