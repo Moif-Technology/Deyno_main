@@ -4,12 +4,16 @@
  * plus the options, filtered by name or code as you type. ↑ ↓ move, Enter
  * picks, Esc closes. The list renders in a portal with fixed positioning so
  * a scrolling modal body can't clip it.
+ *
+ * `typeahead` (default on): no separate search box — the field itself is typeable; the
+ * list opens when the cursor enters it and filters as you type.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown, LoaderCircle } from 'lucide-react'
 import { SearchBar } from './SearchBar'
+import { uiZoom } from '../../utils/useUiZoom'
 import './SearchSelect.css'
 
 export type SearchSelectOption = { id: number | string; name: string; code?: string }
@@ -32,6 +36,8 @@ type Props = {
   disabledHint?: string
   className?: string
   id?: string
+  /** Type straight into the field (default). false = search bar inside the list. */
+  typeahead?: boolean
 }
 
 type Pos = { left: number; width: number; top?: number; bottom?: number; maxHeight: number }
@@ -50,12 +56,14 @@ export function SearchSelect({
   disabledHint,
   className,
   id,
+  typeahead = true,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const [pos, setPos] = useState<Pos | null>(null)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const triggerRef = useRef<HTMLElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const popRef = useRef<HTMLDivElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
@@ -71,15 +79,20 @@ export function SearchSelect({
   function place() {
     const el = triggerRef.current
     if (!el) return
-    const r = el.getBoundingClientRect()
+    // Rects and innerHeight are in on-screen pixels; the popup's own px get
+    // multiplied by the page zoom, so convert back into CSS px.
+    const z = uiZoom()
+    const rr = el.getBoundingClientRect()
+    const vh = window.innerHeight / z
+    const r = { left: rr.left / z, top: rr.top / z, bottom: rr.bottom / z, width: rr.width / z }
     const gap = 4
-    const below = window.innerHeight - r.bottom - gap - 8
+    const below = vh - r.bottom - gap - 8
     const above = r.top - gap - 8
     const openUp = below < 220 && above > below
     setPos({
       left: r.left,
       width: r.width,
-      ...(openUp ? { bottom: window.innerHeight - r.top + gap } : { top: r.bottom + gap }),
+      ...(openUp ? { bottom: vh - r.top + gap } : { top: r.bottom + gap }),
       maxHeight: Math.min(320, openUp ? above : below),
     })
   }
@@ -95,7 +108,9 @@ export function SearchSelect({
 
   function close(focusTrigger = true) {
     setOpen(false)
-    if (focusTrigger) triggerRef.current?.focus()
+    setQuery('')
+    // Typeahead keeps focus in its own input already; refocusing would reopen it.
+    if (focusTrigger && !typeahead) triggerRef.current?.focus()
   }
 
   function pick(o: SearchSelectOption) {
@@ -157,8 +172,55 @@ export function SearchSelect({
 
   return (
     <>
+      {typeahead ? (
+        <div
+          ref={(el) => {
+            triggerRef.current = el
+          }}
+          className={`ui-ss is-typeahead${open ? ' is-open' : ''}${disabled ? ' is-disabled' : ''}${className ? ` ${className}` : ''}`}
+          title={disabled ? disabledHint : undefined}
+          onMouseDown={(e) => {
+            if (disabled) return
+            if (e.target !== inputRef.current) e.preventDefault()
+            inputRef.current?.focus()
+            if (!open) openList()
+          }}
+        >
+          <input
+            ref={inputRef}
+            id={id}
+            className="ui-ss-input"
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={id ? `${id}-list` : undefined}
+            autoComplete="off"
+            disabled={disabled}
+            value={open ? query : label}
+            placeholder={open && label ? label : disabled && disabledHint ? disabledHint : placeholder}
+            onFocus={() => {
+              if (!open) openList()
+            }}
+            onChange={(e) => {
+              if (!open) openList()
+              setQuery(e.target.value)
+              setActive(0)
+            }}
+            onKeyDown={(e) => {
+              if (!open && (e.key === 'ArrowDown' || e.key === 'Enter')) {
+                e.preventDefault()
+                openList()
+                return
+              }
+              if (open) onSearchKey(e)
+            }}
+          />
+          <ChevronDown size={15} className="ui-ss-chevron" />
+        </div>
+      ) : (
       <button
-        ref={triggerRef}
+        ref={(el) => {
+          triggerRef.current = el
+        }}
         id={id}
         type="button"
         className={`ui-ss${open ? ' is-open' : ''}${disabled ? ' is-disabled' : ''}${className ? ` ${className}` : ''}`}
@@ -178,6 +240,7 @@ export function SearchSelect({
         </span>
         <ChevronDown size={15} className="ui-ss-chevron" />
       </button>
+      )}
 
       {open && pos
         ? createPortal(
@@ -186,6 +249,7 @@ export function SearchSelect({
               className="ui-ss-pop"
               style={{ left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight }}
             >
+              {typeahead ? null : (
               <SearchBar
                 size="sm"
                 autoFocus
@@ -198,6 +262,7 @@ export function SearchSelect({
                 placeholder={searchPlaceholder}
                 aria-controls={id ? `${id}-list` : undefined}
               />
+              )}
               <div ref={listRef} className="ui-ss-list" role="listbox" id={id ? `${id}-list` : undefined}>
                 {loading && !options.length ? (
                   <p className="ui-ss-msg">

@@ -1,11 +1,26 @@
 /**
  * RptInventoryfrm → ProductInventory.rpt (easyway Product INVENTORY).
- * Filters match the VB Stock Product form; Show Report fills a print sheet.
+ *
+ * Opens straight on the report (all items) in the common table. Top bar:
+ * Group wise / Supplier wise / Hide price toggles on the left; search, "All
+ * Filters" (side panel with the VB Stock Product filters) and a Print menu
+ * (Print / PDF / Excel) on the right. Count and totals sit in a fixed footer.
+ * The letterhead sheet is kept for printing only.
  */
-import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Boxes, ChevronLeft, FileSpreadsheet, FileText, Printer, Search, X } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Boxes,
+  ChevronDown,
+  FileSpreadsheet,
+  FileText,
+  Printer,
+  Search,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
 import { exportInventoryExcel, exportInventoryPdf } from './inventoryReportExport'
+import './InventoryReportDialog.css'
 
 type Opt = { id: number; name: string }
 type InvRow = {
@@ -37,6 +52,35 @@ type Report = {
 }
 
 type Props = { onClose: () => void }
+
+/** Filters kept in the "All Filters" panel; applied together on Apply. */
+type Filters = {
+  groupId: string
+  subGroupId: string
+  subSubGroupId: string
+  productType: string
+  costType: string
+  supplierId: string
+  brandId: string
+  location: string
+  productName: string
+  qtyOp: string
+  qty: string
+}
+
+const EMPTY_FILTERS: Filters = {
+  groupId: '',
+  subGroupId: '',
+  subSubGroupId: '',
+  productType: '',
+  costType: 'LastPurchaseCost',
+  supplierId: '',
+  brandId: '',
+  location: '',
+  productName: '',
+  qtyOp: '<>',
+  qty: '',
+}
 
 function money(n: unknown) {
   const v = Number(n)
@@ -78,6 +122,22 @@ function asRows(payload: unknown): InvRow[] {
   })
 }
 
+/** How many panel filters differ from the defaults (for the badge). */
+function countSet(f: Filters) {
+  return [
+    f.groupId,
+    f.subGroupId,
+    f.subSubGroupId,
+    f.productType,
+    f.costType !== EMPTY_FILTERS.costType ? 'x' : '',
+    f.supplierId,
+    f.brandId,
+    f.location,
+    f.productName.trim(),
+    f.qty.trim(),
+  ].filter(Boolean).length
+}
+
 export default function InventoryReportDialog({ onClose }: Props) {
   const [groups, setGroups] = useState<Opt[]>([])
   const [allSubGroups, setAllSubGroups] = useState<(Opt & { groupId: number })[]>([])
@@ -86,37 +146,32 @@ export default function InventoryReportDialog({ onClose }: Props) {
   const [suppliers, setSuppliers] = useState<Opt[]>([])
   const [locations, setLocations] = useState<string[]>([])
 
-  const [supplierId, setSupplierId] = useState('')
-  const [brandId, setBrandId] = useState('')
-  const [groupId, setGroupId] = useState('')
-  const [productName, setProductName] = useState('')
-  const [subGroupId, setSubGroupId] = useState('')
-  const [subSubGroupId, setSubSubGroupId] = useState('')
-  const [location, setLocation] = useState('')
-  const [productType, setProductType] = useState('')
-  const [qtyOp, setQtyOp] = useState('<>')
-  const [qty, setQty] = useState('')
-  const [costType, setCostType] = useState('LastPurchaseCost')
+  // Top-bar toggles — changing one reloads the report.
   const [groupWise, setGroupWise] = useState(false)
   const [supplierWise, setSupplierWise] = useState(false)
   const [hidePrice, setHidePrice] = useState(false)
 
-  const [view, setView] = useState<'filters' | 'report'>('filters')
-  const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
+  // "All Filters" panel: applied values + the panel's working copy.
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
+  const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS)
+  const [panelOpen, setPanelOpen] = useState(false)
+
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<Report | null>(null)
 
-  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
-  const [viewGroup, setViewGroup] = useState('')
-  const [viewName, setViewName] = useState('')
+  const [search, setSearch] = useState('')
+  const [printOpen, setPrintOpen] = useState(false)
+  const printRef = useRef<HTMLDivElement | null>(null)
+  const requestId = useRef(0)
 
-  const subGroups = useMemo(
-    () => (groupId ? allSubGroups.filter((s) => s.groupId === Number(groupId)) : []),
-    [allSubGroups, groupId],
+  const draftSubGroups = useMemo(
+    () => (draft.groupId ? allSubGroups.filter((s) => s.groupId === Number(draft.groupId)) : []),
+    [allSubGroups, draft.groupId],
   )
-  const subSubs = useMemo(
-    () => (subGroupId ? allSubSubs.filter((s) => s.subGroupId === Number(subGroupId)) : []),
-    [allSubSubs, subGroupId],
+  const draftSubSubs = useMemo(
+    () => (draft.subGroupId ? allSubSubs.filter((s) => s.subGroupId === Number(draft.subGroupId)) : []),
+    [allSubSubs, draft.subGroupId],
   )
 
   useEffect(() => {
@@ -179,9 +234,7 @@ export default function InventoryReportDialog({ onClose }: Props) {
         )
         setLocations(lookups.locations)
       } catch {
-        if (!cancelled) {
-          /* filters still usable empty */
-        }
+        /* filters still usable empty */
       }
     }
     void loadLookups()
@@ -190,34 +243,30 @@ export default function InventoryReportDialog({ onClose }: Props) {
     }
   }, [])
 
-  async function showReport() {
+  async function loadReport(f: Filters = filters) {
+    const id = ++requestId.current
     setState('loading')
     setError(null)
     try {
       const res = await apiService.fetchInventoryReport({
-        supplierId: supplierId || undefined,
-        brandId: brandId || undefined,
-        groupId: groupId || undefined,
-        name: productName.trim() || undefined,
-        subGroupId: subGroupId || undefined,
-        subSubGroupId: subSubGroupId || undefined,
-        location: location || undefined,
-        productType: productType || undefined,
-        qtyOp: qty.trim() ? qtyOp : undefined,
-        qty: qty.trim() || undefined,
-        costType,
+        supplierId: f.supplierId || undefined,
+        brandId: f.brandId || undefined,
+        groupId: f.groupId || undefined,
+        name: f.productName.trim() || undefined,
+        subGroupId: f.subGroupId || undefined,
+        subSubGroupId: f.subSubGroupId || undefined,
+        location: f.location || undefined,
+        productType: f.productType || undefined,
+        qtyOp: f.qty.trim() ? f.qtyOp : undefined,
+        qty: f.qty.trim() || undefined,
+        costType: f.costType,
         groupWise,
         supplierWise,
         hidePrice,
       })
+      if (id !== requestId.current) return
       const rows = asRows(res)
-      if (rows.length === 0) {
-        setReport(null)
-        setState('idle')
-        setError('No Item Found For This Criteria..........')
-        return
-      }
-      const totals = (res.totals as Report['totals']) ?? {
+      const totals = (rows.length ? (res.totals as Report['totals']) : null) ?? {
         count: rows.length,
         qty: rows.reduce((n, r) => n + r.productWiseQty, 0),
         amount: rows.reduce((n, r) => n + r.amount, 0),
@@ -234,35 +283,47 @@ export default function InventoryReportDialog({ onClose }: Props) {
         rows,
         totals,
       })
-      setViewGroup('')
-      setViewName('')
-      setView('report')
-      setState('idle')
+      setState('ready')
     } catch (err) {
-      setReport(null)
+      if (id !== requestId.current) return
       setState('error')
       setError(errMessage(err, 'Could not load stock report'))
     }
   }
 
+  // Show the report on open, and again whenever a toggle changes.
+  useEffect(() => {
+    void loadReport()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupWise, supplierWise, hidePrice])
+
+  // Close the Print menu on an outside click.
+  useEffect(() => {
+    if (!printOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (!printRef.current?.contains(e.target as Node)) setPrintOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [printOpen])
+
+  function openPanel() {
+    setDraft(filters)
+    setPanelOpen(true)
+  }
+
+  function applyPanel() {
+    setFilters(draft)
+    setPanelOpen(false)
+    void loadReport(draft)
+  }
+
   const filteredReport = useMemo(() => {
     if (!report) return null
-    const g = viewGroup.trim().toLowerCase()
-    const n = viewName.trim().toLowerCase()
-    const rows =
-      g || n
-        ? report.rows.filter((row) => {
-            if (g && row.groupName.trim().toLowerCase() !== g) return false
-            if (
-              n &&
-              !row.description.toLowerCase().includes(n) &&
-              !row.barcode.toLowerCase().includes(n)
-            ) {
-              return false
-            }
-            return true
-          })
-        : report.rows
+    const n = search.trim().toLowerCase()
+    const rows = n
+      ? report.rows.filter((row) => row.description.toLowerCase().includes(n) || row.barcode.toLowerCase().includes(n))
+      : report.rows
     const totals = rows.reduce(
       (acc, r) => {
         acc.count += 1
@@ -274,37 +335,16 @@ export default function InventoryReportDialog({ onClose }: Props) {
     )
     totals.amount = Math.round(totals.amount * 100) / 100
     return { ...report, rows, totals }
-  }, [report, viewGroup, viewName])
-
-  const groupOptions = useMemo(() => {
-    if (!report) return []
-    const seen = new Set<string>()
-    const list: string[] = []
-    for (const row of report.rows) {
-      const name = row.groupName.trim()
-      if (!name || seen.has(name)) continue
-      seen.add(name)
-      list.push(name)
-    }
-    return list.sort((a, b) => a.localeCompare(b))
-  }, [report])
+  }, [report, search])
 
   const sections = useMemo(() => {
     if (!filteredReport) return []
-    if (filteredReport.supplierWise) {
+    if (filteredReport.supplierWise || filteredReport.groupWise) {
       const map = new Map<string, InvRow[]>()
       for (const row of filteredReport.rows) {
-        const key = row.supplierName || row.subSubGroup || '—'
-        const list = map.get(key) ?? []
-        list.push(row)
-        map.set(key, list)
-      }
-      return [...map.entries()].map(([name, items]) => ({ name, items }))
-    }
-    if (filteredReport.groupWise) {
-      const map = new Map<string, InvRow[]>()
-      for (const row of filteredReport.rows) {
-        const key = row.groupName || '—'
+        const key = filteredReport.supplierWise
+          ? row.supplierName || row.subSubGroup || '—'
+          : row.groupName || '—'
         const list = map.get(key) ?? []
         list.push(row)
         map.set(key, list)
@@ -315,29 +355,72 @@ export default function InventoryReportDialog({ onClose }: Props) {
   }, [filteredReport])
 
   const colCount = filteredReport?.hidePrice ? 4 : 7
+  const setCount = countSet(filters)
+  const hasRows = !!filteredReport && filteredReport.rows.length > 0
 
-  function runExcel() {
+  function runPrint(kind: 'print' | 'pdf' | 'excel') {
+    setPrintOpen(false)
     if (!filteredReport) return
     try {
-      setExporting('excel')
-      exportInventoryExcel(filteredReport)
+      if (kind === 'excel') exportInventoryExcel(filteredReport)
+      else if (kind === 'pdf') exportInventoryPdf(filteredReport)
+      else window.print()
     } catch (err) {
-      setError(errMessage(err, 'Could not export Excel'))
-    } finally {
-      setExporting(null)
+      setError(errMessage(err, kind === 'excel' ? 'Could not export Excel' : 'Could not export PDF'))
     }
   }
 
-  function runPdf() {
-    if (!filteredReport) return
-    try {
-      setExporting('pdf')
-      exportInventoryPdf(filteredReport)
-    } catch (err) {
-      setError(errMessage(err, 'Could not export PDF'))
-    } finally {
-      setExporting(null)
+  const tableHead = (
+    <tr>
+      <th>Barcode</th>
+      <th>Description</th>
+      <th className="num">Pack Qty</th>
+      <th className="num">Qty</th>
+      {filteredReport?.hidePrice ? null : (
+        <>
+          <th className="num">Cost</th>
+          <th className="num">Amount</th>
+          <th className="num">Price</th>
+        </>
+      )}
+    </tr>
+  )
+
+  function tableBody() {
+    if (!filteredReport) return null
+    if (filteredReport.rows.length === 0) {
+      return (
+        <tr>
+          <td colSpan={colCount} className="pd-inv-empty">
+            No Item Found For This Criteria
+          </td>
+        </tr>
+      )
     }
+    return sections.map((sec) => (
+      <Fragment key={sec.name || 'all'}>
+        {sec.name ? (
+          <tr className="irp-section">
+            <td colSpan={colCount}>{sec.name}</td>
+          </tr>
+        ) : null}
+        {sec.items.map((row, idx) => (
+          <tr key={`${row.productId}-${idx}`}>
+            <td>{row.barcode}</td>
+            <td>{row.description}</td>
+            <td className="num">{qtyFmt(row.packQty)}</td>
+            <td className="num">{qtyFmt(row.productWiseQty)}</td>
+            {filteredReport.hidePrice ? null : (
+              <>
+                <td className="num">{money(row.unitCost)}</td>
+                <td className="num">{money(row.amount)}</td>
+                <td className="num">{money(row.unitPrice)}</td>
+              </>
+            )}
+          </tr>
+        ))}
+      </Fragment>
+    ))
   }
 
   return (
@@ -348,26 +431,15 @@ export default function InventoryReportDialog({ onClose }: Props) {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div
-        className={`pd-inv${view === 'report' ? ' is-report' : ''}`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="pd-inv-title"
-      >
+      <div className="pd-inv is-report irp" role="dialog" aria-modal="true" aria-labelledby="pd-inv-title">
         <header className="pd-inv-head">
           <div className="pd-inv-head-left">
-            {view === 'report' ? (
-              <button type="button" className="pd-mod-back" onClick={() => setView('filters')} aria-label="Back">
-                <ChevronLeft size={16} />
-              </button>
-            ) : (
-              <span className="pd-mod-header-icon">
-                <Boxes size={16} />
-              </span>
-            )}
+            <span className="pd-mod-header-icon">
+              <Boxes size={16} />
+            </span>
             <div>
               <p className="pd-mod-kicker">Transactions</p>
-              <h2 id="pd-inv-title">{view === 'report' ? 'Product Inventory' : 'Stock Product'}</h2>
+              <h2 id="pd-inv-title">Stock Report</h2>
             </div>
           </div>
           <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
@@ -375,77 +447,202 @@ export default function InventoryReportDialog({ onClose }: Props) {
           </button>
         </header>
 
-        {view === 'filters' ? (
-          <>
-            <div className="pd-inv-body">
-              <div className="pd-inv-card">
-                <div className="pd-inv-form">
-                  <label>
-                    <span>Group</span>
-                    <select
-                      value={groupId}
-                      onChange={(e) => {
-                        setGroupId(e.target.value)
-                        setSubGroupId('')
-                        setSubSubGroupId('')
-                      }}
-                    >
-                      <option value="">All groups</option>
-                      {groups.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="pd-inv-name">
-                    <span>Product Name</span>
-                    <span className="pd-inv-search">
-                      <Search size={14} />
-                      <input
-                        value={productName}
-                        onChange={(e) => setProductName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') void showReport()
-                        }}
-                        placeholder="Search name or barcode"
-                      />
-                    </span>
-                  </label>
-                  <label>
-                    <span>Last Supplier</span>
-                    <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                      <option value="">All</option>
-                      {suppliers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span>Product Brand</span>
-                    <select value={brandId} onChange={(e) => setBrandId(e.target.value)}>
-                      <option value="">All</option>
-                      {brands.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+        <div className="irp-bar">
+          <div className="irp-toggles">
+            <button
+              type="button"
+              className={`irp-toggle${groupWise ? ' is-on' : ''}`}
+              onClick={() => {
+                setGroupWise((v) => !v)
+                setSupplierWise(false)
+              }}
+            >
+              Group wise
+            </button>
+            <button
+              type="button"
+              className={`irp-toggle${supplierWise ? ' is-on' : ''}`}
+              onClick={() => {
+                setSupplierWise((v) => !v)
+                setGroupWise(false)
+              }}
+            >
+              Supplier wise
+            </button>
+            <button
+              type="button"
+              className={`irp-toggle${hidePrice ? ' is-on' : ''}`}
+              onClick={() => setHidePrice((v) => !v)}
+            >
+              Hide price
+            </button>
+          </div>
+
+          <div className="irp-actions">
+            <span className="irp-search">
+              <Search size={14} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or barcode" />
+              {search ? (
+                <button type="button" onClick={() => setSearch('')} aria-label="Clear search">
+                  <X size={12} />
+                </button>
+              ) : null}
+            </span>
+            <button type="button" className={`irp-btn${setCount ? ' is-set' : ''}`} onClick={openPanel}>
+              <SlidersHorizontal size={14} />
+              Filters
+              {setCount ? <b className="irp-badge">{setCount}</b> : null}
+            </button>
+            <div className="irp-print" ref={printRef}>
+              <button
+                type="button"
+                className="irp-btn is-primary"
+                disabled={!hasRows}
+                aria-haspopup="menu"
+                aria-expanded={printOpen}
+                onClick={() => setPrintOpen((v) => !v)}
+              >
+                <Printer size={14} />
+                Print
+                <ChevronDown size={13} />
+              </button>
+              {printOpen ? (
+                <div className="irp-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => runPrint('print')}>
+                    <Printer size={14} /> Print
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => runPrint('pdf')}>
+                    <FileText size={14} /> Save as PDF
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => runPrint('excel')}>
+                    <FileSpreadsheet size={14} /> Export Excel
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {error ? <p className="pd-inv-msg irp-msg">{error}</p> : null}
+
+        {/* On screen: the common table */}
+        <div className="irp-screen">
+          <div className={`pd-grid-wrap irp-table${state === 'loading' ? ' is-loading' : ''}`}>
+            <table className="pd-grid">
+              <thead>{tableHead}</thead>
+              <tbody>
+                {filteredReport ? (
+                  tableBody()
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="pd-inv-empty">
+                      {state === 'loading' ? 'Collecting data…' : 'No report yet.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Fixed footer: count and totals */}
+        <footer className="irp-foot">
+          <span>
+            Count <b>{filteredReport?.totals.count ?? 0}</b>
+            {filteredReport && report && filteredReport.totals.count !== report.rows.length ? (
+              <em> of {report.rows.length}</em>
+            ) : null}
+          </span>
+          <span>
+            Total Qty <b>{qtyFmt(filteredReport?.totals.qty ?? 0)}</b>
+          </span>
+          {filteredReport?.hidePrice ? null : (
+            <span className="is-amount">
+              Total Amount <b>AED {money(filteredReport?.totals.amount ?? 0)}</b>
+            </span>
+          )}
+          {state === 'loading' ? <span className="irp-foot-status">Loading…</span> : null}
+        </footer>
+
+        {/* Print only: the formatted report sheet */}
+        {filteredReport ? (
+          <div className="pd-inv-sheet irp-print-sheet" id="pd-inv-print">
+            <div className="pd-inv-letterhead">
+              {filteredReport.heading1 ? <h3>{filteredReport.heading1}</h3> : null}
+              {filteredReport.heading2 ? <p>{filteredReport.heading2}</p> : null}
+              <h1>{filteredReport.reportTitle}</h1>
+              <div className="pd-inv-sub">
+                <span>{filteredReport.heading3}</span>
+                {filteredReport.heading4 ? <span>{filteredReport.heading4}</span> : null}
+              </div>
+            </div>
+            <table className="pd-inv-grid">
+              <thead>{tableHead}</thead>
+              <tbody>{tableBody()}</tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={2}>COUNT : {filteredReport.totals.count}</td>
+                  <td className="num">Total Qty</td>
+                  <td className="num">{qtyFmt(filteredReport.totals.qty)}</td>
+                  {filteredReport.hidePrice ? null : (
+                    <>
+                      <td />
+                      <td className="num">{money(filteredReport.totals.amount)}</td>
+                      <td />
+                    </>
+                  )}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : null}
+
+        {/* All Filters — slides in from the right over the report */}
+        {panelOpen ? (
+          <div className="irp-panel-backdrop" onClick={() => setPanelOpen(false)} role="presentation">
+            <aside className="irp-panel" role="dialog" aria-label="Filters" onClick={(e) => e.stopPropagation()}>
+              <div className="irp-panel-head">
+                <strong>Filters</strong>
+                <button type="button" className="irp-panel-x" onClick={() => setPanelOpen(false)} aria-label="Close filters">
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="irp-panel-body">
+                <label>
+                  <span>Product Name</span>
+                  <input
+                    value={draft.productName}
+                    onChange={(e) => setDraft((d) => ({ ...d, productName: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') applyPanel()
+                    }}
+                    placeholder="Name or barcode"
+                  />
+                </label>
+                <label>
+                  <span>Group</span>
+                  <select
+                    value={draft.groupId}
+                    onChange={(e) => setDraft((d) => ({ ...d, groupId: e.target.value, subGroupId: '', subSubGroupId: '' }))}
+                  >
+                    <option value="">All groups</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="irp-panel-pair">
                   <label>
                     <span>SubGroup</span>
                     <select
-                      value={subGroupId}
-                      disabled={!groupId}
-                      onChange={(e) => {
-                        setSubGroupId(e.target.value)
-                        setSubSubGroupId('')
-                      }}
+                      value={draft.subGroupId}
+                      disabled={!draft.groupId}
+                      onChange={(e) => setDraft((d) => ({ ...d, subGroupId: e.target.value, subSubGroupId: '' }))}
                     >
                       <option value="">All</option>
-                      {subGroups.map((g) => (
+                      {draftSubGroups.map((g) => (
                         <option key={g.id} value={g.id}>
                           {g.name}
                         </option>
@@ -455,21 +652,63 @@ export default function InventoryReportDialog({ onClose }: Props) {
                   <label>
                     <span>SubSubGroup</span>
                     <select
-                      value={subSubGroupId}
-                      disabled={!subGroupId}
-                      onChange={(e) => setSubSubGroupId(e.target.value)}
+                      value={draft.subSubGroupId}
+                      disabled={!draft.subGroupId}
+                      onChange={(e) => setDraft((d) => ({ ...d, subSubGroupId: e.target.value }))}
                     >
                       <option value="">All</option>
-                      {subSubs.map((g) => (
+                      {draftSubSubs.map((g) => (
                         <option key={g.id} value={g.id}>
                           {g.name}
                         </option>
                       ))}
                     </select>
                   </label>
+                </div>
+                <div className="irp-panel-pair">
+                  <label>
+                    <span>Product Type</span>
+                    <select value={draft.productType} onChange={(e) => setDraft((d) => ({ ...d, productType: e.target.value }))}>
+                      <option value="">All</option>
+                      <option value="NORMAL">Normal</option>
+                      <option value="RAW MATERIAL">Raw Material</option>
+                      <option value="COMBO">Combo</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Cost Type</span>
+                    <select value={draft.costType} onChange={(e) => setDraft((d) => ({ ...d, costType: e.target.value }))}>
+                      <option value="LastPurchaseCost">Last Purchase</option>
+                      <option value="AverageCost">Average</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  <span>Last Supplier</span>
+                  <select value={draft.supplierId} onChange={(e) => setDraft((d) => ({ ...d, supplierId: e.target.value }))}>
+                    <option value="">All</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="irp-panel-pair">
+                  <label>
+                    <span>Brand</span>
+                    <select value={draft.brandId} onChange={(e) => setDraft((d) => ({ ...d, brandId: e.target.value }))}>
+                      <option value="">All</option>
+                      {brands.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label>
                     <span>Location</span>
-                    <select value={location} onChange={(e) => setLocation(e.target.value)}>
+                    <select value={draft.location} onChange={(e) => setDraft((d) => ({ ...d, location: e.target.value }))}>
                       <option value="">All</option>
                       {locations.map((loc) => (
                         <option key={loc} value={loc}>
@@ -478,224 +717,41 @@ export default function InventoryReportDialog({ onClose }: Props) {
                       ))}
                     </select>
                   </label>
-                  <label>
-                    <span>Product Type</span>
-                    <select value={productType} onChange={(e) => setProductType(e.target.value)}>
-                      <option value="">All</option>
-                      <option value="NORMAL">NORMAL</option>
-                      <option value="RAW MATERIAL">RAW MATERIAL</option>
-                      <option value="COMBO">COMBO</option>
+                </div>
+                <div className="irp-panel-qty">
+                  <span>Qty On Hand</span>
+                  <div>
+                    <select
+                      value={draft.qtyOp}
+                      onChange={(e) => setDraft((d) => ({ ...d, qtyOp: e.target.value }))}
+                      aria-label="Qty operator"
+                    >
+                      <option value="&gt;">&gt;</option>
+                      <option value="&lt;">&lt;</option>
+                      <option value="=">=</option>
+                      <option value="&gt;=">&gt;=</option>
+                      <option value="&lt;=">&lt;=</option>
+                      <option value="&lt;&gt;">&lt;&gt;</option>
                     </select>
-                  </label>
-                  <label>
-                    <span>Cost Type</span>
-                    <select value={costType} onChange={(e) => setCostType(e.target.value)}>
-                      <option value="LastPurchaseCost">Last Purchase Cost</option>
-                      <option value="AverageCost">Average Cost</option>
-                    </select>
-                  </label>
-                  <div className="pd-inv-qty">
-                    <span>Qty On Hand</span>
-                    <div>
-                      <select value={qtyOp} onChange={(e) => setQtyOp(e.target.value)} aria-label="Qty operator">
-                        <option value="&gt;">&gt;</option>
-                        <option value="&lt;">&lt;</option>
-                        <option value="=">=</option>
-                        <option value="&gt;=">&gt;=</option>
-                        <option value="&lt;=">&lt;=</option>
-                        <option value="&lt;&gt;">&lt;&gt;</option>
-                      </select>
-                      <input
-                        value={qty}
-                        onChange={(e) => setQty(e.target.value)}
-                        placeholder="All"
-                        inputMode="decimal"
-                      />
-                    </div>
+                    <input
+                      value={draft.qty}
+                      onChange={(e) => setDraft((d) => ({ ...d, qty: e.target.value }))}
+                      placeholder="All"
+                      inputMode="decimal"
+                    />
                   </div>
                 </div>
-
-                <div className="pd-inv-options">
-                  <button
-                    type="button"
-                    className={`pd-inv-chip${groupWise ? ' is-on' : ''}`}
-                    onClick={() => {
-                      setGroupWise((v) => !v)
-                      setSupplierWise(false)
-                    }}
-                  >
-                    Group Wise
-                  </button>
-                  <button
-                    type="button"
-                    className={`pd-inv-chip${supplierWise ? ' is-on' : ''}`}
-                    onClick={() => {
-                      setSupplierWise((v) => !v)
-                      setGroupWise(false)
-                    }}
-                  >
-                    Supplier Wise
-                  </button>
-                  <button
-                    type="button"
-                    className={`pd-inv-chip${hidePrice ? ' is-on' : ''}`}
-                    onClick={() => setHidePrice((v) => !v)}
-                  >
-                    Hide Price
-                  </button>
-                </div>
               </div>
-
-              {error ? (
-                <p className="pd-inv-msg" role="status">
-                  {error}
-                </p>
-              ) : (
-                <p className="pd-inv-hint">
-                  Filter by group or type a product name. Leave Qty blank to list all items.
-                </p>
-              )}
-            </div>
-            <footer className="pd-inv-foot">
-              <button type="button" className="pd-inv-ghost" onClick={onClose}>
-                Close
-              </button>
-              <button
-                type="button"
-                className="pd-inv-go"
-                disabled={state === 'loading'}
-                onClick={() => void showReport()}
-              >
-                {state === 'loading' ? 'Collecting data…' : 'Show Report'}
-              </button>
-            </footer>
-          </>
-        ) : filteredReport ? (
-          <>
-            <div className="pd-rv-toolbar">
-              <span className="pd-rv-toolbar-title">Report Viewer</span>
-              <button type="button" className="pd-rv-tool" disabled={!!exporting} onClick={runExcel}>
-                <FileSpreadsheet size={14} />
-                {exporting === 'excel' ? 'Excel…' : 'Excel'}
-              </button>
-              <button type="button" className="pd-rv-tool" disabled={!!exporting} onClick={runPdf}>
-                <FileText size={14} />
-                {exporting === 'pdf' ? 'PDF…' : 'PDF'}
-              </button>
-              <button type="button" className="pd-rv-tool" onClick={() => window.print()}>
-                <Printer size={14} /> Print
-              </button>
-              <span className="pd-inv-total">
-                COUNT : {filteredReport.totals.count}
-                {filteredReport.hidePrice ? '' : `  ·  TOTAL : ${money(filteredReport.totals.amount)}`}
-              </span>
-              <button type="button" className="pd-inv-ghost" onClick={() => setView('filters')}>
-                Back
-              </button>
-            </div>
-            <div className="pd-rv-filters">
-              <label>
-                <span>Group</span>
-                <select value={viewGroup} onChange={(e) => setViewGroup(e.target.value)}>
-                  <option value="">All groups</option>
-                  {groupOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="pd-rv-name">
-                <span>Name</span>
-                <span className="pd-inv-search">
-                  <Search size={14} />
-                  <input
-                    value={viewName}
-                    onChange={(e) => setViewName(e.target.value)}
-                    placeholder="Search name or barcode"
-                  />
-                </span>
-              </label>
-            </div>
-            <div className="pd-inv-body pd-inv-body-report">
-              <div className="pd-inv-sheet" id="pd-inv-print">
-                <div className="pd-inv-letterhead">
-                  {filteredReport.heading1 ? <h3>{filteredReport.heading1}</h3> : null}
-                  {filteredReport.heading2 ? <p>{filteredReport.heading2}</p> : null}
-                  <h1>{filteredReport.reportTitle}</h1>
-                  <div className="pd-inv-sub">
-                    <span>{filteredReport.heading3}</span>
-                    {filteredReport.heading4 ? <span>{filteredReport.heading4}</span> : null}
-                  </div>
-                </div>
-                <table className="pd-inv-grid">
-                  <thead>
-                    <tr>
-                      <th>Barcode</th>
-                      <th>Description</th>
-                      <th className="num">Pack Qty</th>
-                      <th className="num">Qty</th>
-                      {filteredReport.hidePrice ? null : (
-                        <>
-                          <th className="num">Cost</th>
-                          <th className="num">Amount</th>
-                          <th className="num">Price</th>
-                        </>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredReport.rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={colCount} className="pd-inv-empty">
-                          No Item Found For This Criteria..........
-                        </td>
-                      </tr>
-                    ) : (
-                      sections.map((sec) => (
-                      <Fragment key={sec.name || 'all'}>
-                        {sec.name ? (
-                          <tr className="pd-inv-group">
-                            <td colSpan={colCount}>{sec.name}</td>
-                          </tr>
-                        ) : null}
-                        {sec.items.map((row, idx) => (
-                          <tr key={`${row.productId}-${idx}`}>
-                            <td>{row.barcode}</td>
-                            <td>{row.description}</td>
-                            <td className="num">{qtyFmt(row.packQty)}</td>
-                            <td className="num">{qtyFmt(row.productWiseQty)}</td>
-                            {filteredReport.hidePrice ? null : (
-                              <>
-                                <td className="num">{money(row.unitCost)}</td>
-                                <td className="num">{money(row.amount)}</td>
-                                <td className="num">{money(row.unitPrice)}</td>
-                              </>
-                            )}
-                          </tr>
-                        ))}
-                      </Fragment>
-                      ))
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan={2}>COUNT : {filteredReport.totals.count}</td>
-                      <td className="num">Total Qty</td>
-                      <td className="num">{qtyFmt(filteredReport.totals.qty)}</td>
-                      {filteredReport.hidePrice ? null : (
-                        <>
-                          <td />
-                          <td className="num">{money(filteredReport.totals.amount)}</td>
-                          <td />
-                        </>
-                      )}
-                    </tr>
-                  </tfoot>
-                </table>
+              <div className="irp-panel-foot">
+                <button type="button" className="irp-btn" onClick={() => setDraft(EMPTY_FILTERS)}>
+                  Clear
+                </button>
+                <button type="button" className="irp-btn is-primary" onClick={applyPanel}>
+                  Apply
+                </button>
               </div>
-            </div>
-          </>
+            </aside>
+          </div>
         ) : null}
       </div>
     </div>

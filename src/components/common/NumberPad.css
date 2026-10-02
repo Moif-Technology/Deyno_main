@@ -1,0 +1,28 @@
+/* NumberPad — 3 columns of the standard .pd-key buttons. */
+.ui-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.ui-numpad .pd-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.ui-numpad .pd-key.is-clear {
+  color: var(--red, #b91c1c);
+}
+
+/* Action key (e.g. Next): brand-coloured, smaller text. */
+.ui-numpad .pd-key.is-action {
+  color: var(--brand);
+  font-size: 14px;
+}
+
+.ui-numpad .pd-key:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -3,11 +3,13 @@
  * then Join_Save_OldStyle. Layout matches KotJoinFrm.Designer.vb.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { ShieldCheck, X } from 'lucide-react'
+import { Check, Clock, Mail, MapPinned, Merge, Scissors, Search, ShieldCheck, User, Users, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
 import { SessionManager } from '../../utils/sessionManager'
 import { getPosSession } from '../../utils/posSession'
 import KotSplitDialog, { type SplitSource } from './KotSplitDialog'
+import { Toast, toastKindFor } from '../../components/common/Toast'
+import { digits } from '../../utils/validate'
 
 const AREA_PALETTE = [
   '#90EE90',
@@ -116,12 +118,10 @@ function formatKotClock(iso: string) {
   })
 }
 
-function supplySymbol(supply: string) {
-  const u = String(supply || '').replace(/_/g, ' ').toUpperCase()
-  if (u === 'DINE IN' || u === 'DINEIN') return '🍽️'
-  if (u === 'DELIVERY') return '🚚'
-  if (u === 'PARCEL' || u === 'TAKEAWAY' || u === 'TAKE AWAY') return '📦'
-  return '📍'
+function supplyLabel(supply: string) {
+  const u = String(supply || '').replace(/_/g, ' ').toUpperCase().trim()
+  if (u === 'TAKEAWAY' || u === 'TAKE AWAY') return 'PARCEL'
+  return u || '—'
 }
 
 function mapJoinRows(rows: Record<string, unknown>[]): JoinCard[] {
@@ -590,137 +590,181 @@ export default function KotJoinDialog({ areas, tables, waiter, onClose, onJoined
   })()
 
   return (
-    <div className="pd-mod-overlay pd-ol-overlay" role="presentation">
-      <div className="pd-ol-dialog pd-ol-screen pd-kj-screen" role="dialog" aria-modal="true">
-        <aside className="pd-kj-side">
-          <span className="pd-kj-heading">KOT No.</span>
-          <input
-            ref={searchRef}
-            className="pd-kj-search"
-            value={txtKOTNo}
-            onChange={(e) => setTxtKOTNo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onSearchEnter()
-            }}
-          />
-          <button
-            type="button"
-            className={`pd-kj-btn${!filter.supply && !filter.areaId && !filter.search ? ' is-on' : ''}`}
-            onClick={() => {
-              setTxtKOTNo('')
-              void loadList({})
-            }}
-          >
-            All Order
+    <div className="pd-mod-overlay" role="presentation">
+      <div className="pd-ol-dialog pd-ol-wide pd-olm" role="dialog" aria-modal="true" aria-labelledby="pd-kj-title">
+        <div className="pd-mod-header">
+          <div className="pd-mod-header-left">
+            <div className="pd-mod-header-icon">
+              <Merge size={15} strokeWidth={2} />
+            </div>
+            <div>
+              <p className="pd-mod-kicker">Orders</p>
+              <h2 id="pd-kj-title" className="pd-mod-item-name">KOT Join / Split</h2>
+            </div>
+          </div>
+          <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
+            <X size={13} />
           </button>
-          <button
-            type="button"
-            className={`pd-kj-btn${filter.supply === 'DINE IN' ? ' is-on' : ''}`}
-            onClick={() => {
-              setTxtKOTNo('')
-              void loadList({ supply: 'DINE IN' })
-            }}
-          >
-            DineIn
-          </button>
-          <button
-            type="button"
-            className={`pd-kj-btn${filter.supply === 'PARCEL' ? ' is-on' : ''}`}
-            onClick={() => {
-              setTxtKOTNo('')
-              void loadList({ supply: 'PARCEL' })
-            }}
-          >
-            Take Away
-          </button>
-          <button
-            type="button"
-            className={`pd-kj-btn${filter.supply === 'DELIVERY' ? ' is-on' : ''}`}
-            onClick={() => {
-              setTxtKOTNo('')
-              void loadList({ supply: 'DELIVERY' })
-            }}
-          >
-            Delivery
-          </button>
-          <button type="button" className="pd-kj-btn pd-kj-selected" disabled>
-            Selected: {selected.size}  |  PAX: {paxSumSelected}
-          </button>
-          <button type="button" className="pd-kj-btn" disabled={!joinEnabled} onClick={onJoinClick}>
-            KOTJoin
-          </button>
-          <button type="button" className="pd-kj-btn" disabled={!splitEnabled} onClick={onSplitClick}>
-            KOT Split
-          </button>
-          <button type="button" className="pd-kj-btn pd-kj-hidden" tabIndex={-1} aria-hidden>
-            ChangeNoOfPerson
-          </button>
-          <span className="pd-kj-side-spacer" />
-          <button type="button" className="pd-kj-btn" onClick={() => clearSelection(true)}>
-            Clear
-          </button>
-          <button type="button" className="pd-kj-btn pd-kj-home" onClick={onClose}>
-            Home
-          </button>
-        </aside>
+        </div>
 
-        <div className="pd-kj-main">
-          <div className="pd-ol-indicate pd-kj-indicate" aria-label="Area colours">
-            {areas.map((a) => (
+        <div className="pd-ol-body">
+          <div className="pd-olm-bar">
+            <span className="pd-olm-search">
+              <Search size={14} />
+              <input
+                ref={searchRef}
+                value={txtKOTNo}
+                onChange={(e) => setTxtKOTNo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onSearchEnter()
+                }}
+                placeholder="KOT No. — press Enter"
+                aria-label="KOT number"
+              />
+            </span>
+            <div className="pd-booking-tabs pd-olm-tabs">
               <button
-                key={a.id}
                 type="button"
-                className={`pd-ol-area${filter.areaId === a.id ? ' is-on' : ''}`}
-                style={{ background: areaSwatch(a.id, a.name) }}
+                className={`pd-booking-tab${!filter.supply && !filter.areaId && !filter.search ? ' is-on' : ''}`}
                 onClick={() => {
                   setTxtKOTNo('')
-                  void loadList({ areaId: a.id })
+                  void loadList({})
                 }}
               >
-                {a.name}
+                All Orders
               </button>
-            ))}
+              <button
+                type="button"
+                className={`pd-booking-tab${filter.supply === 'DINE IN' ? ' is-on' : ''}`}
+                onClick={() => {
+                  setTxtKOTNo('')
+                  void loadList({ supply: 'DINE IN' })
+                }}
+              >
+                Dine In
+              </button>
+              <button
+                type="button"
+                className={`pd-booking-tab${filter.supply === 'PARCEL' ? ' is-on' : ''}`}
+                onClick={() => {
+                  setTxtKOTNo('')
+                  void loadList({ supply: 'PARCEL' })
+                }}
+              >
+                Take Away
+              </button>
+              <button
+                type="button"
+                className={`pd-booking-tab${filter.supply === 'DELIVERY' ? ' is-on' : ''}`}
+                onClick={() => {
+                  setTxtKOTNo('')
+                  void loadList({ supply: 'DELIVERY' })
+                }}
+              >
+                Delivery
+              </button>
+            </div>
           </div>
-          <div className="pd-kj-cards">
-            {state === 'loading' ? <p className="pd-cat-msg">Loading orders…</p> : null}
-            {state === 'error' ? <p className="pd-cat-msg">{error}</p> : null}
-            {state === 'idle' && rows.length === 0 ? <p className="pd-cat-msg">No open KOTs</p> : null}
+
+          {areas.length ? (
+            <div className="pd-olm-areas" aria-label="Filter by area">
+              {areas.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={`pd-olm-area${filter.areaId === a.id ? ' is-on' : ''}`}
+                  onClick={() => {
+                    setTxtKOTNo('')
+                    void loadList({ areaId: a.id })
+                  }}
+                >
+                  <span className="pd-olm-dot" style={{ background: areaSwatch(a.id, a.name) }} />
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <p className="pd-olm-hint">
+            <Merge size={13} strokeWidth={2.2} /> Tap 2 or more orders to join them, or 1 order to split it
+          </p>
+
+          <div className="pd-olm-cards">
+            {state === 'loading' ? <p className="pd-olm-msg">Loading orders…</p> : null}
+            {state === 'error' ? <p className="pd-olm-msg">{error}</p> : null}
+            {state === 'idle' && rows.length === 0 ? <p className="pd-olm-msg">No open KOTs</p> : null}
             {rows.map((row) => {
-              const color = areaSwatch(row.areaId, row.areaName)
               const on = selected.has(row.kotMasterId)
+              const chair = String(row.chairNo ?? '').trim()
               const tableLine =
-                row.tableName.trim() && String(row.chairNo).trim()
-                  ? `Table: ${row.tableName} - Chair: ${row.chairNo}`
-                  : 'Table: N/A'
+                row.tableName.trim() && chair && chair !== '0'
+                  ? `${row.tableName} · Chair ${chair}`
+                  : row.tableName.trim() || 'No table'
               return (
                 <button
                   key={row.kotMasterId}
                   type="button"
-                  className={`pd-ol-card pd-kj-card${on ? ' is-on' : ''}`}
-                  style={{ background: color }}
+                  className={`pd-olm-card pd-kjm-card${on ? ' is-on' : ''}`}
                   onClick={() => toggleCard(row)}
                 >
-                  {on ? <span className="pd-kj-tick">✓</span> : null}
-                  <span className="pd-ol-card-area">
-                    {supplySymbol(row.supplyType)} {row.areaName || 'Unknown Area'}
+                  <div className="pd-olm-card-head">
+                    <span className="pd-olm-kot">{row.kotNo}</span>
+                    {on ? (
+                      <span className="pd-kjm-tick" aria-label="Selected">
+                        <Check size={13} strokeWidth={3} />
+                      </span>
+                    ) : (
+                      <span className="pd-olm-supply">{supplyLabel(row.supplyType)}</span>
+                    )}
+                  </div>
+                  <span className="pd-olm-area-name">{row.areaName || 'Unknown Area'}</span>
+                  <span className="pd-olm-line">
+                    <Clock size={12} strokeWidth={2.2} /> {formatKotClock(row.kotTime)}
                   </span>
-                  <span className="pd-ol-card-time">{formatKotClock(row.kotTime)}</span>
-                  <span className={`pd-ol-card-table${row.tableName.trim() ? ' is-set' : ''}`}>
-                    {tableLine}
+                  <span className="pd-olm-line">
+                    <MapPinned size={12} strokeWidth={2.2} /> {tableLine}
                   </span>
-                  {row.remarks ? <span className="pd-ol-card-note">{row.remarks}</span> : null}
-                  <span className="pd-ol-card-pax">PAX: {row.pax || 0}</span>
-                  <span className="pd-ol-card-waiter">{row.waiterName || waiter}</span>
-                  <span className="pd-ol-card-amt">Amount: {money(row.amount)}</span>
-                  <span className="pd-ol-card-kot">{row.kotNo}</span>
+                  <span className="pd-olm-line">
+                    <Users size={12} strokeWidth={2.2} /> {row.pax || 0} pax
+                    <span className="pd-olm-sep">·</span>
+                    <User size={12} strokeWidth={2.2} /> {row.waiterName || waiter}
+                  </span>
+                  {row.remarks ? (
+                    <span className="pd-olm-line pd-olm-note">
+                      <Mail size={12} strokeWidth={2.2} /> {row.remarks}
+                    </span>
+                  ) : null}
+                  <div className="pd-olm-card-foot">
+                    <strong>AED {money(row.amount)}</strong>
+                  </div>
                 </button>
               )
             })}
           </div>
         </div>
+
+        <div className="pd-mod-foot">
+          <span className="pd-mfg-count">
+            Selected: <strong>{selected.size}</strong> · Pax: <strong>{paxSumSelected}</strong>
+          </span>
+          <span className="pd-mod-foot-spacer" />
+          <button type="button" className="pd-mod-foot-btn" onClick={() => clearSelection(true)} disabled={selected.size === 0}>
+            Clear
+          </button>
+          <button type="button" className="pd-mod-foot-btn" disabled={!splitEnabled} onClick={onSplitClick}>
+            <Scissors size={14} /> Split
+          </button>
+          <button type="button" className="pd-mod-foot-btn is-ok" disabled={!joinEnabled} onClick={onJoinClick}>
+            <Merge size={14} /> Join KOTs
+          </button>
+        </div>
       </div>
 
-      {hint ? <div className="pd-toast">{hint}</div> : null}
+      {hint ? (
+        <div className="pd-toast">
+          <Toast key={hint} message={hint} kind={toastKindFor(hint)} duration={3200} />
+        </div>
+      ) : null}
 
       {splitSource ? (
         <KotSplitDialog
@@ -825,7 +869,7 @@ export default function KotJoinDialog({ areas, tables, waiter, onClose, onJoined
                     ref={paxRef}
                     className="pd-qty-input"
                     value={paxDraft}
-                    onChange={(e) => setPaxDraft(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                    onChange={(e) => setPaxDraft(digits(e.target.value, 6))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') onPaxDone()
                       if (e.key === 'Escape') onPaxCancel()

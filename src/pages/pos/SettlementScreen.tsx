@@ -1,17 +1,32 @@
 /**
  * SettlementScreen — same engine as MoifHMS SettlementScreen.vb / Cash() / SaveSalesDetails.
  * CREDIT is UI-only until the next phase.
+ *
+ * Layout: total due on top; payment methods with a Paid amount box beside
+ * Credit; the breakdown and an "Add tip" section (expands when tapped) on the
+ * left; the shared number keypad on the right. The keypad types into whichever
+ * box is active — Paid amount or Tip.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CreditCard, X } from 'lucide-react'
+import { Banknote, CreditCard, Globe, HandCoins, Plus, Receipt, Wallet, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { ConfirmDialog } from '../../components/common/ConfirmDialog'
+import { NumberPad } from '../../components/common/NumberPad'
 import { getPosSession } from '../../utils/posSession'
+import './SettlementScreen.css'
 
-const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const
 const TENDERS = ['CASH', 'CARD', 'ONLINE'] as const
+const TIP_QUICK = [5, 10, 20]
 
 export type SettleTender = (typeof TENDERS)[number]
 export type SettleMethod = SettleTender | 'CREDIT'
+
+const METHODS: { id: SettleMethod; label: string; icon: typeof Banknote }[] = [
+  { id: 'CASH', label: 'Cash', icon: Banknote },
+  { id: 'CARD', label: 'Card', icon: CreditCard },
+  { id: 'ONLINE', label: 'Online', icon: Globe },
+  { id: 'CREDIT', label: 'Credit', icon: Wallet },
+]
 
 export type SettlementBill = {
   kotId: number
@@ -44,6 +59,8 @@ export type SettlementDone = {
 }
 
 type Props = {
+  /** Quick Cash: a small cash-only modal — Bill amount, Paid amount, Balance. */
+  quick?: boolean
   bill: SettlementBill
   onClose: () => void
   onCompleted: (info: SettlementDone) => void
@@ -70,13 +87,23 @@ function emptyAlloc(): Alloc {
   return { CASH: 0, CARD: 0, ONLINE: 0 }
 }
 
+/** Appends a keypad key to a money string (max 2 decimals). */
+function typeKey(prev: string, k: string) {
+  if (k === '.' && prev.includes('.')) return prev
+  if (prev === '0' && k !== '.') return k
+  const next = prev + k
+  const bits = next.split('.')
+  if (bits[1] && bits[1].length > 2) return prev
+  return next
+}
+
 function errMessage(err: unknown, fallback: string) {
   if (err instanceof ApiError && err.message) return err.message
   if (err instanceof Error && err.message) return err.message
   return fallback
 }
 
-export default function SettlementScreen({ bill, onClose, onCompleted, onAlreadySettled }: Props) {
+export default function SettlementScreen({ quick = false, bill, onClose, onCompleted, onAlreadySettled }: Props) {
   const net = round2(bill.net)
   const due = round2(Math.abs(net))
   const isReturn = net < 0 || bill.items.some((it) => Number(it.qty ?? it.Qty) < 0)
@@ -86,7 +113,16 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tipAsk, setTipAsk] = useState<number | null>(null)
+  /** "Add tip" section: open/closed, the typed tip, and which box the keypad types into. */
+  const [tipOpen, setTipOpen] = useState(false)
+  const [tipDraft, setTipDraft] = useState('')
+  const [entry, setEntry] = useState<'paid' | 'tip'>('paid')
   const busyRef = useRef(false)
+
+  /** Tip the cashier typed in the Add tip section (0 when it is closed). */
+  const tipExtra = tipOpen ? parseAmt(tipDraft) : 0
+  /** What has to be covered: the bill plus that tip. */
+  const need = round2(due + tipExtra)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -111,14 +147,15 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
         onKeyPad(e.key)
       } else if (e.key === 'Backspace') {
         e.preventDefault()
-        setDraft((prev) => prev.slice(0, -1))
+        if (entry === 'tip') setTipDraft((prev) => prev.slice(0, -1))
+        else setDraft((prev) => prev.slice(0, -1))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // submitPay is recreated; bind latest via refs would be heavier — keep deps tight.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, tipAsk, selected, draft, alloc, net])
+  }, [busy, tipAsk, selected, draft, alloc, net, entry, tipOpen, tipDraft])
 
   const live = useMemo(() => {
     const next = { ...alloc }
@@ -132,8 +169,8 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
   const allocated = round2(cash + card + online)
   const methodsUsed = TENDERS.filter((m) => live[m] > 0).length
   const isSplit = methodsUsed > 1
-  const change = !isSplit && cash > 0 && card <= 0 && online <= 0 ? round2(Math.max(0, cash - due)) : 0
-  const remaining = round2(Math.max(0, due - allocated + (change > 0 ? change : 0)))
+  const change = !isSplit && cash > 0 && card <= 0 && online <= 0 ? round2(Math.max(0, cash - need)) : 0
+  const remaining = round2(Math.max(0, need - allocated + (change > 0 ? change : 0)))
   const paidShown = allocated > 0 ? allocated : 0
 
   function commitDraft(from: SettleMethod, value: string, base = alloc): Alloc {
@@ -152,23 +189,37 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
     setAlloc(committed)
     setSelected(next)
     setDraft(committed[next] > 0 ? money(committed[next]) : '')
+    setEntry('paid')
   }
 
   function onKeyPad(k: string) {
-    if (busy || selected === 'CREDIT' || tipAsk != null) return
+    if (busy || tipAsk != null) return
     setError(null)
+    if (entry === 'tip') {
+      if (k === 'C') setTipDraft('')
+      else setTipDraft((prev) => typeKey(prev, k))
+      return
+    }
+    if (selected === 'CREDIT') return
     if (k === 'C') {
       setDraft('')
       return
     }
-    setDraft((prev) => {
-      if (k === '.' && prev.includes('.')) return prev
-      if (prev === '0' && k !== '.') return k
-      const next = prev + k
-      const bits = next.split('.')
-      if (bits[1] && bits[1].length > 2) return prev
-      return next
-    })
+    setDraft((prev) => typeKey(prev, k))
+  }
+
+  function toggleTip() {
+    if (busy) return
+    setError(null)
+    if (tipOpen) {
+      // Closing removes the tip.
+      setTipOpen(false)
+      setTipDraft('')
+      setEntry('paid')
+    } else {
+      setTipOpen(true)
+      setEntry('tip')
+    }
   }
 
   function buildPayload(parts: { payMode: SettleTender; amount: number }[], paid: number, tip: number) {
@@ -290,6 +341,8 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
 
     const committed = commitDraft(selected, draft)
     setAlloc(committed)
+    // Nothing typed in Paid amount → the chosen method pays the exact amount.
+    const typedSum = round2(committed.CASH + committed.CARD + committed.ONLINE)
     const { next, parts: filled } = collectParts(committed, true)
     let parts = filled
     if (!parts.length) {
@@ -305,22 +358,28 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
 
     const onlyCash = parts.length === 1 && parts[0].payMode === 'CASH'
     const onlyCard = parts.length === 1 && parts[0].payMode === 'CARD'
-    const paid = onlyCash ? parts[0].amount : split ? due : Math.max(sum, 0)
-    if (!split && paid + 0.02 < due) {
-      setError('Amount Paid is Less than Net Amount..........')
+    let paid = onlyCash ? parts[0].amount : split ? due : Math.max(sum, 0)
+    if (!split && tipExtra > 0) {
+      // With a tip: an untyped amount, or a card / online amount typed as just the bill, pays bill + tip.
+      if (typedSum <= 0) paid = need
+      else if (!onlyCash && paid + 0.02 >= due && paid < need) paid = need
+    }
+    if (!split && paid + 0.02 < need) {
+      setError(tipExtra > 0 ? 'Amount Paid is Less than Net Amount + Tip..........' : 'Amount Paid is Less than Net Amount..........')
       return
     }
 
-    if (onlyCard && paid + 0.02 > due && tipConfirmed == null) {
-      setTipAsk(round2(paid - due))
+    // Card paid above bill (+ typed tip): ask whether the excess is a tip too.
+    if (onlyCard && paid > need + 0.02 && tipConfirmed == null) {
+      setTipAsk(round2(paid - need))
       setAlloc(next)
       return
     }
-    const tip = onlyCard && tipConfirmed != null && tipConfirmed > 0 ? tipConfirmed : 0
+    const tip = round2(tipExtra + (onlyCard && tipConfirmed != null && tipConfirmed > 0 ? tipConfirmed : 0))
     const settleParts = split
       ? parts
       : [{ payMode: parts[0].payMode, amount: due }]
-    await postSettle(settleParts, split ? due : paid, tip)
+    await postSettle(settleParts, split ? round2(due + tipExtra) : paid, tip)
   }
 
   async function confirmTip(yes: boolean) {
@@ -328,6 +387,79 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
     setTipAsk(null)
     if (!yes) return
     await submitPay(excess)
+  }
+
+  // Quick Cash: cash only (selected stays CASH), no tip section, same pay engine.
+  if (quick) {
+    const paidTyped = parseAmt(draft)
+    const short = paidTyped > 0 && paidTyped + 0.009 < due
+    return (
+      <div
+        className="pd-mod-overlay pd-settle-overlay"
+        role="presentation"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !busy) onClose()
+        }}
+      >
+        <div className="stl stl-quick" role="dialog" aria-modal="true" aria-labelledby="pd-quick-title">
+          <div className="pd-mod-header">
+            <div className="pd-mod-header-left">
+              <div className="pd-mod-header-icon">
+                <Banknote size={15} strokeWidth={2} />
+              </div>
+              <div>
+                <p className="pd-mod-kicker">Bill {bill.kotLabel}</p>
+                <h2 id="pd-quick-title" className="pd-mod-item-name">Quick Cash</h2>
+              </div>
+            </div>
+            <button type="button" className="pd-mod-x" onClick={onClose} disabled={busy} aria-label="Close">
+              <X size={13} />
+            </button>
+          </div>
+
+          <div className="stl-body">
+            <div className="stlq-main">
+              <div className="stlq-left">
+                <div className="stlq-line">
+                  <span>Bill amount</span>
+                  <b>AED {money(due)}</b>
+                </div>
+                <div className="stl-paid is-on stlq-paid">
+                  <small>Paid amount</small>
+                  <b>{draft || '0.00'}</b>
+                </div>
+                <div className="stlq-quick">
+                  <button type="button" disabled={busy} onClick={() => setDraft(money(due))}>
+                    Exact
+                  </button>
+                  {[50, 100, 200, 500].map((q) => (
+                    <button key={q} type="button" disabled={busy} onClick={() => setDraft(String(q))}>
+                      {q}
+                    </button>
+                  ))}
+                </div>
+                <div className={`stlq-line is-balance${short ? ' is-short' : ''}`}>
+                  <span>{short ? 'Still to pay' : 'Balance'}</span>
+                  <b>AED {money(short ? due - paidTyped : change)}</b>
+                </div>
+              </div>
+              <NumberPad className="stl-pad" onKey={onKeyPad} disabled={busy} />
+            </div>
+            {error ? <p className="stl-err">{error}</p> : null}
+          </div>
+
+          <div className="stl-foot">
+            <button type="button" className="pd-mod-foot-btn is-close" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className="pd-mod-foot-btn is-ok stl-pay" onClick={() => void submitPay()} disabled={busy}>
+              <Banknote size={16} />
+              {busy ? 'Paying…' : `${isReturn ? 'Refund' : 'Pay'} AED ${money(due)}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -338,133 +470,145 @@ export default function SettlementScreen({ bill, onClose, onCompleted, onAlready
         if (e.target === e.currentTarget && !busy && tipAsk == null) onClose()
       }}
     >
-      <div className="pd-settle" role="dialog" aria-modal="true" aria-labelledby="pd-settle-title">
-        <header className="pd-settle-head">
-          <div>
-            <p className="pd-mod-kicker">Settlement</p>
-            <h2 id="pd-settle-title">SETTLEMENT</h2>
+      <div className="stl" role="dialog" aria-modal="true" aria-labelledby="pd-settle-title">
+        <div className="pd-mod-header">
+          <div className="pd-mod-header-left">
+            <div className="pd-mod-header-icon">
+              <Receipt size={15} strokeWidth={2} />
+            </div>
+            <div>
+              <p className="pd-mod-kicker">Bill {bill.kotLabel}</p>
+              <h2 id="pd-settle-title" className="pd-mod-item-name">Settlement</h2>
+            </div>
           </div>
-          <div className="pd-settle-billno">Bill {bill.kotLabel}</div>
           <button type="button" className="pd-mod-x" onClick={onClose} disabled={busy} aria-label="Close">
             <X size={13} />
           </button>
-        </header>
-
-        <div className="pd-settle-due">
-          <span>{isReturn ? 'RETURN DUE' : 'TOTAL DUE'}</span>
-          <strong>AED {money(due)}</strong>
         </div>
 
-        <div className="pd-settle-methods">
-          <p>PAYMENT METHOD</p>
-          <div className="pd-settle-method-row">
-            {TENDERS.map((m) => (
+        <div className="stl-body">
+          {/* Total due */}
+          <div className="stl-due">
+            <span>{isReturn ? 'Return due' : 'Total due'}</span>
+            <strong>AED {money(due)}</strong>
+            {tipExtra > 0 ? <em>+ tip {money(tipExtra)} = AED {money(need)}</em> : null}
+          </div>
+
+          {/* Payment methods · Paid amount (next to Credit) */}
+          <div className="stl-methods">
+            {METHODS.map(({ id, label, icon: Icon }) => (
               <button
-                key={m}
+                key={id}
                 type="button"
-                className={`pd-settle-method${selected === m ? ' is-on' : ''}`}
-                onClick={() => selectMethod(m)}
+                className={`stl-method${selected === id ? ' is-on' : ''}`}
+                onClick={() => selectMethod(id)}
                 disabled={busy}
               >
-                {m === 'CARD' ? 'CARD' : m}
+                <Icon size={16} strokeWidth={2} />
+                {label}
               </button>
             ))}
             <button
               type="button"
-              className="pd-settle-method"
-              onClick={() => selectMethod('CREDIT')}
+              className={`stl-paid${entry === 'paid' ? ' is-on' : ''}`}
+              onClick={() => setEntry('paid')}
               disabled={busy}
             >
-              CREDIT
+              <small>Paid amount{selected !== 'CREDIT' ? ` · ${selected.toLowerCase()}` : ''}</small>
+              <b>{draft || '0.00'}</b>
             </button>
           </div>
+
+          <div className="stl-main">
+            {/* Left: breakdown + tip */}
+            <div className="stl-left">
+              <div className="stl-rows">
+                <div>
+                  <span>Cash</span>
+                  <b>{money(cash)}</b>
+                </div>
+                <div>
+                  <span>Card</span>
+                  <b>{money(card)}</b>
+                </div>
+                <div>
+                  <span>Online</span>
+                  <b>{money(online)}</b>
+                </div>
+                <div className="is-sum">
+                  <span>Paid</span>
+                  <b>{money(paidShown)}</b>
+                </div>
+                <div className={remaining > 0.009 ? 'is-due' : undefined}>
+                  <span>{change > 0.009 ? 'Change' : 'Balance'}</span>
+                  <b>{money(change > 0.009 ? change : remaining)}</b>
+                </div>
+              </div>
+
+              {/* Add tip — tap to open the tip section */}
+              <div className={`stl-tip${tipOpen ? ' is-open' : ''}`}>
+                <button type="button" className="stl-tip-toggle" onClick={toggleTip} disabled={busy} aria-expanded={tipOpen}>
+                  <HandCoins size={15} />
+                  {tipOpen ? 'Remove tip' : 'Add tip'}
+                  {tipOpen ? <X size={13} /> : <Plus size={13} />}
+                </button>
+                {tipOpen ? (
+                  <div className="stl-tip-body">
+                    <button
+                      type="button"
+                      className={`stl-tip-box${entry === 'tip' ? ' is-on' : ''}`}
+                      onClick={() => setEntry('tip')}
+                      disabled={busy}
+                    >
+                      <small>Tip amount</small>
+                      <b>{tipDraft || '0.00'}</b>
+                    </button>
+                    <div className="stl-tip-quick">
+                      {TIP_QUICK.map((q) => (
+                        <button
+                          key={q}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setTipDraft(String(q))
+                            setEntry('tip')
+                          }}
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Right: shared keypad — types into the highlighted box */}
+            <NumberPad className="stl-pad" onKey={onKeyPad} disabled={busy} />
+          </div>
+
+          {error ? <p className="stl-err">{error}</p> : null}
         </div>
 
-        <div className="pd-settle-body">
-          <div className="pd-settle-details">
-            <div className="pd-settle-row">
-              <span>Cash</span>
-              <strong>{money(cash)}</strong>
-            </div>
-            <div className="pd-settle-row">
-              <span>Card</span>
-              <strong>{money(card)}</strong>
-            </div>
-            <div className="pd-settle-row">
-              <span>Online</span>
-              <strong>{money(online)}</strong>
-            </div>
-            <div className="pd-settle-row is-sum">
-              <span>Paid</span>
-              <strong>{money(paidShown)}</strong>
-            </div>
-            <div className={`pd-settle-row${remaining > 0.009 ? ' is-due' : ''}`}>
-              <span>{change > 0.009 ? 'Change' : 'Balance'}</span>
-              <strong>{money(change > 0.009 ? change : remaining)}</strong>
-            </div>
-            <div className="pd-settle-draft">
-              {selected === 'CREDIT' ? 'CREDIT' : `${selected} entry`} · {draft || '0'}
-            </div>
-          </div>
-          <div className="pd-settle-keys">
-            {KEYS.map((k) => (
-              <button key={k} type="button" className="pd-key" onClick={() => onKeyPad(k)} disabled={busy}>
-                {k}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error ? <p className="pd-settle-err">{error}</p> : null}
-
-        <footer className="pd-settle-foot">
-          <button type="button" className="pd-settle-cancel" onClick={onClose} disabled={busy}>
-            CANCEL
+        <div className="stl-foot">
+          <button type="button" className="pd-mod-foot-btn is-close" onClick={onClose} disabled={busy}>
+            Cancel
           </button>
-          <button
-            type="button"
-            className="pd-pay pd-settle-pay"
-            onClick={() => void submitPay()}
-            disabled={busy}
-          >
+          <button type="button" className="pd-mod-foot-btn is-ok stl-pay" onClick={() => void submitPay()} disabled={busy}>
             <CreditCard size={16} />
-            {busy ? 'PAYING…' : `${isReturn ? 'REFUND' : 'PAY'} AED ${money(due)}`}
+            {busy ? 'Paying…' : `${isReturn ? 'Refund' : 'Pay'} AED ${money(need)}`}
           </button>
-        </footer>
+        </div>
       </div>
 
-      {tipAsk != null ? (
-        <div className="pd-settle-tip" role="dialog" aria-modal="true">
-          <div className="pd-ol-dialog pd-ol-narrow">
-            <div className="pd-mod-header">
-              <div>
-                <p className="pd-mod-kicker">Card</p>
-                <h2 className="pd-mod-item-name">CONFIRM TIP</h2>
-              </div>
-            </div>
-            <div className="pd-ol-body">
-              <p className="pd-confirm-msg">
-                PAID AMOUNT IS MORE THAN NET AMOUNT.
-                <br />
-                EXCESS: AED {money(tipAsk)}
-                <br />
-                <br />
-                YES = ADD EXCESS TO TIP
-                <br />
-                NO = CANCEL
-              </p>
-              <div className="pd-admin-foot">
-                <button type="button" className="pd-mod-foot-btn is-close" onClick={() => void confirmTip(false)}>
-                  NO
-                </button>
-                <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void confirmTip(true)}>
-                  YES
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmDialog
+        open={tipAsk != null}
+        title="Add the extra to the tip?"
+        message={`The card amount is AED ${money(tipAsk ?? 0)} more than the bill${tipExtra > 0 ? ' and tip' : ''}. Add it as a tip?`}
+        confirmLabel="Add to tip"
+        onConfirm={() => void confirmTip(true)}
+        onCancel={() => void confirmTip(false)}
+      />
     </div>
   )
 }

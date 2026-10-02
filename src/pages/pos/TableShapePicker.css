@@ -242,3 +242,114 @@
   background: var(--brand-border);
   border-radius: 999px;
 }
+
+/* Demo button — shows / hides the big preview below the shape cards. */
+.tsp-head {
+  justify-content: space-between;
+}
+
+.tsp-demo {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--brand-border);
+  background: #fff;
+  color: var(--brand);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+
+.tsp-demo:hover {
+  background: var(--brand-bg);
+}
+
+.tsp-demo.is-on {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 4px 12px var(--brand-glow);
+}
+
+.tsp-preview {
+  animation: tsp-demo-in 0.18s ease-out;
+}
+
+@keyframes tsp-demo-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Compact panel: tighter padding, one-line header, smaller cards and preview. */
+.tsp {
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+}
+
+.tsp-head {
+  align-items: center;
+}
+
+.tsp-head h3 {
+  font-size: 13px;
+}
+
+.tsp-demo {
+  height: 26px;
+  padding: 0 10px;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.tsp-demo svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tsp-options {
+  gap: 6px;
+  grid-auto-columns: calc((100% - 12px) / 3);
+  padding-bottom: 2px;
+}
+
+.tsp-option {
+  gap: 2px;
+  padding: 6px 4px 5px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.tsp-option .tsp-svg {
+  width: 40px;
+  height: 40px;
+}
+
+.tsp-check {
+  top: 4px;
+  right: 4px;
+  width: 14px;
+  height: 14px;
+}
+
+.tsp-check svg {
+  width: 9px;
+  height: 9px;
+}
+
+.tsp-preview {
+  height: 160px;
+  border-radius: 10px;
+  background-size: 26px 26px;
+}
+
+.tsp-preview .tsp-svg {
+  width: 140px;
+  height: 140px;
+}

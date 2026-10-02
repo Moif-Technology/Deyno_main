@@ -2,8 +2,10 @@
  * Product entry / edit — same fields and VAT maths as Saloon POS ProductMasterDetailsDialog.
  */
 import { useEffect, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { Package, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { decimal, percent } from '../../utils/validate'
+import { useArabicAutoFill } from '../../utils/useArabicAutoFill'
 
 type Opt = { id: number; name: string; code: string; groupId?: number }
 
@@ -77,6 +79,7 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
   const [addingGroup, setAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupArabic, setNewGroupArabic] = useState('')
+  const autoFillGroupArabic = useArabicAutoFill(setNewGroupArabic)
   const [groupBusy, setGroupBusy] = useState(false)
 
   const [newBarcode, setNewBarcode] = useState(!isEdit)
@@ -353,22 +356,33 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
     : groups
 
   return (
-    <div className="pd-mod-overlay pd-inv-overlay" role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose() }}>
-      <div className="pd-inv pd-prd" role="dialog" aria-modal="true" aria-labelledby="pd-prd-title">
-        <header className="pd-inv-head">
-          <div>
-            <p className="pd-mod-kicker">New Sale</p>
-            <h2 id="pd-prd-title">{isEdit ? 'Edit Product' : 'Product Entry'}</h2>
+    <div className="pd-mod-overlay" role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose() }}>
+      <div className="pd-ol-dialog pd-ol-wide pd-edm pd-prd-edit" role="dialog" aria-modal="true" aria-labelledby="pd-prd-title">
+        <div className="pd-mod-header">
+          <div className="pd-mod-header-left">
+            <div className="pd-mod-header-icon">
+              <Package size={15} strokeWidth={2} />
+            </div>
+            <div>
+              <p className="pd-mod-kicker">{isEdit ? 'Edit' : 'Creation'}</p>
+              <h2 id="pd-prd-title" className="pd-mod-item-name">{isEdit ? 'Edit Product' : 'Product Entry'}</h2>
+            </div>
           </div>
-          <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close"><X size={13} /></button>
-        </header>
+          <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
+            <X size={13} />
+          </button>
+        </div>
 
-        <div className="pd-prd-tabs">
+        <div className="pd-ol-body">
+
+        <div className="pd-prd-tabs" role="tablist">
           {tabs.map((label, i) => (
             <button
               key={label}
               type="button"
-              className={tab === i ? 'pd-inv-go' : 'pd-inv-ghost'}
+              role="tab"
+              aria-selected={tab === i}
+              className={`pd-prd-tab${tab === i ? ' is-on' : ''}`}
               onClick={() => setTab(i)}
             >
               {label}
@@ -376,26 +390,26 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
           ))}
         </div>
 
-        {loading ? <p className="pd-inv-msg">Loading…</p> : null}
-        {error ? <p className="pd-inv-msg">{error}</p> : null}
+        {loading ? <p className="pd-mfg-count">Loading…</p> : null}
+        {error ? <p className="pd-mfg-msg">{error}</p> : null}
 
         {!loading ? (
-          <div className="pd-prd-form">
+          <div className="pd-edm-fields">
             {tab === 0 ? (
               <>
-                <label>
-                  <span>Barcode</span>
+                <div className="pd-form-row">
+                  <label>Barcode</label>
                   <input value={barcode} disabled={newBarcode} onChange={(e) => setBarcode(e.target.value)} />
-                </label>
-                <label>
-                  <span>New barcode</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>New Barcode</label>
                   <select value={newBarcode ? 'yes' : 'no'} onChange={(e) => setNewBarcode(e.target.value === 'yes')}>
                     <option value="yes">Auto</option>
                     <option value="no">Manual</option>
                   </select>
-                </label>
-                <label>
-                  <span>Product name</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Product Name</label>
                   <input
                     ref={nameRef}
                     value={name}
@@ -405,38 +419,43 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                       setShortName(v)
                     }}
                   />
-                </label>
-                <label>
-                  <span>Short description</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Short Description</label>
                   <input value={shortName} onChange={(e) => setShortName(e.target.value)} />
-                </label>
-                <label>
-                  <span>Arabic</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Arabic</label>
                   <input value={arabic} dir="rtl" onChange={(e) => setArabic(e.target.value)} />
-                </label>
-                <label className="pd-prd-span">
-                  <span>Group</span>
-                  <div className="pd-prd-group-row">
+                </div>
+                <div className="pd-form-row pd-edm-span">
+                  <label>Group</label>
+                  <div className="pd-edm-inline">
                     <select value={groupId} onChange={(e) => { setGroupId(e.target.value); setSubGroupId('') }}>
                       <option value="">Select</option>
                       {groupOptions.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </select>
                     <button
                       type="button"
-                      className="pd-inv-ghost"
+                      className="pd-form-code-btn"
                       disabled={groupBusy}
                       onClick={() => setAddingGroup((open) => !open)}
                     >
-                      New group
+                      New
                     </button>
                   </div>
-                </label>
+                </div>
+                {/* Same add-group row as the Product Entry modal. */}
                 {addingGroup ? (
-                  <div className="pd-prd-span pd-prd-new-group">
+                  <div className="pd-edm-span pd-form-add-group">
                     <input
                       value={newGroupName}
-                      placeholder="Group name"
-                      onChange={(e) => setNewGroupName(e.target.value)}
+                      placeholder="New group name"
+                      autoFocus
+                      onChange={(e) => {
+                        setNewGroupName(e.target.value)
+                        autoFillGroupArabic(e.target.value)
+                      }}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void saveNewGroup() } }}
                     />
                     <input
@@ -445,59 +464,56 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                       placeholder="Arabic"
                       onChange={(e) => setNewGroupArabic(e.target.value)}
                     />
-                    <button type="button" className="pd-inv-go" disabled={groupBusy} onClick={() => void saveNewGroup()}>
-                      {groupBusy ? 'Saving…' : 'Save group'}
-                    </button>
-                    <button type="button" className="pd-inv-ghost" disabled={groupBusy} onClick={() => setAddingGroup(false)}>
-                      Cancel
+                    <button type="button" className="pd-form-code-btn" disabled={groupBusy} onClick={() => void saveNewGroup()}>
+                      {groupBusy ? 'Saving…' : 'Save'}
                     </button>
                   </div>
                 ) : null}
-                <label>
-                  <span>Sub group</span>
+                <div className="pd-form-row">
+                  <label>Sub Group</label>
                   <select value={subGroupId} onChange={(e) => setSubGroupId(e.target.value)} disabled={!groupId}>
                     <option value="">Select</option>
                     {subGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
-                </label>
-                <label>
-                  <span>Make type</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Make Type</label>
                   <select value={makeType} onChange={(e) => setMakeType(e.target.value)}>
                     {MAKE_TYPES.map((v) => <option key={v}>{v}</option>)}
                   </select>
-                </label>
-                <label>
-                  <span>Product type</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Product Type</label>
                   <select value={productType} onChange={(e) => setProductType(e.target.value)}>
                     {PRODUCT_TYPES.map((v) => <option key={v}>{v}</option>)}
                   </select>
-                </label>
-                <label>
-                  <span>Brand</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Brand</label>
                   <input value={brand} onChange={(e) => setBrand(e.target.value)} />
-                </label>
-                <label>
-                  <span>Product code</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Product Code</label>
                   <input value={productCode} onChange={(e) => setProductCode(e.target.value)} placeholder="Optional" />
-                </label>
-                <label>
-                  <span>Unit cost</span>
-                  <input value={unitCost} onChange={(e) => { setUnitCost(e.target.value); if (!suppress.current) applyInputFromNet(e.target.value, vatInPct) }} />
-                </label>
-                <label>
-                  <span>VAT in %</span>
-                  <input value={vatInPct} onChange={(e) => { setVatInPct(e.target.value); if (!suppress.current) applyInputFromNet(unitCost, e.target.value) }} />
-                </label>
-                <label>
-                  <span>VAT in amt</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Unit Cost</label>
+                  <input value={unitCost} onChange={(e) => { const v = decimal(e.target.value); setUnitCost(v); if (!suppress.current) applyInputFromNet(v, vatInPct) }} />
+                </div>
+                <div className="pd-form-row">
+                  <label>VAT In %</label>
+                  <input value={vatInPct} onChange={(e) => { const v = percent(e.target.value); setVatInPct(v); if (!suppress.current) applyInputFromNet(unitCost, v) }} />
+                </div>
+                <div className="pd-form-row">
+                  <label>VAT In Amt</label>
                   <input value={vatInAmt} readOnly />
-                </label>
-                <label>
-                  <span>Cost with VAT</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Cost With VAT</label>
                   <input
                     value={costWithVat}
                     onChange={(e) => {
-                      const gross = e.target.value
+                      const gross = decimal(e.target.value)
                       setCostWithVat(gross)
                       if (suppress.current) return
                       const rate = num(vatInPct)
@@ -509,25 +525,25 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                       suppress.current = false
                     }}
                   />
-                </label>
-                <label>
-                  <span>Unit price</span>
-                  <input value={unitPrice} onChange={(e) => { setUnitPrice(e.target.value); if (!suppress.current) applyOutputFromNet(e.target.value, vatOutPct) }} />
-                </label>
-                <label>
-                  <span>VAT out %</span>
-                  <input value={vatOutPct} onChange={(e) => { setVatOutPct(e.target.value); if (!suppress.current) applyOutputFromNet(unitPrice, e.target.value) }} />
-                </label>
-                <label>
-                  <span>VAT out amt</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Unit Price</label>
+                  <input value={unitPrice} onChange={(e) => { const v = decimal(e.target.value); setUnitPrice(v); if (!suppress.current) applyOutputFromNet(v, vatOutPct) }} />
+                </div>
+                <div className="pd-form-row">
+                  <label>VAT Out %</label>
+                  <input value={vatOutPct} onChange={(e) => { const v = percent(e.target.value); setVatOutPct(v); if (!suppress.current) applyOutputFromNet(unitPrice, v) }} />
+                </div>
+                <div className="pd-form-row">
+                  <label>VAT Out Amt</label>
                   <input value={vatOutAmt} readOnly />
-                </label>
-                <label>
-                  <span>Price with VAT</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Price With VAT</label>
                   <input
                     value={priceWithVat}
                     onChange={(e) => {
-                      const gross = e.target.value
+                      const gross = decimal(e.target.value)
                       setPriceWithVat(gross)
                       if (suppress.current) return
                       const rate = num(vatOutPct)
@@ -539,112 +555,117 @@ export default function ProductEntryDialog({ productId, taxRate = 5, onClose, on
                       suppress.current = false
                     }}
                   />
-                </label>
+                </div>
               </>
             ) : null}
 
             {tab === 1 ? (
               <>
-                <label>
-                  <span>Unit</span>
+                <div className="pd-form-row">
+                  <label>Unit</label>
                   <select value={unit} onChange={(e) => setUnit(e.target.value)}>
                     {UNITS.map((v) => <option key={v}>{v}</option>)}
                   </select>
-                </label>
-                <label>
-                  <span>Stock type</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Stock Type</label>
                   <select value={stockType} onChange={(e) => setStockType(e.target.value)}>
                     {STOCK_TYPES.map((v) => <option key={v}>{v}</option>)}
                   </select>
-                </label>
-                <label>
-                  <span>Pack qty</span>
-                  <input value={packQty} onChange={(e) => setPackQty(e.target.value)} />
-                </label>
-                <label>
-                  <span>Packet details</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Pack Qty</label>
+                  <input value={packQty} onChange={(e) => setPackQty(decimal(e.target.value))} />
+                </div>
+                <div className="pd-form-row">
+                  <label>Packet Details</label>
                   <input value={packet} onChange={(e) => setPacket(e.target.value)} />
-                </label>
-                <label>
-                  <span>Qty on hand</span>
-                  <input value={qtyOnHand} onChange={(e) => setQtyOnHand(e.target.value)} />
-                </label>
-                <label>
-                  <span>Reorder level</span>
-                  <input value={reorderLevel} onChange={(e) => setReorderLevel(e.target.value)} />
-                </label>
-                <label>
-                  <span>Reorder qty</span>
-                  <input value={reorderQty} onChange={(e) => setReorderQty(e.target.value)} />
-                </label>
-                <label>
-                  <span>Location</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Qty On Hand</label>
+                  <input value={qtyOnHand} onChange={(e) => setQtyOnHand(decimal(e.target.value))} />
+                </div>
+                <div className="pd-form-row">
+                  <label>Reorder Level</label>
+                  <input value={reorderLevel} onChange={(e) => setReorderLevel(decimal(e.target.value))} />
+                </div>
+                <div className="pd-form-row">
+                  <label>Reorder Qty</label>
+                  <input value={reorderQty} onChange={(e) => setReorderQty(decimal(e.target.value))} />
+                </div>
+                <div className="pd-form-row">
+                  <label>Location</label>
                   <input value={location} onChange={(e) => setLocation(e.target.value)} />
-                </label>
-                <label>
-                  <span>Supplier ref</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Supplier Ref</label>
                   <input value={supplierRef} onChange={(e) => setSupplierRef(e.target.value)} />
-                </label>
-                <label>
-                  <span>Origin</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Origin</label>
                   <input value={origin} onChange={(e) => setOrigin(e.target.value)} />
-                </label>
-                <label>
-                  <span>Product identity</span>
+                </div>
+                <div className="pd-form-row">
+                  <label>Product Identity</label>
                   <select value={identity} onChange={(e) => setIdentity(e.target.value)}>
                     <option>No</option>
                     <option>Yes</option>
                   </select>
-                </label>
-                <label className="pd-prd-span">
-                  <span>Remarks</span>
+                </div>
+                <div className="pd-form-row pd-edm-span">
+                  <label>Remarks</label>
                   <input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-                </label>
+                </div>
               </>
             ) : null}
 
             {tab === 2 ? (
               <>
-                <label>
-                  <span>Min price</span>
-                  <input value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
-                </label>
-                <label>
-                  <span>Discount %</span>
-                  <input value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
-                </label>
-                <label>
-                  <span>Margin %</span>
-                  <input value={marginPct} onChange={(e) => setMarginPct(e.target.value)} />
-                </label>
-                <label>
-                  <span>Last purchase</span>
-                  <input value={lastPurch} onChange={(e) => setLastPurch(e.target.value)} />
-                </label>
-                <label>
-                  <span>Average cost</span>
+                <div className="pd-form-row">
+                  <label>Min Price</label>
+                  <input value={minPrice} onChange={(e) => setMinPrice(decimal(e.target.value))} />
+                </div>
+                <div className="pd-form-row">
+                  <label>Discount %</label>
+                  <input value={discountPct} onChange={(e) => setDiscountPct(percent(e.target.value))} />
+                </div>
+                <div className="pd-form-row">
+                  <label>Margin %</label>
+                  <input value={marginPct} onChange={(e) => setMarginPct(decimal(e.target.value))} />
+                </div>
+                <div className="pd-form-row">
+                  <label>Last Purchase</label>
+                  <input value={lastPurch} onChange={(e) => setLastPurch(decimal(e.target.value))} />
+                </div>
+                <div className="pd-form-row">
+                  <label>Average Cost</label>
                   <input value={avgCost} readOnly />
-                </label>
+                </div>
                 {levels.map((value, i) => (
-                  <label key={i}>
-                    <span>Price level {i + 1}</span>
+                  <div className="pd-form-row" key={i}>
+                    <label>Price Level {i + 1}</label>
                     <input
                       value={value}
-                      onChange={(e) => setLevels((prev) => prev.map((v, idx) => (idx === i ? e.target.value : v)))}
+                      onChange={(e) => setLevels((prev) => prev.map((v, idx) => (idx === i ? decimal(e.target.value) : v)))}
                     />
-                  </label>
+                  </div>
                 ))}
               </>
             ) : null}
           </div>
         ) : null}
 
-        <footer className="pd-inv-foot">
-          <button type="button" className="pd-inv-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="button" className="pd-inv-go" onClick={() => void save()} disabled={busy || loading}>
+        </div>
+
+        <div className="pd-mod-foot">
+          <span className="pd-mod-foot-spacer" />
+          <button type="button" className="pd-mod-foot-btn" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void save()} disabled={busy || loading}>
             {busy ? 'Saving…' : isEdit ? 'Update' : 'Save'}
           </button>
-        </footer>
+        </div>
       </div>
     </div>
   )

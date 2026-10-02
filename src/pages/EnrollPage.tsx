@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type CSSProperties, type FormEvent } from '
 import { useNavigate } from 'react-router-dom'
 import { apiService } from '../api/apiService'
 import { getOrCreateDeviceToken, saveEnrollment } from '../utils/deviceEnrollment'
+import { email, isEmail } from '../utils/validate'
 
 const inputStyle: CSSProperties = {
   width: '100%',
@@ -45,7 +46,7 @@ export default function EnrollPage() {
 
   const step = stations === null ? 1 : 2
   const credField = (k: 'adminUsername' | 'adminPassword') => (e: ChangeEvent<HTMLInputElement>) => {
-    setCreds((f) => ({ ...f, [k]: e.target.value }))
+    setCreds((f) => ({ ...f, [k]: k === 'adminUsername' ? email(e.target.value) : e.target.value }))
     setError(null)
   }
 
@@ -54,6 +55,10 @@ export default function EnrollPage() {
     const { adminUsername, adminPassword } = creds
     if (!adminUsername || !adminPassword) {
       setError('Email and password are required')
+      return
+    }
+    if (!isEmail(adminUsername)) {
+      setError('Enter a valid email address')
       return
     }
     setLoading(true)
@@ -178,7 +183,7 @@ export default function EnrollPage() {
           <form onSubmit={handleVerify}>
             {(
               [
-                { key: 'adminUsername' as const, label: 'Admin Email', type: 'text', placeholder: 'admin@example.com' },
+                { key: 'adminUsername' as const, label: 'Admin Email', type: 'email', placeholder: 'admin@example.com' },
                 { key: 'adminPassword' as const, label: 'Password', type: 'password', placeholder: '••••••••' },
               ]
             ).map(({ key, label: lbl, type, placeholder }) => (

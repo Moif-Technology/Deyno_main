@@ -11,17 +11,15 @@ import {
   Banknote,
   Calculator,
   CheckCircle2,
-  ChevronDown,
-  Eraser,
-  FileText,
+  Coins,
   Lock,
   Printer,
-  Receipt,
   RefreshCw,
-  Users,
   X,
 } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { ConfirmDialog } from '../../components/common/ConfirmDialog'
+import { NumberPad } from '../../components/common/NumberPad'
 import { printCounterReport } from '../../lib/printCounterReport'
 import { getEnrollment } from '../../utils/deviceEnrollment'
 import { getPosSession } from '../../utils/posSession'
@@ -42,9 +40,16 @@ const DENOMS = [
   { key: 'p10', value: 0.1, label: '0.10' },
 ] as const
 
-const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', 'next'] as const
 
-type Props = { mode?: 'cashier' | 'admin'; onClose: () => void }
+/** focusKey value while the Counted cash box is the active field. */
+const COLLECTED = 'collected'
+
+type Props = {
+  mode?: 'cashier' | 'admin'
+  onClose: () => void
+  /** Shows the app toast — used for every success / error message here. */
+  notify: (message: string, kind?: 'success' | 'error' | 'info') => void
+}
 type Summary = Record<string, unknown>
 type StaffRow = {
   staffId: number | null
@@ -73,13 +78,12 @@ function emptyCounts() {
   return Object.fromEntries(DENOMS.map((d) => [d.key, ''])) as Record<string, string>
 }
 
-export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props) {
+export default function CounterCloseAllDialog({ mode = 'admin', onClose, notify }: Props) {
   const allStaff = mode === 'admin'
   const session = getPosSession()
   const counterLabel = getEnrollment()?.stationName || String(session.counterNo || session.stationId || '')
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [error, setError] = useState<string | null>(null)
-  const [info, setInfo] = useState<string | null>(null)
   const [data, setData] = useState<Summary | null>(null)
   const [counts, setCounts] = useState(emptyCounts)
   const [focusKey, setFocusKey] = useState<string>('1000')
@@ -87,10 +91,11 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props
   const [remarks, setRemarks] = useState('')
   const [busy, setBusy] = useState<'X' | 'Z' | null>(null)
   const [closedNo, setClosedNo] = useState<string | null>(null)
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const [showZeros, setShowZeros] = useState(false)
   const [confirmZ, setConfirmZ] = useState(false)
+  /** The "KOTs still pending" notice was dismissed with its ✕. */
+  const [bannerClosed, setBannerClosed] = useState(false)
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const collectedRef = useRef<HTMLInputElement | null>(null)
 
   const denomTotal = useMemo(() => {
     return DENOMS.reduce((sum, d) => sum + d.value * (Number(counts[d.key]) || 0), 0)
@@ -144,12 +149,26 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props
   }
 
   function numPad(k: string) {
+    if (k === 'next') {
+      if (focusKey === COLLECTED) focusDenom(DENOMS[0].key)
+      else nextDenom()
+      return
+    }
+    // Counted cash box: a money amount, so the decimal point works here.
+    if (focusKey === COLLECTED) {
+      const cur = collectedOverride ?? ''
+      if (k === 'C') setCollectedOverride(cur.slice(0, -1))
+      else if (!(k === '.' && cur.includes('.'))) setCollectedOverride((cur + k).slice(0, 12))
+      return
+    }
     if (k === 'C') {
       setCount(focusKey, '')
       return
     }
-    if (k === 'next') {
-      nextDenom()
+    // Note counts are whole numbers — "." jumps to Counted cash to type an amount instead.
+    if (k === '.') {
+      setFocusKey(COLLECTED)
+      collectedRef.current?.focus()
       return
     }
     setCount(focusKey, `${counts[focusKey] ?? ''}${k}`.replace(/^0+(?=\d)/, ''))
@@ -162,14 +181,12 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props
   }
 
   function askZ() {
-    setError(null)
-    setInfo(null)
     if (closedNo) {
-      setError('This counter is already closed.')
+      notify('This counter is already closed.')
       return
     }
     if (collectedOverride == null && !DENOMS.some((d) => String(counts[d.key] ?? '').trim() !== '')) {
-      setError('Enter Collected Amount...........')
+      notify('Enter the collected amount first')
       focusDenom(focusKey)
       return
     }
@@ -177,8 +194,6 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props
   }
 
   async function runReport(reportType: 'X' | 'Z') {
-    setError(null)
-    setInfo(null)
     setConfirmZ(false)
     setBusy(reportType)
     try {
@@ -198,9 +213,9 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props
       if (reportType === 'Z') {
         const closeNo = String(res.closeNo ?? '')
         setClosedNo(closeNo || 'CLOSED')
-        setInfo(`Counter closed. Z-Report ${closeNo} sent to the printer.`)
+        notify(`Counter closed. Z-Report ${closeNo} sent to the printer.`, 'success')
       } else {
-        setInfo('X-Report sent to the printer.')
+        notify('X-Report sent to the printer.', 'success')
       }
       try {
         await printCounterReport(merged, {
@@ -210,10 +225,10 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props
           reportAt: new Date(),
         })
       } catch (printErr) {
-        setError(errMessage(printErr, `${reportType}-Report print failed`))
+        notify(errMessage(printErr, `${reportType}-Report print failed`))
       }
     } catch (err) {
-      setError(errMessage(err, reportType === 'Z' ? 'Could not close counter' : 'Could not load X-Report'))
+      notify(errMessage(err, reportType === 'Z' ? 'Could not close counter' : 'Could not load X-Report'))
     } finally {
       setBusy(null)
     }
@@ -224,67 +239,55 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props
   const hasCount = collectedOverride != null || DENOMS.some((d) => String(counts[d.key] ?? '').trim() !== '')
   const diffState = !hasCount ? 'idle' : Math.abs(difference) < 0.005 ? 'even' : difference < 0 ? 'short' : 'over'
   const diffLabel = { idle: 'Not counted yet', even: 'Balanced', short: 'Short', over: 'Excess' }[diffState]
-  const diffText = {
-    idle: 'Count the cash to compare with the expected amount.',
-    even: 'Counted cash matches the expected amount.',
-    short: `Drawer is short by ${money(Math.abs(difference))}.`,
-    over: `Drawer has ${money(difference)} more than expected.`,
-  }[diffState]
   const notesCounted = DENOMS.filter((d) => Number(counts[d.key]) > 0).length
 
-  const groups: { title: string; rows: [string, unknown][] }[] = data
+  /** Admin-only reading (left panel): every figure of the old screen, grouped
+   * into cards. `total` is the card's highlighted bottom line. */
+  const adminCards: { title: string; rows: [string, unknown][]; total?: [string, unknown] }[] = data
     ? [
         {
           title: 'Cash',
           rows: [
             ['Total Cash', data.totalCash],
             ['Credits Received', data.creditReceiptCash],
-            ['Credit Received (Card)', data.creditReceiptCard],
-            ['Cash In', data.cashIn],
-            ['Cash Out', data.cashOut],
-            ['Refunds', data.totalRefund],
+            ['Refund Amt', data.totalRefund],
             ['Advance Received', data.advanceReceived],
+            ['Total Cash In', data.cashIn],
+            ['Total Cash Out', data.cashOut],
           ],
+          total: ['Cash To Be Collected', data.cashToBeCollected],
         },
         {
-          title: 'Card & Other Tenders',
+          title: 'Card & other',
           rows: [
-            ['Credit Sales', data.totalCredit],
-            ['Card', data.totalCard],
-            ['Net Card (Sale + Tip)', data.netCardAmount],
-            ['Online', data.totalOnline],
-            ['Voucher', data.totalVoucher],
-            ['Compliment', data.totalCompliment],
-          ],
-        },
-        {
-          title: 'Discount & Tax',
-          rows: [
-            ['Total Discount', data.totalDiscount],
-            ['Item Discount', data.itemDiscountTotal],
-            ['Tax', data.totalTax],
-          ],
-        },
-        {
-          title: 'Tips',
-          rows: [
+            ['Credit Amt', data.totalCredit],
+            ['Credit Card Amt', data.totalCard],
             ['Total Tip', data.totalTip],
-            ['Cash Tip', data.totalCashTip],
-            ['Card Tip', data.totalCardTip],
+            ['Net Card Amount (Sale + Tip)', data.netCardAmount],
+            ['Online Sale Amt', data.totalOnline],
             ['Online Tip', data.totalOnlineTip],
+            ['Compliment Amt', data.totalCompliment],
+            ['Credit Received - C. Card Amt', data.creditReceiptCard],
+          ],
+        },
+        {
+          title: 'Discounts',
+          rows: [
+            ['Total Discount Amount', data.totalDiscount],
+            ['Item Discount Total', data.itemDiscountTotal],
           ],
         },
       ]
     : []
 
-  const hiddenCount = groups.reduce((sum, g) => sum + g.rows.filter(([, v]) => n(v) === 0).length, 0)
-
+  /** Bill counts, in the old screen's order (two per row). Zeros are shown. */
   const billCounts: [string, unknown][] = [
-    ['Cash', data?.cashBillCount],
-    ['Credit', data?.creditBillCount],
-    ['Card', data?.cardBillCount],
-    ['Multi Pay', data?.multiBillCount],
-    ['Compliment', data?.complimentBillCount],
+    ['Cash Bill', data?.cashBillCount],
+    ['Credit Bill', data?.creditBillCount],
+    ['Credit Card Bill', data?.cardBillCount],
+    ['Multi Payment Bill', data?.multiBillCount],
+    ['Compliment Bill', data?.complimentBillCount],
+    ['No Of Customers', data?.noOfCustomers],
   ]
 
   return (
@@ -292,35 +295,30 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props
       className="pd-mod-overlay pd-cc-overlay"
       role="presentation"
       onKeyDown={(e) => {
-        if (e.key !== 'Escape' || busy) return
-        if (confirmZ) setConfirmZ(false)
-        else onClose()
+        if (e.key !== 'Escape' || busy || confirmZ) return
+        onClose()
       }}
     >
-      <div className="pd-cc" role="dialog" aria-modal="true" aria-labelledby="pd-cc-title">
+      <div className={`pd-cc is-simple ccv${allStaff ? ' is-admin' : ''}`} role="dialog" aria-modal="true" aria-labelledby="pd-cc-title">
         <header className="pd-mod-header">
           <div className="pd-mod-header-left">
             <div className="pd-mod-header-icon">
               <Calculator size={16} />
             </div>
             <div>
-              <p className="pd-mod-kicker">Reports</p>
+              <p className="pd-mod-kicker">
+                Counter {String(data?.counterNo ?? counterLabel) || '—'} · Cashier:{' '}
+                {String(data?.cashierName ?? session.staffName ?? '—')}
+                {allStaff ? ' · All cashiers' : ''}
+              </p>
               <h2 id="pd-cc-title" className="pd-mod-item-name">
                 {allStaff ? 'Counter Close — All Cashiers' : 'Counter Close'}
               </h2>
             </div>
           </div>
-          <div className="pd-cc-head-right">
-            <span className="pd-cc-chip">
-              Counter <b>{String(data?.counterNo ?? counterLabel) || '—'}</b>
-            </span>
-            <span className="pd-cc-chip">
-              <Users size={13} /> <b>{allStaff ? 'All cashiers' : String(data?.cashierName ?? session.staffName ?? 'Cashier')}</b>
-            </span>
-            <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close" disabled={Boolean(busy)}>
-              <X size={14} />
-            </button>
-          </div>
+          <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close" disabled={Boolean(busy)}>
+            <X size={14} />
+          </button>
         </header>
 
         {state === 'loading' ? (
@@ -342,324 +340,297 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose }: Props
 
         {data ? (
           <div className="pd-cc-scroll">
-            <div className="pd-cc-kpis">
-              <div className="pd-cc-kpi is-brand">
-                <span>Total Sales</span>
-                <b>{money(data.totalSales)}</b>
-              </div>
-              <div className="pd-cc-kpi">
-                <span>Cash to Collect</span>
-                <b>{money(toCollect)}</b>
-              </div>
-              <div className="pd-cc-kpi">
-                <span>Bills</span>
-                <b>{n(data.billCount)}</b>
-              </div>
-              <div className="pd-cc-kpi">
-                <span>Customers</span>
-                <b>{n(data.noOfCustomers)}</b>
-              </div>
-            </div>
-
-            {pendingKots > 0 ? (
+            {pendingKots > 0 && !bannerClosed ? (
               <div className="pd-cc-banner">
                 <AlertTriangle size={16} />
                 <span>
                   <b>
                     {pendingKots} KOT{pendingKots === 1 ? '' : 's'} still pending.
                   </b>{' '}
-                  Settle or cancel them before closing the counter.
+                  Settle or cancel them before closing.
                 </span>
+                <button type="button" className="pd-cc-banner-x" onClick={() => setBannerClosed(true)} aria-label="Dismiss">
+                  <X size={14} />
+                </button>
               </div>
             ) : null}
 
-            <div className="pd-cc-body">
-              <section className="pd-cc-card pd-cc-summary" aria-label="Sales summary">
-                <h3 className="pd-cc-card-title">
-                  <span className="pd-cc-step">1</span> Review Sales
-                  <Receipt size={15} className="pd-cc-title-ic" />
-                </h3>
-                {groups.map((g) => {
-                  const rows = showZeros ? g.rows : g.rows.filter(([, v]) => n(v) !== 0)
-                  if (!rows.length) return null
-                  return (
-                    <div key={g.title} className="pd-cc-group">
-                      <p className="pd-cc-group-title">{g.title}</p>
-                      {rows.map(([label, value]) => (
-                        <div key={label} className={`pd-cc-row${n(value) === 0 ? ' is-zero' : ''}`}>
-                          <span>{label}</span>
-                          <b>{money(value)}</b>
-                        </div>
+            <div className="ccv-main">
+              {/* Admin only: the full reading. Zero figures are left out. */}
+              {allStaff ? (
+                <aside className="ccv-card ccv-admin" aria-label="Admin summary">
+                  {/* Headline: Total Sales, with Tax beside it */}
+                  <div className="adm-hero">
+                    <div>
+                      <span>Total Sales</span>
+                      <b>{money(data.totalSales)}</b>
+                    </div>
+                    <div className="is-tax">
+                      <span>Tax Amount</span>
+                      <b>{money(data.totalTax)}</b>
+                    </div>
+                  </div>
+
+                  {/* The full reading, grouped — every line, zeros included */}
+                  <div className="adm-scroll">
+                    {adminCards.map((c) => (
+                      <section key={c.title} className="adm-card" style={{ flexGrow: c.rows.length + (c.total ? 2.4 : 1) }}>
+                        <h4>{c.title}</h4>
+                        {c.rows.map(([label, value]) => (
+                          <div key={label} className={`adm-row${n(value) === 0 ? ' is-zero' : ''}`}>
+                            <span>{label}</span>
+                            <b>{money(value)}</b>
+                          </div>
+                        ))}
+                        {c.total ? (
+                          <div className="adm-total">
+                            <span>{c.total[0]}</span>
+                            <b>{money(c.total[1])}</b>
+                          </div>
+                        ) : null}
+                      </section>
+                    ))}
+                    {staffSales.length > 1 ? (
+                      <section className="adm-card" style={{ flexGrow: staffSales.length + 1 }}>
+                        <h4>By cashier</h4>
+                        {staffSales.map((st) => (
+                          <div key={`${st.staffId}-${st.staffName}`} className="adm-row">
+                            <span>
+                              {st.staffName} · {st.billCount} bills
+                            </span>
+                            <b>{money(st.saleAmount)}</b>
+                          </div>
+                        ))}
+                      </section>
+                    ) : null}
+                  </div>
+                  {/* Bottom: bill counts, always visible */}
+                  <div className="ccv-bills">
+                    <p className="ccv-bills-head">
+                      Bill Count <b>{n(data.billCount)}</b>
+                    </p>
+                    <div className="ccv-bills-grid">
+                      {billCounts.map(([label, value]) => (
+                        <span key={label}>
+                          <i>{label}</i>
+                          <b>{n(value)}</b>
+                        </span>
                       ))}
                     </div>
-                  )
-                })}
-                {hiddenCount > 0 || showZeros ? (
-                  <button type="button" className="pd-cc-link" onClick={() => setShowZeros((v) => !v)}>
-                    <ChevronDown size={14} className={showZeros ? 'is-up' : undefined} />
-                    {showZeros ? 'Hide zero figures' : `Show ${hiddenCount} zero figure${hiddenCount === 1 ? '' : 's'}`}
-                  </button>
-                ) : null}
-                <div className="pd-cc-group">
-                  <p className="pd-cc-group-title">Bills by Payment</p>
-                  <div className="pd-cc-bills">
-                    {billCounts.map(([label, value]) => (
-                      <span key={label}>
-                        {label} <b>{n(value)}</b>
-                      </span>
-                    ))}
+                  </div>
+                </aside>
+              ) : null}
+
+              {/* Left: note tiles + keypad */}
+              <section className="ccv-left" aria-label="Count cash">
+                <div className="ccv-card">
+                  <div className="ccv-head">
+                    <h3>Count Cash</h3>
+                    <span className={`cc2-total${denomTotal ? ' is-on' : ''}`}>
+                      Total <b>{money(denomTotal)}</b>
+                    </span>
+                    {notesCounted > 0 && !closedNo ? (
+                      <button type="button" className="ccv-clear" onClick={clearCount}>
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  {/* 3 × 3 boxes for 1000…1, then a slim row for the three small coins. */}
+                  <div className="cc5">
+                    <div className="cc5-grid">
+                      {DENOMS.filter((d) => d.value >= 1).map((d) => {
+                        const cnt = Number(counts[d.key]) || 0
+                        return (
+                          <label
+                            key={d.key}
+                            className={`cc5-box${focusKey === d.key ? ' is-focus' : ''}${cnt ? ' is-filled' : ''}`}
+                          >
+                            <span className="cc5-den">
+                              {d.value >= 5 ? <Banknote size={14} /> : <Coins size={13} />}
+                              <b>{d.label}</b>
+                              <i aria-hidden="true">×</i>
+                            </span>
+                            <input
+                              ref={(el) => {
+                                inputRefs.current[d.key] = el
+                              }}
+                              inputMode="none"
+                              placeholder="0"
+                              aria-label={`Count of ${d.label}`}
+                              value={counts[d.key]}
+                              disabled={Boolean(closedNo)}
+                              onFocus={() => setFocusKey(d.key)}
+                              onChange={(e) => setCount(d.key, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  nextDenom()
+                                }
+                              }}
+                            />
+                            <span className="cc5-amt">{cnt ? money(cnt * d.value) : '\u00a0'}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <div className="cc5-grid is-coins">
+                      {DENOMS.filter((d) => d.value < 1).map((d) => {
+                        const cnt = Number(counts[d.key]) || 0
+                        return (
+                          <label
+                            key={d.key}
+                            className={`cc5-box${focusKey === d.key ? ' is-focus' : ''}${cnt ? ' is-filled' : ''}`}
+                          >
+                            <span className="cc5-den">
+                              {d.value >= 5 ? <Banknote size={14} /> : <Coins size={13} />}
+                              <b>{d.label}</b>
+                              <i aria-hidden="true">×</i>
+                            </span>
+                            <input
+                              ref={(el) => {
+                                inputRefs.current[d.key] = el
+                              }}
+                              inputMode="none"
+                              placeholder="0"
+                              aria-label={`Count of ${d.label}`}
+                              value={counts[d.key]}
+                              disabled={Boolean(closedNo)}
+                              onFocus={() => setFocusKey(d.key)}
+                              onChange={(e) => setCount(d.key, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  nextDenom()
+                                }
+                              }}
+                            />
+                            <span className="cc5-amt">{cnt ? money(cnt * d.value) : '\u00a0'}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
+
+                <NumberPad className="ccv-pad" disabled={Boolean(closedNo)} onKey={numPad} />
+                <button
+                  type="button"
+                  className="pd-key ccv-next"
+                  disabled={Boolean(closedNo)}
+                  // Keep the cursor in the box while tapping.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => numPad('next')}
+                >
+                  Next <ArrowRight size={15} />
+                </button>
               </section>
 
-              <section className="pd-cc-card pd-cc-cash" aria-label="Cash count">
-                <h3 className="pd-cc-card-title">
-                  <span className="pd-cc-step">2</span> Count Cash
-                  <Banknote size={15} className="pd-cc-title-ic" />
-                  {notesCounted > 0 ? (
-                    <button type="button" className="pd-cc-link pd-cc-clear" onClick={clearCount} disabled={Boolean(closedNo)}>
-                      <Eraser size={13} /> Clear count
-                    </button>
-                  ) : null}
-                </h3>
-                <p className="pd-cc-help">
-                  Enter how many of each note or coin are in the drawer. Press <kbd>Enter</kbd> or <b>Next</b> to move
-                  to the next one.
-                </p>
-
-                <div className="pd-cc-cash-grid">
-                  <div className="pd-cc-denoms">
-                    {DENOMS.map((d) => {
-                      const cnt = Number(counts[d.key]) || 0
-                      return (
-                        <label
-                          key={d.key}
-                          className={`pd-cc-denom${focusKey === d.key ? ' is-focus' : ''}${cnt ? ' is-filled' : ''}`}
-                        >
-                          <span className="pd-cc-denom-label">{d.label}</span>
-                          <span className="pd-cc-denom-x">×</span>
-                          <input
-                            ref={(el) => {
-                              inputRefs.current[d.key] = el
-                            }}
-                            inputMode="numeric"
-                            placeholder="0"
-                            aria-label={`Count of ${d.label}`}
-                            value={counts[d.key]}
-                            disabled={Boolean(closedNo)}
-                            onFocus={() => setFocusKey(d.key)}
-                            onChange={(e) => setCount(d.key, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                nextDenom()
-                              }
-                            }}
-                          />
-                          <span className="pd-cc-denom-amt">{cnt ? money(cnt * d.value) : ''}</span>
-                        </label>
-                      )
-                    })}
+              {/* Right: result + actions */}
+              <section className="ccv-right" aria-label="Result">
+                <div className="ccv-card ccv-result">
+                  <div className="ccv-line">
+                    <span>Total sales</span>
+                    <b>{money(data.totalSales)}</b>
                   </div>
-
-                  <div className="pd-cc-pad" aria-label="Keypad">
-                    {KEYS.map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        className={k === 'next' ? 'is-next' : k === 'C' ? 'is-clear' : undefined}
-                        disabled={Boolean(closedNo)}
-                        // Keep the cursor in the note box while tapping the keypad.
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => numPad(k)}
-                      >
-                        {k === 'next' ? (
-                          <>
-                            Next <ArrowRight size={14} />
-                          </>
-                        ) : (
-                          k
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pd-cc-recon">
-                  <div className="pd-cc-recon-row">
+                  <div className="ccv-line">
                     <span>Expected cash</span>
                     <b>{money(toCollect)}</b>
                   </div>
-                  <label className="pd-cc-recon-row pd-cc-collected">
+                  <label className="ccv-box">
                     <span>
-                      Counted cash
-                      <small>{collectedOverride != null ? 'Entered manually' : 'Adds up from the notes above'}</small>
+                      <small>Counted cash</small>
+                      <input
+                        ref={collectedRef}
+                        inputMode="none"
+                        placeholder="0.00"
+                        onFocus={() => setFocusKey(COLLECTED)}
+                        value={collectedOverride ?? (denomTotal ? money(denomTotal) : '')}
+                        disabled={Boolean(closedNo)}
+                        onChange={(e) => setCollectedOverride(e.target.value)}
+                      />
                     </span>
-                    <input
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={collectedOverride ?? (denomTotal ? money(denomTotal) : '')}
+                  </label>
+                  <div className={`ccv-box ccv-diff is-${diffState}`}>
+                    <span>
+                      <small>Difference</small>
+                      <b>{hasCount ? money(difference) : '—'}</b>
+                      <em>{diffLabel}</em>
+                    </span>
+                  </div>
+                  <label className="ccv-remarks">
+                    <span>Remarks</span>
+                    <textarea
+                      placeholder={diffState === 'short' || diffState === 'over' ? 'Reason for the difference' : 'Optional'}
                       disabled={Boolean(closedNo)}
-                      onChange={(e) => setCollectedOverride(e.target.value)}
+                      value={remarks}
+                      onChange={(e) => setRemarks(e.target.value)}
                     />
                   </label>
-                  <div className={`pd-cc-recon-row pd-cc-diff is-${diffState}`}>
-                    <span>
-                      Difference <em>{diffLabel}</em>
-                      <small>{diffText}</small>
+                </div>
+
+                {/* Same action tiles as the home screen (.pd-tile). */}
+                <div className="ccv-actions">
+                  <button
+                    type="button"
+                    className="pd-tile"
+                    title="Prints the current reading. Does not close the counter."
+                    disabled={Boolean(busy) || !data}
+                    onClick={() => void runReport('X')}
+                  >
+                    {busy === 'X' ? (
+                      <RefreshCw className="pd-tile-ic pd-cc-spin" strokeWidth={2} />
+                    ) : (
+                      <Printer className="pd-tile-ic" strokeWidth={2} />
+                    )}
+                    <span className="pd-tile-text">
+                      <span className="pd-tile-label">{busy === 'X' ? 'Printing…' : 'X-Report'}</span>
                     </span>
-                    <b>{hasCount ? money(difference) : '—'}</b>
-                  </div>
+                    <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
+                  </button>
+                  {closedNo ? (
+                    <button type="button" className="pd-tile is-primary" onClick={onClose}>
+                      <CheckCircle2 className="pd-tile-ic" strokeWidth={2} />
+                      <span className="pd-tile-text">
+                        <span className="pd-tile-label">Done</span>
+                      </span>
+                      <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
+                    </button>
+                  ) : (
+                    <button type="button" className="pd-tile is-primary" disabled={Boolean(busy) || !data} onClick={askZ}>
+                      {busy === 'Z' ? (
+                        <RefreshCw className="pd-tile-ic pd-cc-spin" strokeWidth={2} />
+                      ) : (
+                        <Lock className="pd-tile-ic" strokeWidth={2} />
+                      )}
+                      <span className="pd-tile-text">
+                        <span className="pd-tile-label">{busy === 'Z' ? 'Closing…' : 'Close Counter'}</span>
+                      </span>
+                      <ArrowRight className="pd-tile-arrow" strokeWidth={2} />
+                    </button>
+                  )}
                 </div>
-
-                <label className="pd-cc-remarks">
-                  <span>Remarks</span>
-                  <input
-                    placeholder={
-                      diffState === 'short' || diffState === 'over'
-                        ? 'Explain the difference (recommended)'
-                        : 'Optional note for this close'
-                    }
-                    disabled={Boolean(closedNo)}
-                    value={remarks}
-                    onChange={(e) => setRemarks(e.target.value)}
-                  />
-                </label>
               </section>
             </div>
 
-            {detailsOpen ? (
-              <section className="pd-cc-card pd-cc-staff" aria-label="Sales by cashier">
-                <h3 className="pd-cc-card-title">
-                  <Users size={15} /> Sales by Cashier
-                </h3>
-                {staffSales.length ? (
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Cashier</th>
-                        <th>Bills</th>
-                        <th>Sales</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {staffSales.map((s) => (
-                        <tr key={`${s.staffId}-${s.staffName}`}>
-                          <td>{s.staffName}</td>
-                          <td>{s.billCount}</td>
-                          <td>{money(s.saleAmount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="pd-cc-muted">No cashier sales recorded yet.</p>
-                )}
-              </section>
-            ) : null}
-          </div>
-        ) : null}
-
-        <footer className="pd-cc-foot">
-          <div className="pd-cc-msg" aria-live="polite">
-            {error && data ? (
-              <p className="pd-cc-err">
-                <AlertTriangle size={14} /> {error}
-              </p>
-            ) : info ? (
-              <p className="pd-cc-ok">
-                <Printer size={14} /> {info}
-              </p>
-            ) : closedNo ? null : (
-              <p className="pd-cc-muted">
-                <span className="pd-cc-step is-sm">3</span> Print an X-Report to check, or close the counter with a
-                Z-Report.
-              </p>
-            )}
-          </div>
-          <div className="pd-cc-actions">
-            <button type="button" className="pd-cc-btn" disabled={!data} onClick={() => setDetailsOpen((o) => !o)}>
-              <Users size={14} /> {detailsOpen ? 'Hide Cashiers' : 'By Cashier'}
-            </button>
-            <button
-              type="button"
-              className="pd-cc-btn"
-              title="Prints the current reading. Does not close the counter."
-              disabled={Boolean(busy) || !data}
-              onClick={() => void runReport('X')}
-            >
-              {busy === 'X' ? <RefreshCw size={14} className="pd-cc-spin" /> : <FileText size={14} />}
-              {busy === 'X' ? 'Printing…' : 'X-Report'}
-            </button>
-            {closedNo ? (
-              <button type="button" className="pd-cc-btn is-primary" onClick={onClose}>
-                <CheckCircle2 size={14} /> Done
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="pd-cc-btn is-primary"
-                  disabled={Boolean(busy) || !data}
-                  onClick={askZ}
-                >
-                  {busy === 'Z' ? <RefreshCw size={14} className="pd-cc-spin" /> : <Lock size={14} />}
-                  {busy === 'Z' ? 'Closing…' : 'Close Counter'}
-                </button>
-              </>
-            )}
-          </div>
-        </footer>
-
-        {confirmZ ? (
-          <div className="pd-cc-confirm" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && setConfirmZ(false)}>
-            <div className="pd-cc-confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="pd-cc-confirm-title">
-              <span className="pd-cc-confirm-ic">
-                <Lock size={22} />
-              </span>
-              <h3 id="pd-cc-confirm-title">Close the counter?</h3>
-              <p>This prints the Z-Report and ends today's session for all cashiers. It cannot be undone.</p>
-
-              <div className="pd-cc-confirm-sum">
-                <div>
-                  <span>Expected cash</span>
-                  <b>{money(toCollect)}</b>
-                </div>
-                <div>
-                  <span>Counted cash</span>
-                  <b>{money(collected)}</b>
-                </div>
-                <div className={`is-${diffState}`}>
-                  <span>Difference</span>
-                  <b>
-                    {money(difference)} <em>{diffLabel}</em>
-                  </b>
-                </div>
-              </div>
-
-              {pendingKots > 0 ? (
-                <p className="pd-cc-confirm-warn">
-                  <AlertTriangle size={14} /> {pendingKots} KOT{pendingKots === 1 ? ' is' : 's are'} still pending.
-                </p>
-              ) : null}
-              {(diffState === 'short' || diffState === 'over') && !remarks.trim() ? (
-                <p className="pd-cc-confirm-warn">
-                  <AlertTriangle size={14} /> There's a cash difference and no remark has been added.
-                </p>
-              ) : null}
-
-              <div className="pd-cc-confirm-actions">
-                <button type="button" className="pd-cc-btn" autoFocus onClick={() => setConfirmZ(false)}>
-                  Go Back
-                </button>
-                <button type="button" className="pd-cc-btn is-primary" onClick={() => void runReport('Z')}>
-                  <Lock size={14} /> Yes, Close Counter
-                </button>
-              </div>
-            </div>
           </div>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={confirmZ}
+        tone={diffState === 'short' || diffState === 'over' || pendingKots > 0 ? 'danger' : 'info'}
+        title="Close the counter?"
+        message={
+          <>
+            Expected {money(toCollect)} · Counted {money(collected)} · Difference {money(difference)} ({diffLabel}).
+            {pendingKots > 0 ? ` ${pendingKots} KOT${pendingKots === 1 ? ' is' : 's are'} still pending.` : ''} This
+            prints the Z-Report and can't be undone.
+          </>
+        }
+        confirmLabel="Close Counter"
+        onConfirm={() => void runReport('Z')}
+        onCancel={() => setConfirmZ(false)}
+      />
     </div>
   )
 }

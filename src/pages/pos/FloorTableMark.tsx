@@ -1,3 +1,6 @@
+import { useId } from 'react'
+import { Chair, chairScale, seatsFor, TableTop, toTableShape } from './TableShapePicker'
+
 type Props = {
   name: string
   chairs: number
@@ -9,30 +12,6 @@ type Props = {
   showStatus?: boolean
 }
 
-function chairCounts(n: number) {
-  const chairs = Math.max(0, Math.trunc(n))
-  const base = Math.floor(chairs / 4)
-  const rm = chairs % 4
-  return {
-    top: base + (rm > 0 ? 1 : 0),
-    right: base + (rm > 1 ? 1 : 0),
-    bottom: base + (rm > 2 ? 1 : 0),
-    left: base,
-  }
-}
-
-function ChairRow({ count, side }: { count: number; side: 'top' | 'right' | 'bottom' | 'left' }) {
-  if (count <= 0) return null
-  const vertical = side === 'left' || side === 'right'
-  return (
-    <span className={`pd-fd-chairs is-${side}${count === 1 ? ' is-one' : ''}`} aria-hidden>
-      {Array.from({ length: count }, (_, i) => (
-        <i key={`${side}-${i}`} className={`pd-fd-chair${vertical ? ' is-v' : ''}`} />
-      ))}
-    </span>
-  )
-}
-
 function PaxMark() {
   return (
     <svg viewBox="0 0 16 16" className="pd-fd-pax-ico" aria-hidden>
@@ -42,7 +21,7 @@ function PaxMark() {
   )
 }
 
-/** TableSeatControl — table body + chairs by format. */
+/** TableSeatControl — table body + chairs by format, drawn like Table Entry's preview. */
 export default function FloorTableMark({
   name,
   chairs,
@@ -53,38 +32,45 @@ export default function FloorTableMark({
   pax,
   showStatus,
 }: Props) {
-  const fmt = String(format || 'SQUARE').trim().toUpperCase()
-  const shape =
-    fmt === 'ROUND' ? 'round' : fmt === 'OVAL' ? 'oval' : fmt === 'RECTANGLE' ? 'rect' : 'square'
-  const sides = chairCounts(chairs)
+  // Same top-down drawing as Table Entry (TableShapePicker).
+  const shape = toTableShape(format)
+  const spots = seatsFor(shape, Math.min(16, Math.max(0, Math.trunc(chairs))))
+  const scale = chairScale(spots)
+  const gradId = `fd-top-${useId().replace(/:/g, '')}`
   const kot = String(kotNo ?? '').trim()
   const covers = Math.max(0, Math.trunc(pax ?? 0))
   return (
     <span className={`pd-fd-mark${busy ? ' is-busy' : ' is-free'}${compact ? ' is-compact' : ''}${showStatus ? ' is-live' : ''}`}>
-      <span className={`pd-fd-cluster is-${shape}`}>
-        <ChairRow count={sides.top} side="top" />
-        <ChairRow count={sides.bottom} side="bottom" />
-        <ChairRow count={sides.left} side="left" />
-        <ChairRow count={sides.right} side="right" />
-        <span className={`pd-fd-top is-${shape}`}>
-          <span className="pd-fd-face">
-            <strong className="pd-fd-name">{name}</strong>
-            {showStatus && busy ? (
-              <span className="pd-fd-tags">
-                {kot ? (
-                  <b className="pd-fd-kot" title="KOT">
-                    {kot}
-                  </b>
-                ) : null}
-                <b className="pd-fd-pax" title="No. of customers">
-                  <PaxMark />
-                  {covers}
-                </b>
-              </span>
+      <svg viewBox="0 0 200 200" className="pd-fd-table-svg" aria-hidden>
+        <defs>
+          <radialGradient id={gradId} cx="40%" cy="35%" r="75%">
+            <stop offset="0%" className="pd-fd-top-hi" />
+            <stop offset="100%" className="pd-fd-top-lo" />
+          </radialGradient>
+        </defs>
+        {spots.map((s, i) => (
+          <Chair key={i} seat={s} scale={scale} className="pd-fd-chair" />
+        ))}
+        <g className="pd-fd-top">
+          <TableTop shape={shape} fill={`url(#${gradId})`} />
+        </g>
+      </svg>
+      <span className="pd-fd-face">
+        <strong className="pd-fd-name">{name}</strong>
+        {showStatus && busy ? (
+          <span className="pd-fd-tags">
+            {kot ? (
+              <b className="pd-fd-kot" title="KOT">
+                {kot}
+              </b>
             ) : null}
-            {showStatus && !busy ? <em className="pd-fd-free">Free</em> : null}
+            <b className="pd-fd-pax" title="No. of customers">
+              <PaxMark />
+              {covers}
+            </b>
           </span>
-        </span>
+        ) : null}
+        {showStatus && !busy ? <em className="pd-fd-free">Free</em> : null}
       </span>
     </span>
   )

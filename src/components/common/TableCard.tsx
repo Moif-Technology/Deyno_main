@@ -1,10 +1,13 @@
 /**
  * Reusable "table" tile for floor/table pickers. Status-driven (free / occupied /
  * reserved) so any screen that needs to show a dining table renders the same card.
- * Seats render as small chair dots above/below the card — tapping one selects
- * that exact chair; tapping the card body falls back to the caller's default
- * (usually auto-assign the first free chair).
+ * Drawn top-down like Table Entry's shape preview: a Round / Rectangle / Square
+ * table with its chairs around it — tapping a chair selects that exact chair;
+ * tapping the table falls back to the caller's default (usually auto-assign the
+ * first free chair).
  */
+import { useId } from 'react'
+import { Chair, chairScale, seatsFor, TableTop, toTableShape } from '../../pages/pos/TableShapePicker'
 import './TableCard.css'
 
 export type TableCardStatus = 'free' | 'occupied' | 'reserved'
@@ -18,6 +21,8 @@ const STATUS_LABEL: Record<TableCardStatus, string> = {
 export interface TableCardProps {
   label: string
   seats?: number
+  /** Table Entry format: ROUND / RECTANGLE / SQUARE / OVAL / HEXAGON / OCTAGON (anything else → SQUARE). */
+  shape?: string
   status: TableCardStatus
   orderNo?: string | number
   pax?: number
@@ -25,7 +30,7 @@ export interface TableCardProps {
   onClick?: () => void
   /** Chair numbers (1-based) currently occupied at this table. */
   occupiedChairs?: number[]
-  /** Called instead of onClick when a specific chair dot is tapped. */
+  /** Called instead of onClick when a specific chair is tapped. */
   onChairSelect?: (chair: number) => void
 }
 
@@ -44,39 +49,10 @@ export function TableGlyph({ size = 26 }: { size?: number }) {
   )
 }
 
-function ChairDots({
-  chairs,
-  occupiedChairs,
-  position,
-  onChairSelect,
-}: {
-  chairs: number[]
-  occupiedChairs: number[]
-  position: 'top' | 'bottom'
-  onChairSelect?: (chair: number) => void
-}) {
-  if (chairs.length === 0) return null
-  return (
-    <div className={`tc-chairs tc-chairs-${position}`}>
-      {chairs.map((n) => (
-        <button
-          key={n}
-          type="button"
-          className={`tc-chair${occupiedChairs.includes(n) ? ' is-occupied' : ''}`}
-          aria-label={`Chair ${n}`}
-          onClick={(e) => {
-            e.stopPropagation()
-            onChairSelect?.(n)
-          }}
-        />
-      ))}
-    </div>
-  )
-}
-
 export function TableCard({
   label,
   seats = 0,
+  shape: format,
   status,
   orderNo,
   pax,
@@ -85,31 +61,50 @@ export function TableCard({
   occupiedChairs = [],
   onChairSelect,
 }: TableCardProps) {
-  const safeSeats = Number.isFinite(seats) ? Math.max(0, Math.min(20, Math.floor(seats))) : 0
-  const chairs = Array.from({ length: safeSeats }, (_, i) => i + 1)
-  const topChairs = chairs.slice(0, Math.ceil(chairs.length / 2))
-  const bottomChairs = chairs.slice(Math.ceil(chairs.length / 2))
+  const gradId = `tc-top-${useId().replace(/:/g, '')}`
+  const shape = toTableShape(format)
+  const safeSeats = Number.isFinite(seats) ? Math.max(0, Math.min(16, Math.floor(seats))) : 0
+  const spots = seatsFor(shape, safeSeats)
+  const scale = chairScale(spots)
 
   return (
     <div className={`tc-card is-${status}${selected ? ' is-selected' : ''}`}>
-      <ChairDots chairs={topChairs} occupiedChairs={occupiedChairs} position="top" onChairSelect={onChairSelect} />
-      <button type="button" className="tc-body" onClick={onClick}>
-        {pax != null && pax > 0 ? <em className="tc-pax">{pax}</em> : null}
+      <svg viewBox="0 0 200 200" className="tc-svg" aria-hidden>
+        <defs>
+          <radialGradient id={gradId} cx="40%" cy="35%" r="75%">
+            <stop offset="0%" className="tc-top-hi" />
+            <stop offset="100%" className="tc-top-lo" />
+          </radialGradient>
+        </defs>
+        {spots.map((s, i) => {
+          const n = i + 1
+          return (
+            <Chair
+              key={n}
+              seat={s}
+              scale={scale}
+              title={`Chair ${n}`}
+              className={`tc-chair${occupiedChairs.includes(n) ? ' is-occupied' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onChairSelect?.(n)
+              }}
+            />
+          )
+        })}
+        <g className="tc-top" onClick={onClick}>
+          <TableTop shape={shape} fill={`url(#${gradId})`} />
+        </g>
+      </svg>
+      <button type="button" className="tc-center" onClick={onClick}>
         <span className="tc-label">{label}</span>
-        <span className="tc-meta">
-          {status === 'occupied' ? (
-            <span className="tc-order">{orderNo ?? 'Occupied'}</span>
-          ) : (
-            <span className="tc-status">{STATUS_LABEL[status]}</span>
-          )}
-        </span>
+        {status === 'occupied' ? (
+          <span className="tc-order">{orderNo ?? 'Occupied'}</span>
+        ) : (
+          <span className="tc-status">{STATUS_LABEL[status]}</span>
+        )}
       </button>
-      <ChairDots
-        chairs={bottomChairs}
-        occupiedChairs={occupiedChairs}
-        position="bottom"
-        onChairSelect={onChairSelect}
-      />
+      {pax != null && pax > 0 ? <em className="tc-pax">{pax}</em> : null}
     </div>
   )
 }

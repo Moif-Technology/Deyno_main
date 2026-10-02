@@ -1,11 +1,18 @@
 /**
  * RptProductMovementRpt — stock ledger from settle / purchase / adjustment logs.
- * Filters: item name + from / to date. Closing = Opening + In − Out.
+ * Closing = Opening + In − Out.
+ *
+ * Same layout as the Stock Report: opens straight on the report (today). Top
+ * bar: Summary / Details + date range on the left; search and Print ▾ (Print /
+ * PDF / Excel) on the right. Common table, fixed totals footer. Search filters
+ * the loaded rows live; Enter in it asks the server for that item.
  */
-import { useMemo, useState } from 'react'
-import { ArrowLeftRight, ChevronLeft, FileSpreadsheet, FileText, Printer, Search, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeftRight, ChevronDown, FileSpreadsheet, FileText, Printer, Search, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { DateRangePicker } from '../../components/common/DateRangePicker'
 import { exportMovementExcel, exportMovementPdf } from './movementReportExport'
+import './InventoryReportDialog.css'
 
 type ItemRow = {
   productId: number
@@ -120,37 +127,29 @@ function asLines(payload: unknown): LineRow[] {
 }
 
 export default function MovementReportDialog({ onClose }: Props) {
-  const [productName, setProductName] = useState('')
   const [dateFrom, setDateFrom] = useState(todayISO)
   const [dateTo, setDateTo] = useState(todayISO)
-  const [view, setView] = useState<'filters' | 'report'>('filters')
   const [mode, setMode] = useState<'summary' | 'detail'>('summary')
-  const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<Report | null>(null)
-  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
-  const [viewName, setViewName] = useState('')
+  const [search, setSearch] = useState('')
+  const [printOpen, setPrintOpen] = useState(false)
+  const printRef = useRef<HTMLDivElement | null>(null)
+  const requestId = useRef(0)
 
-  async function showReport() {
+  async function loadReport(from = dateFrom, to = dateTo, name = '') {
+    const id = ++requestId.current
     setState('loading')
     setError(null)
     try {
-      const from = dateFrom <= dateTo ? dateFrom : dateTo
-      const to = dateFrom <= dateTo ? dateTo : dateFrom
-      const res = await apiService.fetchMovementReport({
-        dateFrom: from,
-        dateTo: to,
-        name: productName.trim() || undefined,
-      })
+      const lo = from <= to ? from : to
+      const hi = from <= to ? to : from
+      const res = await apiService.fetchMovementReport({ dateFrom: lo, dateTo: hi, name: name.trim() || undefined })
+      if (id !== requestId.current) return
       const items = asItems(res)
       const lines = asLines(res)
-      if (items.length === 0 && lines.length === 0) {
-        setReport(null)
-        setState('idle')
-        setError('No Item Found For This Criteria..........')
-        return
-      }
-      const totals = (res.totals as Report['totals']) ?? {
+      const totals = (items.length ? (res.totals as Report['totals']) : null) ?? {
         count: items.length,
         opening: items.reduce((n, r) => n + r.opening, 0),
         inQty: items.reduce((n, r) => n + r.inQty, 0),
@@ -163,31 +162,41 @@ export default function MovementReportDialog({ onClose }: Props) {
         heading2: String(res.heading2 ?? ''),
         heading3: String(res.heading3 ?? ''),
         heading4: String(res.heading4 ?? ''),
-        dateFrom: String(res.dateFrom ?? from),
-        dateTo: String(res.dateTo ?? to),
+        dateFrom: String(res.dateFrom ?? lo),
+        dateTo: String(res.dateTo ?? hi),
         items,
         lines,
         totals,
       })
-      setViewName('')
-      setMode(items.length ? 'summary' : 'detail')
-      setView('report')
-      setState('idle')
+      if (!items.length && lines.length) setMode('detail')
+      setState('ready')
     } catch (err) {
-      setReport(null)
+      if (id !== requestId.current) return
       setState('error')
       setError(errMessage(err, 'Could not load movement report'))
     }
   }
 
+  // Show today's movement on open.
+  useEffect(() => {
+    void loadReport()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!printOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (!printRef.current?.contains(e.target as Node)) setPrintOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [printOpen])
+
   const filtered = useMemo(() => {
     if (!report) return null
-    const n = viewName.trim().toLowerCase()
+    const n = search.trim().toLowerCase()
     const items = n
-      ? report.items.filter(
-          (row) =>
-            row.description.toLowerCase().includes(n) || row.barcode.toLowerCase().includes(n),
-        )
+      ? report.items.filter((row) => row.description.toLowerCase().includes(n) || row.barcode.toLowerCase().includes(n))
       : report.items
     const lines = n
       ? report.lines.filter(
@@ -214,30 +223,87 @@ export default function MovementReportDialog({ onClose }: Props) {
     totals.outQty = Math.round(totals.outQty * 100) / 100
     totals.closing = Math.round(totals.closing * 100) / 100
     return { ...report, items, lines, totals }
-  }, [report, viewName, mode])
+  }, [report, search, mode])
 
-  function runExcel() {
+  const rowCount = filtered ? (mode === 'detail' ? filtered.lines.length : filtered.items.length) : 0
+  const loadedCount = report ? (mode === 'detail' ? report.lines.length : report.items.length) : 0
+
+  function runPrint(kind: 'print' | 'pdf' | 'excel') {
+    setPrintOpen(false)
     if (!filtered) return
     try {
-      setExporting('excel')
-      exportMovementExcel({ ...filtered, mode })
+      if (kind === 'excel') exportMovementExcel({ ...filtered, mode })
+      else if (kind === 'pdf') exportMovementPdf({ ...filtered, mode })
+      else window.print()
     } catch (err) {
-      setError(errMessage(err, 'Could not export Excel'))
-    } finally {
-      setExporting(null)
+      setError(errMessage(err, kind === 'excel' ? 'Could not export Excel' : 'Could not export PDF'))
     }
   }
 
-  function runPdf() {
-    if (!filtered) return
-    try {
-      setExporting('pdf')
-      exportMovementPdf({ ...filtered, mode })
-    } catch (err) {
-      setError(errMessage(err, 'Could not export PDF'))
-    } finally {
-      setExporting(null)
+  const colCount = mode === 'detail' ? 9 : 7
+
+  const tableHead =
+    mode === 'detail' ? (
+      <tr>
+        <th>Barcode</th>
+        <th>Description</th>
+        <th>Date</th>
+        <th>Type</th>
+        <th>Doc No</th>
+        <th className="num">Opening</th>
+        <th className="num">In</th>
+        <th className="num">Out</th>
+        <th className="num">Closing</th>
+      </tr>
+    ) : (
+      <tr>
+        <th>Barcode</th>
+        <th>Description</th>
+        <th>Group</th>
+        <th className="num">Opening</th>
+        <th className="num">In</th>
+        <th className="num">Out</th>
+        <th className="num">Closing</th>
+      </tr>
+    )
+
+  function tableBody() {
+    if (!filtered) return null
+    if (rowCount === 0) {
+      return (
+        <tr>
+          <td colSpan={colCount} className="pd-inv-empty">
+            No movement in this date range
+          </td>
+        </tr>
+      )
     }
+    if (mode === 'detail') {
+      return filtered.lines.map((row, i) => (
+        <tr key={`${row.logId}-${i}`}>
+          <td>{row.barcode}</td>
+          <td>{row.description}</td>
+          <td>{fmtWhen(row.date)}</td>
+          <td>{row.type}</td>
+          <td>{row.documentNo}</td>
+          <td className="num">{qtyFmt(row.opening)}</td>
+          <td className="num pd-mv-in">{row.inQty ? qtyFmt(row.inQty) : ''}</td>
+          <td className="num pd-mv-out">{row.outQty ? qtyFmt(row.outQty) : ''}</td>
+          <td className="num">{qtyFmt(row.closing)}</td>
+        </tr>
+      ))
+    }
+    return filtered.items.map((row) => (
+      <tr key={row.productId}>
+        <td>{row.barcode}</td>
+        <td>{row.description}</td>
+        <td>{row.groupName}</td>
+        <td className="num">{qtyFmt(row.opening)}</td>
+        <td className="num pd-mv-in">{qtyFmt(row.inQty)}</td>
+        <td className="num pd-mv-out">{qtyFmt(row.outQty)}</td>
+        <td className="num">{qtyFmt(row.closing)}</td>
+      </tr>
+    ))
   }
 
   return (
@@ -248,26 +314,15 @@ export default function MovementReportDialog({ onClose }: Props) {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div
-        className={`pd-inv${view === 'report' ? ' is-report' : ''}`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="pd-mv-title"
-      >
+      <div className={`pd-inv is-report irp mvr is-${mode}`} role="dialog" aria-modal="true" aria-labelledby="pd-mv-title">
         <header className="pd-inv-head">
           <div className="pd-inv-head-left">
-            {view === 'report' ? (
-              <button type="button" className="pd-mod-back" onClick={() => setView('filters')} aria-label="Back">
-                <ChevronLeft size={16} />
-              </button>
-            ) : (
-              <span className="pd-mod-header-icon">
-                <ArrowLeftRight size={16} />
-              </span>
-            )}
+            <span className="pd-mod-header-icon">
+              <ArrowLeftRight size={16} />
+            </span>
             <div>
               <p className="pd-mod-kicker">Transactions</p>
-              <h2 id="pd-mv-title">{view === 'report' ? 'Product Movement' : 'Movement Report'}</h2>
+              <h2 id="pd-mv-title">Movement Report</h2>
             </div>
           </div>
           <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
@@ -275,207 +330,176 @@ export default function MovementReportDialog({ onClose }: Props) {
           </button>
         </header>
 
-        {view === 'filters' ? (
-          <>
-            <div className="pd-inv-body">
-              <div className="pd-inv-card">
-                <div className="pd-inv-form pd-mv-form">
-                  <label className="pd-inv-name">
-                    <span>Item Name</span>
-                    <span className="pd-inv-search">
-                      <Search size={14} />
-                      <input
-                        value={productName}
-                        onChange={(e) => setProductName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') void showReport()
-                        }}
-                        placeholder="Search name or barcode"
-                      />
-                    </span>
-                  </label>
-                  <label>
-                    <span>From</span>
-                    <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-                  </label>
-                  <label>
-                    <span>To</span>
-                    <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-                  </label>
-                </div>
-                <p className="pd-inv-hint">
-                  Opening is stock before From date. In is received (purchase / sales return). Out is issued (sales).
-                  Closing = Opening + In − Out. Leave name blank to list items that moved in the date range.
-                </p>
-              </div>
-              {error ? <p className="pd-inv-msg">{error}</p> : null}
-            </div>
-            <footer className="pd-inv-foot">
-              <button type="button" className="pd-inv-ghost" onClick={onClose}>
-                Close
-              </button>
+        <div className="irp-bar">
+          <div className="irp-toggles">
+            <div className="mvr-seg" role="tablist" aria-label="View">
               <button
                 type="button"
-                className="pd-inv-go"
-                onClick={() => void showReport()}
-                disabled={state === 'loading'}
-              >
-                {state === 'loading' ? 'Loading…' : 'Show Report'}
-              </button>
-            </footer>
-          </>
-        ) : filtered ? (
-          <>
-            <div className="pd-rv-toolbar">
-              <span className="pd-rv-toolbar-title">Report Viewer</span>
-              <button
-                type="button"
-                className={`pd-rv-tool${mode === 'summary' ? ' is-on' : ''}`}
+                role="tab"
+                aria-selected={mode === 'summary'}
+                className={mode === 'summary' ? 'is-on' : undefined}
                 onClick={() => setMode('summary')}
               >
                 Summary
               </button>
               <button
                 type="button"
-                className={`pd-rv-tool${mode === 'detail' ? ' is-on' : ''}`}
+                role="tab"
+                aria-selected={mode === 'detail'}
+                className={mode === 'detail' ? 'is-on' : undefined}
                 onClick={() => setMode('detail')}
               >
                 Details
               </button>
-              <span className="pd-rv-name">
-                <span className="pd-inv-search">
-                  <Search size={13} />
-                  <input
-                    value={viewName}
-                    onChange={(e) => setViewName(e.target.value)}
-                    placeholder="Filter name / barcode"
-                  />
-                </span>
-              </span>
-              <span className="pd-inv-total">
-                COUNT : {filtered.totals.count} &nbsp; IN {qtyFmt(filtered.totals.inQty)} &nbsp; OUT{' '}
-                {qtyFmt(filtered.totals.outQty)}
-              </span>
-              <button type="button" className="pd-rv-tool" onClick={runExcel} disabled={exporting != null}>
-                <FileSpreadsheet size={13} />
-                Excel
-              </button>
-              <button type="button" className="pd-rv-tool" onClick={runPdf} disabled={exporting != null}>
-                <FileText size={13} />
-                PDF
-              </button>
-              <button type="button" className="pd-rv-tool" onClick={() => window.print()}>
-                <Printer size={13} />
-                Print
-              </button>
             </div>
-            <div className="pd-inv-body pd-inv-body-report">
-              <div className="pd-inv-sheet">
-                <div className="pd-inv-letterhead">
-                  {filtered.heading1 ? <h3>{filtered.heading1}</h3> : null}
-                  {filtered.heading2 ? <p>{filtered.heading2}</p> : null}
-                  <h1>{filtered.reportTitle}</h1>
-                  <div className="pd-inv-sub">
-                    <span>{filtered.heading3}</span>
-                    <span>{filtered.heading4}</span>
-                  </div>
+            <div className="mvr-range">
+              <DateRangePicker
+                from={dateFrom}
+                to={dateTo}
+                onChange={(from, to) => {
+                  setDateFrom(from)
+                  setDateTo(to)
+                  void loadReport(from, to, search)
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="irp-actions">
+            <span className="irp-search">
+              <Search size={14} />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void loadReport(dateFrom, dateTo, search)
+                }}
+                placeholder="Search item or doc no"
+              />
+              {search ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch('')
+                    void loadReport(dateFrom, dateTo, '')
+                  }}
+                  aria-label="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              ) : null}
+            </span>
+            <div className="irp-print" ref={printRef}>
+              <button
+                type="button"
+                className="irp-btn is-primary"
+                disabled={!rowCount}
+                aria-haspopup="menu"
+                aria-expanded={printOpen}
+                onClick={() => setPrintOpen((v) => !v)}
+              >
+                <Printer size={14} />
+                Print
+                <ChevronDown size={13} />
+              </button>
+              {printOpen ? (
+                <div className="irp-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => runPrint('print')}>
+                    <Printer size={14} /> Print
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => runPrint('pdf')}>
+                    <FileText size={14} /> Save as PDF
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => runPrint('excel')}>
+                    <FileSpreadsheet size={14} /> Export Excel
+                  </button>
                 </div>
-                {mode === 'detail' ? (
-                  <table className="pd-inv-grid">
-                    <thead>
-                      <tr>
-                        <th>Barcode</th>
-                        <th>Description</th>
-                        <th>Date</th>
-                        <th>Type</th>
-                        <th>Doc No</th>
-                        <th className="num">Opening</th>
-                        <th className="num">In</th>
-                        <th className="num">Out</th>
-                        <th className="num">Closing</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.lines.length === 0 ? (
-                        <tr>
-                          <td colSpan={9} className="pd-inv-empty">
-                            No Item Found For This Criteria..........
-                          </td>
-                        </tr>
-                      ) : (
-                        filtered.lines.map((row, i) => (
-                          <tr key={`${row.logId}-${i}`}>
-                            <td>{row.barcode}</td>
-                            <td>{row.description}</td>
-                            <td>{fmtWhen(row.date)}</td>
-                            <td>{row.type}</td>
-                            <td>{row.documentNo}</td>
-                            <td className="num">{qtyFmt(row.opening)}</td>
-                            <td className="num pd-mv-in">{row.inQty ? qtyFmt(row.inQty) : ''}</td>
-                            <td className="num pd-mv-out">{row.outQty ? qtyFmt(row.outQty) : ''}</td>
-                            <td className="num">{qtyFmt(row.closing)}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colSpan={5}>COUNT : {filtered.totals.count}</td>
-                        <td className="num" />
-                        <td className="num">{qtyFmt(filtered.totals.inQty)}</td>
-                        <td className="num">{qtyFmt(filtered.totals.outQty)}</td>
-                        <td className="num" />
-                      </tr>
-                    </tfoot>
-                  </table>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {error ? <p className="pd-inv-msg irp-msg">{error}</p> : null}
+
+        <div className="irp-screen">
+          <div className={`pd-grid-wrap irp-table${state === 'loading' ? ' is-loading' : ''}`}>
+            <table className="pd-grid">
+              <thead>{tableHead}</thead>
+              <tbody>
+                {filtered ? (
+                  tableBody()
                 ) : (
-                  <table className="pd-inv-grid">
-                    <thead>
-                      <tr>
-                        <th>Barcode</th>
-                        <th>Description</th>
-                        <th>Group</th>
-                        <th className="num">Opening</th>
-                        <th className="num">In</th>
-                        <th className="num">Out</th>
-                        <th className="num">Closing</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.items.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="pd-inv-empty">
-                            No Item Found For This Criteria..........
-                          </td>
-                        </tr>
-                      ) : (
-                        filtered.items.map((row) => (
-                          <tr key={row.productId}>
-                            <td>{row.barcode}</td>
-                            <td>{row.description}</td>
-                            <td>{row.groupName}</td>
-                            <td className="num">{qtyFmt(row.opening)}</td>
-                            <td className="num pd-mv-in">{qtyFmt(row.inQty)}</td>
-                            <td className="num pd-mv-out">{qtyFmt(row.outQty)}</td>
-                            <td className="num">{qtyFmt(row.closing)}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colSpan={3}>COUNT : {filtered.totals.count}</td>
-                        <td className="num">{qtyFmt(filtered.totals.opening)}</td>
-                        <td className="num">{qtyFmt(filtered.totals.inQty)}</td>
-                        <td className="num">{qtyFmt(filtered.totals.outQty)}</td>
-                        <td className="num">{qtyFmt(filtered.totals.closing)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                  <tr>
+                    <td colSpan={colCount} className="pd-inv-empty">
+                      {state === 'loading' ? 'Collecting data…' : 'No report yet.'}
+                    </td>
+                  </tr>
                 )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <footer className="irp-foot">
+          <span>
+            Count <b>{filtered?.totals.count ?? 0}</b>
+            {rowCount !== loadedCount ? <em> of {loadedCount}</em> : null}
+          </span>
+          {mode === 'summary' ? (
+            <span>
+              Opening <b>{qtyFmt(filtered?.totals.opening ?? 0)}</b>
+            </span>
+          ) : null}
+          <span className="mvr-in">
+            In <b>{qtyFmt(filtered?.totals.inQty ?? 0)}</b>
+          </span>
+          <span className="mvr-out">
+            Out <b>{qtyFmt(filtered?.totals.outQty ?? 0)}</b>
+          </span>
+          {mode === 'summary' ? (
+            <span className="is-amount">
+              Closing <b>{qtyFmt(filtered?.totals.closing ?? 0)}</b>
+            </span>
+          ) : null}
+          {state === 'loading' ? <span className="irp-foot-status">Loading…</span> : null}
+        </footer>
+
+        {/* Print only: the formatted report sheet */}
+        {filtered ? (
+          <div className="pd-inv-sheet irp-print-sheet">
+            <div className="pd-inv-letterhead">
+              {filtered.heading1 ? <h3>{filtered.heading1}</h3> : null}
+              {filtered.heading2 ? <p>{filtered.heading2}</p> : null}
+              <h1>{filtered.reportTitle}</h1>
+              <div className="pd-inv-sub">
+                <span>{filtered.heading3}</span>
+                <span>{filtered.heading4}</span>
               </div>
             </div>
-          </>
+            <table className="pd-inv-grid">
+              <thead>{tableHead}</thead>
+              <tbody>{tableBody()}</tbody>
+              <tfoot>
+                {mode === 'detail' ? (
+                  <tr>
+                    <td colSpan={5}>COUNT : {filtered.totals.count}</td>
+                    <td className="num" />
+                    <td className="num">{qtyFmt(filtered.totals.inQty)}</td>
+                    <td className="num">{qtyFmt(filtered.totals.outQty)}</td>
+                    <td className="num" />
+                  </tr>
+                ) : (
+                  <tr>
+                    <td colSpan={3}>COUNT : {filtered.totals.count}</td>
+                    <td className="num">{qtyFmt(filtered.totals.opening)}</td>
+                    <td className="num">{qtyFmt(filtered.totals.inQty)}</td>
+                    <td className="num">{qtyFmt(filtered.totals.outQty)}</td>
+                    <td className="num">{qtyFmt(filtered.totals.closing)}</td>
+                  </tr>
+                )}
+              </tfoot>
+            </table>
+          </div>
         ) : null}
       </div>
     </div>

@@ -161,6 +161,12 @@ class ApiService {
     return api.post<Row>('/sub-groups', body)
   }
 
+  /** Unverified against a live server — mirrors updateGroup's REST shape,
+   * since no sub-group update endpoint has been exercised yet. */
+  async updateSubGroup(subGroupId: string | number, body: Row): Promise<Row> {
+    return api.patch<Row>(`/sub-groups/${encodeURIComponent(String(subGroupId))}`, body)
+  }
+
   async fetchSubSubGroups(opts?: {
     groupId?: string | number
     subGroupId?: string | number

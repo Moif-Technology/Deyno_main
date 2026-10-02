@@ -1,10 +1,19 @@
 /**
  * StockAdjustmentfrm — ADJ / DAMAGE / EXTRA (additional stock).
  * Qty rules match ePos StockAdjustmentfrm SaveData + TextChanged + Posting.
+ *
+ * Layout matches Recipe Entry: No / Date / Remarks on top, lines table on the
+ * left, home-style product tiles on the right. Tapping a tile
+ * opens the qty pad (physical qty for ADJ, adj qty for DMG / ASE) with the live
+ * Adj / Physical result and reason; Done puts the line in the table.
  */
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Plus, Search, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Ban, Hash, PackagePlus, RotateCcw, Trash2, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { DatePicker } from '../../components/common/DatePicker'
+import { ConfirmDialog } from '../../components/common/ConfirmDialog'
+import { signedDecimal } from '../../utils/validate'
+import './RecipeEntryDialog.css'
 
 export type StockDocType = 'ADJ' | 'DMG' | 'ASE'
 
@@ -42,6 +51,7 @@ type Props = {
   onOpenList: () => void
 }
 
+
 const META: Record<
   StockDocType,
   { title: string; kicker: string; reason: string; reasonLocked: boolean; qtyLabel: string }
@@ -70,6 +80,7 @@ const META: Record<
 }
 
 const ADJ_REASONS = ['Opening Stock', 'Expiry', 'Damage', 'Excess']
+const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', 'C', '0', '.'] as const
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10)
@@ -89,6 +100,24 @@ function errMessage(err: unknown, fallback: string) {
   if (err instanceof ApiError && err.message) return err.message
   if (err instanceof Error && err.message) return err.message
   return fallback
+}
+
+function asRow(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
+}
+
+/** Product master row (GET /products) → the stock search hit shape. */
+function mapProductRow(r: Record<string, unknown>): ProductHit {
+  const inv = asRow(r.inventory)
+  return {
+    productId: Number(r.productId ?? r.ProductID) || 0,
+    barcode: String(r.barcode ?? r.BarCode ?? r.productCode ?? r.ProductCode ?? '').trim(),
+    shortDescription: String(r.shortName || r.shortDescription || r.productName || r.ProductName || '').trim(),
+    packetDetails: String(r.packDescription ?? r.packetDetails ?? ''),
+    packQty: Number(inv.packQty ?? r.packQty) || 1,
+    qtyOnHand: Number(inv.qtyOnHand ?? r.qtyOnHand) || 0,
+    lastPurchaseCost: Number(inv.lastPurchaseCost ?? r.lastPurchaseCost) || 0,
+  }
 }
 
 function computeDisplay(docType: StockDocType, present: number, packQty: number, physicalPacks: number, adjEntered: number, enteredQty: number) {
@@ -120,6 +149,13 @@ function computeDisplay(docType: StockDocType, present: number, packQty: number,
   }
 }
 
+type Pad = {
+  product: ProductHit
+  /** Line being edited from the table (replaced on Done), or null for a new tap. */
+  lineKey: number | null
+  enteredQty: number
+}
+
 export default function StockEntryDialog({ docType, entryId, onClose, onOpenList }: Props) {
   const meta = META[docType]
   const qtyAdjMode = docType !== 'ADJ'
@@ -133,38 +169,23 @@ export default function StockEntryDialog({ docType, entryId, onClose, onOpenList
   const [error, setError] = useState<string | null>(null)
   const [hint, setHint] = useState<string | null>(null)
   const [confirmPost, setConfirmPost] = useState(false)
-
-  const [barcode, setBarcode] = useState('')
-  const [name, setName] = useState('')
-  const [packet, setPacket] = useState('')
-  const [packQty, setPackQty] = useState('1')
-  const [present, setPresent] = useState('')
-  const [enteredQty, setEnteredQty] = useState('')
-  const [physicalPacks, setPhysicalPacks] = useState('')
-  const [adjEntered, setAdjEntered] = useState('')
-  const [reason, setReason] = useState(meta.reason)
-  const [picked, setPicked] = useState<ProductHit | null>(null)
-  const [hits, setHits] = useState<ProductHit[]>([])
-  const [hitOpen, setHitOpen] = useState(false)
-  const [hitIndex, setHitIndex] = useState(0)
   const lineKey = useRef(1)
-  const barcodeRef = useRef<HTMLInputElement | null>(null)
-  const qtyRef = useRef<HTMLInputElement | null>(null)
-  const hitsWrapRef = useRef<HTMLDivElement | null>(null)
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const live = useMemo(() => {
-    const presentN = Number(present) || 0
-    const pack = Number(packQty) || 1
-    const phys = Number(physicalPacks) || 0
-    const adj = Number(adjEntered) || 0
-    const ent = Number(enteredQty) || 0
-    return computeDisplay(docType, presentN, pack, phys, adj, ent)
-  }, [docType, present, packQty, physicalPacks, adjEntered, enteredQty])
+  // Catalogue (right side)
+  const [tiles, setTiles] = useState<ProductHit[]>([])
+  const [tilesState, setTilesState] = useState<'loading' | 'ready' | 'error'>('loading')
 
-  useEffect(() => {
-    barcodeRef.current?.focus()
-  }, [])
+  // Qty pad
+  const [pad, setPad] = useState<Pad | null>(null)
+  const [padQty, setPadQty] = useState('')
+  const [padReason, setPadReason] = useState(meta.reason)
+  const padInputRef = useRef<HTMLInputElement | null>(null)
+
+  const lineByProduct = useMemo(() => {
+    const m = new Map<number, Line>()
+    for (const line of lines) m.set(line.productId, line)
+    return m
+  }, [lines])
 
   useEffect(() => {
     if (!savedId) return
@@ -218,137 +239,112 @@ export default function StockEntryDialog({ docType, entryId, onClose, onOpenList
     }
   }, [savedId, docType, meta.reason])
 
-  function clearLine() {
-    setBarcode('')
-    setName('')
-    setPacket('')
-    setPackQty('1')
-    setPresent('')
-    setEnteredQty('')
-    setPhysicalPacks('')
-    setAdjEntered('')
-    setReason(meta.reason)
-    setPicked(null)
-    setHits([])
-    setHitOpen(false)
-    barcodeRef.current?.focus()
-  }
-
-  function applyProduct(p: ProductHit, draftPhysical = 0) {
-    setPicked(p)
-    setBarcode(p.barcode)
-    setName(p.shortDescription)
-    setPacket(p.packetDetails)
-    setPackQty(String(p.packQty || 1))
-    setPresent(qtyFmt(p.qtyOnHand))
-    setEnteredQty(draftPhysical ? qtyFmt(draftPhysical) : '')
-    setPhysicalPacks('')
-    setAdjEntered('')
-    setHits([])
-    setHitOpen(false)
-    setHitIndex(0)
-    setReason(meta.reason)
-    window.setTimeout(() => qtyRef.current?.focus(), 0)
-  }
-
-  async function lookup(field: 'barcode' | 'name', value: string) {
-    const q = value.trim()
-    if (!q) {
-      setHits([])
-      setHitOpen(false)
-      return
+  // All items for the tile grid (loaded once).
+  useEffect(() => {
+    let alive = true
+    setTilesState('loading')
+    apiService
+      .fetchProducts()
+      .then((rows) => {
+        if (!alive) return
+        setTiles(rows.map(mapProductRow).filter((p) => p.productId > 0 && p.shortDescription))
+        setTilesState('ready')
+      })
+      .catch(() => {
+        if (alive) setTilesState('error')
+      })
+    return () => {
+      alive = false
     }
-    try {
-      const list = await apiService.searchStockEntryProducts(q)
-      const mapped: ProductHit[] = list.map((r) => ({
-        productId: Number(r.productId) || 0,
-        barcode: String(r.barcode ?? ''),
-        shortDescription: String(r.shortDescription ?? ''),
-        packetDetails: String(r.packetDetails ?? ''),
-        packQty: Number(r.packQty) || 1,
-        qtyOnHand: Number(r.qtyOnHand) || 0,
-        lastPurchaseCost: Number(r.lastPurchaseCost) || 0,
-      }))
-      if (mapped.length === 1 && field === 'barcode' && mapped[0].barcode.toLowerCase() === q.toLowerCase()) {
-        const draft = await apiService.fetchStockDraftEnteredQty(mapped[0].productId)
-        applyProduct(mapped[0], draft)
-        return
-      }
-      setHits(mapped)
-      setHitIndex(0)
-      setHitOpen(mapped.length > 0)
-    } catch (err) {
-      setError(errMessage(err, 'Product search failed'))
-    }
-  }
-
-  function onSearchChange(field: 'barcode' | 'name', value: string) {
-    if (field === 'barcode') setBarcode(value)
-    else setName(value)
-    if (searchTimer.current) clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => void lookup(field, value), 220)
-  }
-
-  async function pickHit(p: ProductHit) {
-    const draft = await apiService.fetchStockDraftEnteredQty(p.productId)
-    applyProduct(p, draft)
-  }
+  }, [])
 
   useEffect(() => {
-    if (!hitOpen) return
-    const el = hitsWrapRef.current?.querySelector<HTMLElement>(`[data-hit="${hitIndex}"]`)
-    el?.scrollIntoView({ block: 'nearest' })
-  }, [hitIndex, hitOpen])
+    if (!pad) return
+    const t = window.setTimeout(() => padInputRef.current?.focus(), 0)
+    return () => window.clearTimeout(t)
+  }, [pad])
 
-  function onSearchKeyDown(field: 'barcode' | 'name', e: KeyboardEvent<HTMLInputElement>) {
-    if (hitOpen && hits.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setHitIndex((i) => Math.min(i + 1, hits.length - 1))
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setHitIndex((i) => Math.max(i - 1, 0))
-        return
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        const pick = hits[hitIndex] ?? hits[0]
-        if (pick) void pickHit(pick)
-        return
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setHitOpen(false)
-        return
-      }
-    }
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      void lookup(field, field === 'barcode' ? barcode : name)
-    }
-  }
-
-  function addToGrid() {
+  /** Tile tap: pull the draft entered qty (as the old barcode pick did), then open the pad. */
+  async function openTile(p: ProductHit) {
+    if (posted || busy) return
     setError(null)
-    if (!picked || picked.productId < 1) {
-      setError('Please Enter BarCode')
-      barcodeRef.current?.focus()
+    const existing = lineByProduct.get(p.productId)
+    if (existing && docType === 'ADJ') {
+      openLine(existing)
       return
     }
-    const pack = Number(packQty) || 1
-    const presentN = Number(present) || 0
-    const phys = Number(physicalPacks) || 0
-    const adj = Number(adjEntered) || 0
-    const ent = Number(enteredQty) || 0
+    let draft = 0
+    try {
+      draft = await apiService.fetchStockDraftEnteredQty(p.productId)
+    } catch {
+      draft = 0
+    }
+    setPad({ product: p, lineKey: null, enteredQty: Number(draft) || 0 })
+    setPadQty('')
+    setPadReason(meta.reason)
+  }
+
+  /** Table row tap: edit that line's qty / reason. */
+  function openLine(line: Line) {
+    if (posted) return
+    setError(null)
+    setPad({
+      product: {
+        productId: line.productId,
+        barcode: line.barcode,
+        shortDescription: line.shortDescription,
+        packetDetails: line.packetDetails,
+        packQty: line.packQty,
+        qtyOnHand: line.presentQty,
+        lastPurchaseCost: line.lastPurchaseCost,
+      },
+      lineKey: line.key,
+      enteredQty: line.enteredQty,
+    })
+    setPadQty(qtyFmt(qtyAdjMode ? line.adjEntered : line.physicalPacks))
+    setPadReason(line.reason || meta.reason)
+  }
+
+  const padLive = useMemo(() => {
+    if (!pad) return null
+    const n = Number(padQty) || 0
+    return computeDisplay(
+      docType,
+      pad.product.qtyOnHand,
+      pad.product.packQty || 1,
+      qtyAdjMode ? 0 : n,
+      qtyAdjMode ? n : 0,
+      pad.enteredQty,
+    )
+  }, [pad, padQty, docType, qtyAdjMode])
+
+  function onPadKey(k: string) {
+    if (k === 'C') {
+      setPadQty((prev) => prev.slice(0, -1))
+      return
+    }
+    if (k === '.' && padQty.includes('.')) return
+    setPadQty((prev) => (prev + k).slice(0, 10))
+  }
+
+  function applyPad() {
+    if (!pad) return
+    const p = pad.product
+    const pack = p.packQty || 1
+    const presentN = p.qtyOnHand
+    const n = Number(padQty) || 0
+    const phys = qtyAdjMode ? 0 : n
+    const adj = qtyAdjMode ? n : 0
+    const ent = pad.enteredQty
     if (qtyAdjMode) {
       if (!(adj > 0)) {
         setError('Please Enter Qty')
+        padInputRef.current?.focus()
         return
       }
-    } else if (physicalPacks === '') {
+    } else if (padQty === '') {
       setError('Please Enter Qty')
+      padInputRef.current?.focus()
       return
     }
     if (phys > 8000) {
@@ -357,11 +353,11 @@ export default function StockEntryDialog({ docType, entryId, onClose, onOpenList
     }
     const calc = computeDisplay(docType, presentN, pack, phys, adj, ent)
     const next: Line = {
-      key: lineKey.current++,
-      productId: picked.productId,
-      barcode: picked.barcode,
-      shortDescription: picked.shortDescription,
-      packetDetails: picked.packetDetails,
+      key: pad.lineKey ?? lineKey.current++,
+      productId: p.productId,
+      barcode: p.barcode,
+      shortDescription: p.shortDescription,
+      packetDetails: p.packetDetails,
       packQty: pack,
       presentQty: presentN,
       adjEntered: qtyAdjMode ? Math.abs(adj) : calc.adjQty,
@@ -369,16 +365,19 @@ export default function StockEntryDialog({ docType, entryId, onClose, onOpenList
       physicalPacks: qtyAdjMode ? 0 : phys,
       physicalQty: calc.physicalQty,
       adjQty: calc.adjQty,
-      reason: reason || meta.reason,
-      lastPurchaseCost: picked.lastPurchaseCost,
+      reason: padReason || meta.reason,
+      lastPurchaseCost: p.lastPurchaseCost,
     }
     setLines((prev) => {
+      // Editing a row replaces it outright.
+      if (pad.lineKey != null) return prev.map((l) => (l.key === pad.lineKey ? next : l))
       const idx = prev.findIndex((l) => l.productId === next.productId)
       if (idx < 0) return [...prev, next]
       const copy = [...prev]
       const old = copy[idx]
       if (docType === 'ADJ') copy[idx] = next
       else {
+        // Damage / Additional: a second tap adds to the same row (VB behaviour).
         copy[idx] = {
           ...old,
           adjEntered: round3(old.adjEntered + next.adjEntered),
@@ -389,7 +388,8 @@ export default function StockEntryDialog({ docType, entryId, onClose, onOpenList
       }
       return copy
     })
-    clearLine()
+    setError(null)
+    setPad(null)
   }
 
   function removeLine(key: number) {
@@ -461,234 +461,165 @@ export default function StockEntryDialog({ docType, entryId, onClose, onOpenList
 
   return (
     <div
-      className="pd-mod-overlay pd-inv-overlay"
+      className="pd-mod-overlay"
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget && !busy) onClose()
       }}
     >
-      <div className="pd-inv pd-stk is-report" role="dialog" aria-modal="true" aria-labelledby="pd-stk-title">
-        <header className="pd-inv-head">
-          <div className="pd-inv-head-left">
+      <div className="pd-ol-dialog pd-mfg pd-rcp" role="dialog" aria-modal="true" aria-labelledby="pd-stk-title">
+        <div className="pd-mod-header">
+          <div className="pd-mod-header-left">
+            <div className="pd-mod-header-icon">
+              {docType === 'DMG' ? <Ban size={15} /> : docType === 'ASE' ? <PackagePlus size={15} /> : <RotateCcw size={15} />}
+            </div>
             <div>
               <p className="pd-mod-kicker">{meta.kicker}</p>
-              <h2 id="pd-stk-title">{meta.title}</h2>
+              <h2 id="pd-stk-title" className="pd-mod-item-name">{meta.title}</h2>
             </div>
           </div>
-          <span className={`pd-stk-status${posted ? ' is-posted' : ''}`}>
-            {posted ? 'POSTED' : 'NOT POSTED'}
-          </span>
-          <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
-            <X size={13} />
-          </button>
-        </header>
-
-        <div className="pd-stk-meta">
-          <label>
-            <span>No</span>
-            <input value={entryNo || '0'} readOnly />
-          </label>
-          <label>
-            <span>Date</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={posted} />
-          </label>
-          <label className="pd-stk-remarks">
-            <span>Remarks</span>
-            <input
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value.toUpperCase())}
-              disabled={posted}
-            />
-          </label>
-        </div>
-
-        {!posted ? (
-          <div className="pd-stk-entry">
-            <label>
-              <span>Barcode</span>
-              <span className="pd-inv-search">
-                <Search size={13} />
-                <input
-                  ref={barcodeRef}
-                  value={barcode}
-                  onChange={(e) => onSearchChange('barcode', e.target.value)}
-                  onKeyDown={(e) => onSearchKeyDown('barcode', e)}
-                  placeholder="Barcode"
-                  autoComplete="off"
-                />
-              </span>
-            </label>
-            <label>
-              <span>Item Name</span>
-              <span className="pd-inv-search">
-                <Search size={13} />
-                <input
-                  value={name}
-                  onChange={(e) => onSearchChange('name', e.target.value)}
-                  onKeyDown={(e) => onSearchKeyDown('name', e)}
-                  placeholder="Short description"
-                  autoComplete="off"
-                />
-              </span>
-            </label>
-            <label>
-              <span>Packet</span>
-              <input value={packet} readOnly />
-            </label>
-            <label>
-              <span>Pack Qty</span>
-              <input value={packQty} readOnly />
-            </label>
-            <label>
-              <span>Present</span>
-              <input value={present} readOnly />
-            </label>
-            {!qtyAdjMode ? (
-              <label>
-                <span>Entered</span>
-                <input value={enteredQty} readOnly />
-              </label>
-            ) : null}
-            {qtyAdjMode ? (
-              <label>
-                <span>{meta.qtyLabel}</span>
-                <input
-                  ref={qtyRef}
-                  value={adjEntered}
-                  onChange={(e) => setAdjEntered(e.target.value.replace(/[^\d.-]/g, ''))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') addToGrid()
-                  }}
-                />
-              </label>
-            ) : (
-              <label>
-                <span>{meta.qtyLabel}</span>
-                <input
-                  ref={qtyRef}
-                  value={physicalPacks}
-                  onChange={(e) => setPhysicalPacks(e.target.value.replace(/[^\d.-]/g, ''))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') addToGrid()
-                  }}
-                />
-              </label>
-            )}
-            <label>
-              <span>Adj Qty</span>
-              <input value={qtyFmt(live.adjQty)} readOnly />
-            </label>
-            <label>
-              <span>Physical</span>
-              <input value={qtyFmt(live.physicalQty)} readOnly />
-            </label>
-            <label>
-              <span>Reason</span>
-              {meta.reasonLocked ? (
-                <input value={reason} readOnly />
-              ) : (
-                <select value={reason} onChange={(e) => setReason(e.target.value)}>
-                  {ADJ_REASONS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </label>
-            <button type="button" className="pd-inv-go pd-stk-add" onClick={addToGrid} disabled={busy}>
-              <Plus size={14} />
-              Add
+          <span className="stk-head-right">
+            <span className={`stk-status${posted ? ' is-posted' : ''}`}>{posted ? 'POSTED' : 'NOT POSTED'}</span>
+            <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
+              <X size={13} />
             </button>
-            {hitOpen && hits.length > 0 ? (
-              <div className="pd-stk-hits" ref={hitsWrapRef} role="listbox" aria-label="Items">
-                {hits.map((h, i) => (
-                  <button
-                    key={h.productId}
-                    type="button"
-                    role="option"
-                    aria-selected={i === hitIndex}
-                    data-hit={i}
-                    className={i === hitIndex ? 'is-active' : undefined}
-                    onMouseEnter={() => setHitIndex(i)}
-                    onClick={() => void pickHit(h)}
-                  >
-                    <strong>{h.barcode}</strong>
-                    <span>{h.shortDescription}</span>
-                    <em>On hand {qtyFmt(h.qtyOnHand)}</em>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {error ? <p className="pd-inv-msg">{error}</p> : null}
-        {hint ? <p className="pd-stk-ok">{hint}</p> : null}
-
-        <div className="pd-stk-grid-wrap">
-          <table className="pd-inv-grid">
-            <thead>
-              <tr>
-                <th>Sl</th>
-                <th>Barcode</th>
-                <th>Description</th>
-                <th>Packet</th>
-                <th className="num">Present</th>
-                <th className="num">Adj Qty</th>
-                <th className="num">Physical</th>
-                <th>Reason</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {lines.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="pd-inv-empty">
-                    Scan or search an item, enter qty, then Add.
-                  </td>
-                </tr>
-              ) : (
-                lines.map((l, i) => (
-                  <tr key={l.key}>
-                    <td>{i + 1}</td>
-                    <td>{l.barcode}</td>
-                    <td>{l.shortDescription}</td>
-                    <td>{l.packetDetails}</td>
-                    <td className="num">{qtyFmt(l.presentQty)}</td>
-                    <td className="num">{qtyFmt(qtyAdjMode ? l.adjEntered : l.adjQty)}</td>
-                    <td className="num">{qtyFmt(l.physicalQty)}</td>
-                    <td>{l.reason}</td>
-                    <td>
-                      {!posted ? (
-                        <button type="button" className="pd-stk-del" onClick={() => removeLine(l.key)} aria-label="Delete">
-                          <Trash2 size={12} />
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          </span>
         </div>
 
-        <footer className="pd-inv-foot">
-          <span className="pd-inv-total">COUNT : {lines.length}</span>
-          <button type="button" className="pd-inv-ghost" onClick={onOpenList}>
-            List
-          </button>
-          <button type="button" className="pd-inv-ghost" onClick={onClose}>
-            Close
-          </button>
+        <div className="rcp-body">
+          <div className="rcp-top stk-top">
+            <div className="pd-form-row">
+              <label>No</label>
+              <input value={entryNo || '0'} readOnly />
+            </div>
+            <div className="pd-form-row">
+              <label>Date</label>
+              <DatePicker value={date} onChange={setDate} disabled={posted} />
+            </div>
+            <div className="pd-form-row">
+              <label>Remarks</label>
+              <input
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value.toUpperCase())}
+                disabled={posted}
+              />
+            </div>
+          </div>
+
+          {error ? <p className="pd-mfg-msg">{error}</p> : null}
+          {hint ? <p className="pd-mfg-ok">{hint}</p> : null}
+
+          <div className="rcp-main">
+            {/* Left: adjustment lines */}
+            <section className="rcp-lines stk-lines">
+              <div className="pd-grid-wrap">
+                <table className="pd-grid">
+                  <thead>
+                    <tr>
+                      <th>Barcode</th>
+                      <th>Description</th>
+                      <th className="num">Present</th>
+                      <th className="num">Adj Qty</th>
+                      <th className="num">Physical</th>
+                      <th>Reason</th>
+                      <th className="col-menu" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="rcp-empty">
+                          {posted ? 'This entry is posted.' : 'Tap a product on the right to add it'}
+                        </td>
+                      </tr>
+                    ) : (
+                      lines.map((l) => (
+                        <tr key={l.key} className={posted ? undefined : 'rcp-row'} onClick={() => openLine(l)}>
+                          <td>{l.barcode}</td>
+                          <td>{l.shortDescription}</td>
+                          <td className="num">{qtyFmt(l.presentQty)}</td>
+                          <td className="num rcp-qty">{qtyFmt(qtyAdjMode ? l.adjEntered : l.adjQty)}</td>
+                          <td className="num">{qtyFmt(l.physicalQty)}</td>
+                          <td>{l.reason}</td>
+                          <td className="col-menu">
+                            {!posted ? (
+                              <button
+                                type="button"
+                                className="pd-row-delete"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  removeLine(l.key)
+                                }}
+                                aria-label="Delete"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* Right: product tiles, like the home screen */}
+            <section className="rcp-cat" aria-label="Products">
+              <div className="rcp-panel">
+                <div className="rcp-tiles">
+                  {tilesState === 'loading' ? (
+                    <p className="pd-cat-msg">Loading items…</p>
+                  ) : tilesState === 'error' ? (
+                    <p className="pd-cat-msg">Could not load items</p>
+                  ) : tiles.length === 0 ? (
+                    <p className="pd-cat-msg">No items</p>
+                  ) : (
+                    tiles.map((p) => {
+                      const line = lineByProduct.get(p.productId)
+                      return (
+                        <button
+                          key={p.productId}
+                          type="button"
+                          className={`pd-product rcp-tile${line ? ' is-in' : ''}`}
+                          onClick={() => void openTile(p)}
+                          disabled={posted}
+                          title={p.shortDescription}
+                        >
+                          <span className="pd-product-name">{p.shortDescription.toLowerCase()}</span>
+                          <span className="pd-product-foot">
+                            <span className="pd-product-price">Stock {qtyFmt(p.qtyOnHand)}</span>
+                            {line ? (
+                              <span className="rcp-tile-qty">
+                                {qtyFmt(qtyAdjMode ? line.adjEntered : line.physicalPacks)}
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div className="pd-mod-foot">
+          <span className="pd-mfg-count">
+            Count: <strong>{lines.length}</strong>
+          </span>
+          <span className="pd-mod-foot-spacer" />
+          <button type="button" className="pd-mod-foot-btn" onClick={onOpenList}>List</button>
+          <button type="button" className="pd-mod-foot-btn" onClick={onClose}>Close</button>
           {!posted ? (
             <>
-              <button type="button" className="pd-inv-ghost" onClick={() => void saveDraft()} disabled={busy}>
-                Save
+              <button type="button" className="pd-mod-foot-btn" onClick={() => void saveDraft()} disabled={busy}>
+                {busy ? 'Saving…' : 'Save'}
               </button>
               <button
                 type="button"
-                className="pd-inv-go"
+                className="pd-mod-foot-btn is-ok"
                 onClick={() => setConfirmPost(true)}
                 disabled={busy || lines.length === 0}
               >
@@ -696,36 +627,136 @@ export default function StockEntryDialog({ docType, entryId, onClose, onOpenList
               </button>
             </>
           ) : null}
-        </footer>
+        </div>
       </div>
 
-      {confirmPost ? (
-        <div className="pd-settle-tip" role="dialog" aria-modal="true">
-          <div className="pd-ol-dialog pd-ol-narrow">
+      {pad && padLive ? (
+        <div
+          className="pd-mod-overlay rcp-pad-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPad(null)
+          }}
+        >
+          <div className="pd-qty-dialog rcp-pad" role="dialog" aria-modal="true" aria-labelledby="stk-pad-title">
             <div className="pd-mod-header">
-              <div>
-                <p className="pd-mod-kicker">Posting</p>
-                <h2 className="pd-mod-item-name">Update Stock?</h2>
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <Hash size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">{pad.lineKey != null ? 'Change Qty' : meta.qtyLabel}</p>
+                  <h2 id="stk-pad-title" className="pd-mod-item-name">{pad.product.shortDescription}</h2>
+                </div>
               </div>
+              <button type="button" className="pd-mod-x" onClick={() => setPad(null)} aria-label="Close">
+                <X size={13} />
+              </button>
             </div>
-            <div className="pd-ol-body">
-              <p className="pd-confirm-msg">
-                Posting Will Update Stock......
-                <br />
-                System will not allow any further modifications in this Transfer... Proceed .. ?
-              </p>
-              <div className="pd-admin-foot">
-                <button type="button" className="pd-mod-foot-btn is-close" onClick={() => setConfirmPost(false)}>
-                  NO
-                </button>
-                <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void runPost()}>
-                  YES
-                </button>
+            <div className="pd-qty-body">
+              <div className="pd-qty-fields rcp-pad-fields">
+                <div className="rcp-pad-qty">
+                  <span>{meta.qtyLabel}</span>
+                  <input
+                    ref={padInputRef}
+                    className="pd-qty-input"
+                    value={padQty}
+                    inputMode="none"
+                    placeholder="0"
+                    onChange={(e) => setPadQty(signedDecimal(e.target.value).slice(0, 10))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        applyPad()
+                      }
+                      if (e.key === 'Escape') setPad(null)
+                    }}
+                  />
+                </div>
+                {meta.reasonLocked ? null : (
+                  <div className="rcp-units stk-reasons" role="radiogroup" aria-label="Reason">
+                    {ADJ_REASONS.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        role="radio"
+                        aria-checked={padReason === r}
+                        className={`rcp-unit${padReason === r ? ' is-on' : ''}`}
+                        onClick={() => {
+                          setPadReason(r)
+                          padInputRef.current?.focus()
+                        }}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <dl className="rcp-pad-info">
+                  <div>
+                    <dt>Barcode</dt>
+                    <dd>{pad.product.barcode || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>Packet</dt>
+                    <dd>{pad.product.packetDetails || '—'} · {qtyFmt(pad.product.packQty)}</dd>
+                  </div>
+                  <div>
+                    <dt>Present</dt>
+                    <dd>{qtyFmt(pad.product.qtyOnHand)}</dd>
+                  </div>
+                  {!qtyAdjMode ? (
+                    <div>
+                      <dt>Entered</dt>
+                      <dd>{qtyFmt(pad.enteredQty)}</dd>
+                    </div>
+                  ) : null}
+                  {meta.reasonLocked ? (
+                    <div>
+                      <dt>Reason</dt>
+                      <dd>{meta.reason}</dd>
+                    </div>
+                  ) : null}
+                  <div className="is-total">
+                    <dt>Adj Qty</dt>
+                    <dd>{qtyFmt(padLive.adjQty)}</dd>
+                  </div>
+                  <div className="is-total stk-total-2">
+                    <dt>Physical</dt>
+                    <dd>{qtyFmt(padLive.physicalQty)}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="pd-qty-pad">
+                <div className="pd-qty-keys">
+                  {KEYS.map((k) => (
+                    <button key={k} type="button" className="pd-key" onClick={() => onPadKey(k)}>
+                      {k}
+                    </button>
+                  ))}
+                </div>
+                <div className="pd-qty-actions">
+                  <button type="button" className="pd-qty-done" onClick={applyPad}>
+                    Done
+                  </button>
+                  <button type="button" className="pd-qty-cancel" onClick={() => setPad(null)}>
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmPost}
+        title="Post this entry?"
+        message="Stock will be updated and the entry can't be edited after posting."
+        confirmLabel="Post"
+        onConfirm={() => void runPost()}
+        onCancel={() => setConfirmPost(false)}
+      />
     </div>
   )
 }

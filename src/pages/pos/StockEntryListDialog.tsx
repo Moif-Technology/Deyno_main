@@ -1,9 +1,11 @@
 /**
  * StockAdjustmentList — date range + document list. Double-click opens the entry.
+ * The range uses the shared DateRangePicker; Apply there searches straight away.
  */
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { ClipboardList, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { DateRangePicker } from '../../components/common/DateRangePicker'
 import type { StockDocType } from './StockEntryDialog'
 
 type Props = {
@@ -58,11 +60,11 @@ export default function StockEntryListDialog({ docType, onClose, onSelect, onNew
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
 
-  async function load() {
+  async function load(from = dateFrom, to = dateTo) {
     setState('loading')
     setError(null)
     try {
-      const list = await apiService.fetchStockEntries({ docType, dateFrom, dateTo })
+      const list = await apiService.fetchStockEntries({ docType, dateFrom: from, dateTo: to })
       setRows(
         list.map((r) => ({
           entryId: Number(r.entryId ?? r.entry_id) || 0,
@@ -100,6 +102,9 @@ export default function StockEntryListDialog({ docType, onClose, onSelect, onNew
       <div className="pd-inv pd-stk-list" role="dialog" aria-modal="true" aria-labelledby="pd-stk-list-title">
         <header className="pd-inv-head">
           <div className="pd-inv-head-left">
+            <span className="pd-mod-header-icon">
+              <ClipboardList size={15} />
+            </span>
             <div>
               <p className="pd-mod-kicker">Transactions</p>
               <h2 id="pd-stk-list-title">{TITLES[docType]}</h2>
@@ -110,15 +115,19 @@ export default function StockEntryListDialog({ docType, onClose, onSelect, onNew
           </button>
         </header>
 
-        <div className="pd-stk-list-filters">
-          <label>
-            <span>From</span>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </label>
-          <label>
-            <span>To</span>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </label>
+        <div className="pd-stk-list-filters is-range">
+          <div className="pd-stk-range">
+            <span>From – To</span>
+            <DateRangePicker
+              from={dateFrom}
+              to={dateTo}
+              onChange={(from, to) => {
+                setDateFrom(from)
+                setDateTo(to)
+                void load(from, to)
+              }}
+            />
+          </div>
           <button type="button" className="pd-inv-go" onClick={() => void load()} disabled={state === 'loading'}>
             {state === 'loading' ? 'Loading…' : 'Search'}
           </button>

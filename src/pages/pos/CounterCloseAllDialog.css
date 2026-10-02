@@ -5,7 +5,7 @@
 
 .pd-cc {
   width: min(1180px, 100%);
-  height: min(760px, 94vh);
+  height: min(760px, calc(94vh / var(--ui-zoom, 1)));
   background: var(--bg, #f7f5f2);
   border-radius: 18px;
   overflow: hidden;
@@ -858,4 +858,3084 @@
   display: grid;
   grid-template-columns: 1fr 1.4fr;
   gap: 8px;
+}
+
+/* ══ Fit in the viewport: no page scroll. The dialog takes the window height;
+   the two cards share what's left and only the Sales list scrolls inside. ══ */
+.pd-cc {
+  height: calc(94vh / var(--ui-zoom, 1));
+  max-height: calc(94vh / var(--ui-zoom, 1));
+}
+
+.pd-cc-scroll {
+  overflow: hidden;
+  padding: 12px 14px;
+  gap: 10px;
+}
+
+.pd-cc-kpis {
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.pd-cc-kpi {
+  padding: 8px 12px;
+  gap: 2px;
+}
+
+.pd-cc-kpi b {
+  font-size: 18px;
+}
+
+.pd-cc-banner {
+  flex-shrink: 0;
+}
+
+.pd-cc-body {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.pd-cc-card {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+}
+
+.pd-cc-card-title {
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+
+/* Left: only the sales figures scroll, the card itself stays put. */
+.pd-cc-summary {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.pd-cc-staff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.pd-cc-staff-table th,
+.pd-cc-staff-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.pd-cc-staff-table th {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-3);
+  background: var(--surface-2);
+}
+
+.pd-cc-staff-table td:nth-child(n + 2),
+.pd-cc-staff-table th:nth-child(n + 2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Right: denominations 3 per row, compact keypad and reconciliation. */
+.pd-cc-cash {
+  gap: 8px;
+  overflow: hidden;
+}
+
+.pd-cc-cash .pd-cc-card-title {
+  margin-bottom: 0;
+}
+
+.pd-cc-cash-grid {
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 10px;
+}
+
+.pd-cc-denoms {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.pd-cc-denom {
+  grid-template-columns: 34px 8px minmax(0, 1fr);
+  gap: 4px;
+  padding: 2px 6px;
+}
+
+.pd-cc-denom-label {
+  font-size: 12px;
+}
+
+.pd-cc-denom input {
+  height: 26px;
+  font-size: 13px;
+}
+
+/* Line amount is shown in the Counted total below — hide it here to save room. */
+.pd-cc-denom-amt {
+  display: none;
+}
+
+.pd-cc-pad {
+  grid-auto-rows: 36px;
+  gap: 5px;
+}
+
+.pd-cc-pad button {
+  font-size: 15px;
+}
+
+.pd-cc-recon {
+  gap: 4px;
+}
+
+.pd-cc-recon-row {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.pd-cc-recon-row small {
+  display: none;
+}
+
+.pd-cc-remarks input {
+  height: 32px;
+}
+
+.pd-cc-foot {
+  flex-shrink: 0;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* Narrow windows stack the cards; then the body scrolls as a whole. */
+@media (max-width: 1100px) {
+  .pd-cc-scroll {
+    overflow-y: auto;
+  }
+
+  .pd-cc-body {
+    flex: none;
+  }
+}
+
+/* ══ Simple layout: count cash (left) · result (right) · details on demand ══ */
+.pd-cc.is-simple {
+  width: min(900px, 100%);
+  height: auto;
+  max-height: calc(94vh / var(--ui-zoom, 1));
+}
+
+.pd-cc.is-simple .pd-cc-scroll {
+  gap: 12px;
+}
+
+.ccs-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+  align-items: start;
+}
+
+.ccs-count,
+.ccs-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.ccs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.ccs-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.ccs-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ccs-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.ccs-line b {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.ccs-counted input {
+  width: 120px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1.5px solid var(--brand);
+  background: var(--brand-bg);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 800;
+  text-align: right;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.ccs-counted input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.ccs-diff {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  row-gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.ccs-diff b {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+
+.ccs-diff em {
+  grid-column: 1 / -1;
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.ccs-diff.is-even { background: #e7f6ec; }
+.ccs-diff.is-even em,
+.ccs-diff.is-even b { color: #1f7a3d; }
+.ccs-diff.is-short,
+.ccs-diff.is-over { background: #fdecec; }
+.ccs-diff.is-short em,
+.ccs-diff.is-short b,
+.ccs-diff.is-over em,
+.ccs-diff.is-over b { color: var(--red, #b91c1c); }
+.ccs-diff.is-idle em { color: var(--text-3); }
+
+.ccs-remarks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--text-3);
+}
+
+.ccs-remarks input {
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.ccs-remarks input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.ccs-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 18px;
+}
+
+@media (max-width: 760px) {
+  .ccs-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ══ Card layout (ccv): note tiles + keypad (left) · result + tile actions (right) ══ */
+.pd-cc.ccv {
+  width: min(760px, 100%);
+}
+
+.ccv-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.ccv-left,
+.ccv-right {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ccv-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.ccv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.ccv-head h3 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.ccv-head h3 svg {
+  color: var(--brand);
+}
+
+.ccv-clear {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--red, #b91c1c);
+  cursor: pointer;
+}
+
+/* Note tiles: value on top, count below */
+.ccv-notes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ccv-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border-radius: 11px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  cursor: text;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.ccv-note-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+}
+
+.ccv-note-top b {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.ccv-note input {
+  width: 100%;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: right;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.ccv-note.is-filled {
+  border-color: var(--brand-border);
+  background: #fdf3f5;
+}
+
+.ccv-note.is-focus {
+  border-color: var(--brand);
+  background: var(--brand-bg);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.ccv-note.is-focus .ccv-note-top,
+.ccv-note.is-filled .ccv-note-top {
+  color: var(--brand);
+}
+
+/* Keypad: the same 3-column keypad, under the note tiles. */
+
+/* Right: result card */
+/* Fills the right column so there is no empty gap above the action tiles. */
+.ccv-result {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ccv-badge {
+  align-self: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 2px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--brand-bg);
+  color: var(--brand);
+  box-shadow: 0 0 0 6px #fdf3f5;
+}
+
+.ccv-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.ccv-line b {
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.ccv-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--brand-tint);
+  background: #fdf3f5;
+  color: var(--brand);
+}
+
+.ccv-box > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ccv-box small {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-2);
+}
+
+.ccv-box input {
+  width: 100%;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.ccv-diff b {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ccv-diff em {
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.ccv-diff.is-even {
+  border-color: #b7e2c4;
+  background: #e7f6ec;
+  color: #1f7a3d;
+}
+
+.ccv-diff.is-short,
+.ccv-diff.is-over {
+  border-color: #f3c1c1;
+  background: #fdecec;
+  color: var(--red, #b91c1c);
+}
+
+.ccv-diff.is-idle {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+
+/* Remarks fills the rest of the card, so there is no blank space under it. */
+.ccv-remarks {
+  flex: 1;
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ccv-remarks > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--text-2);
+}
+
+.ccv-remarks textarea {
+  flex: 1;
+  min-height: 48px;
+  resize: none;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.ccv-remarks textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+/* Tile actions */
+.ccv-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.ccv-act {
+  height: 74px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--text-1);
+  cursor: pointer;
+  transition: border-color 0.12s, transform 0.08s;
+}
+
+.ccv-act:hover:not(:disabled) {
+  border-color: var(--brand-border);
+}
+
+.ccv-act:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.ccv-act:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ccv-act.is-primary {
+  border-color: transparent;
+  background: linear-gradient(145deg, var(--pd-grad-start, var(--brand)) 0%, var(--pd-grad-end, var(--brand-2)) 100%);
+  color: #fff;
+  box-shadow: 0 6px 16px var(--brand-glow);
+}
+
+@media (max-width: 720px) {
+  .ccv-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Keypad: shared NumberPad (standard .pd-key buttons). */
+.ccv-pad .pd-key {
+  min-height: 44px;
+}
+
+/* Two action tiles now (X-Report · Close Counter). */
+.ccv .ccv-actions {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* ══ Admin (CounterClose -Admin): dashboard column on the left ══
+   The whole dialog fits the viewport: fixed height, columns share it, and only
+   the admin column scrolls (inside itself) if a very short screen needs it. */
+.pd-cc.ccv.is-admin {
+  width: min(1120px, 100%);
+  height: calc(94vh / var(--ui-zoom, 1));
+  max-height: calc(94vh / var(--ui-zoom, 1));
+}
+
+.ccv.is-admin .pd-cc-scroll {
+  overflow: hidden;
+  padding: 12px;
+  gap: 10px;
+}
+
+.ccv.is-admin .ccv-main {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.ccv.is-admin .ccv-left,
+.ccv.is-admin .ccv-right {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* Tighter count tiles / keypad so the middle column fits. */
+.ccv.is-admin .ccv-notes {
+  gap: 6px;
+}
+
+.ccv.is-admin .ccv-note {
+  padding: 5px 8px;
+}
+
+.ccv.is-admin .ccv-pad .pd-key {
+  min-height: 38px;
+}
+
+.ccv.is-admin .ccv-act {
+  height: 64px;
+}
+
+.ccv-admin {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 1000px) {
+  .pd-cc.ccv.is-admin {
+    height: auto;
+  }
+
+  .ccv.is-admin .pd-cc-scroll {
+    overflow: auto;
+  }
+
+  .ccv.is-admin .ccv-main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .ccv-admin {
+    grid-column: 1 / -1;
+    overflow: visible;
+  }
+}
+
+/* ══ Fit the viewport: the whole screen (cashier + admin) shows at once, no page scroll ══ */
+.pd-cc.ccv {
+  height: calc(94vh / var(--ui-zoom, 1));
+  max-height: calc(94vh / var(--ui-zoom, 1));
+}
+
+.ccv .pd-cc-scroll {
+  overflow: hidden;
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.ccv .ccv-main {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.ccv .ccv-left,
+.ccv .ccv-right {
+  min-height: 0;
+  gap: 8px;
+}
+
+.ccv .ccv-card {
+  padding: 10px;
+}
+
+.ccv .ccv-head {
+  margin-bottom: 6px;
+}
+
+/* Note tiles: share the height left above the keypad. */
+.ccv .ccv-left > .ccv-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ccv .ccv-notes {
+  flex: 1;
+  min-height: 0;
+  grid-auto-rows: 1fr;
+  gap: 6px;
+}
+
+.ccv .ccv-note {
+  justify-content: center;
+  padding: 4px 8px;
+}
+
+.ccv .ccv-note input {
+  height: 20px;
+  font-size: 14px;
+}
+
+.ccv .ccv-pad .pd-key {
+  min-height: 38px;
+  height: 38px;
+}
+
+/* Result column */
+.ccv .ccv-result {
+  min-height: 0;
+  gap: 6px;
+}
+
+.ccv .ccv-badge {
+  width: 38px;
+  height: 38px;
+  box-shadow: 0 0 0 4px #fdf3f5;
+}
+
+.ccv .ccv-box {
+  padding: 7px 10px;
+}
+
+.ccv .ccv-diff b {
+  font-size: 18px;
+}
+
+.ccv .ccv-act {
+  height: 60px;
+}
+
+/* Admin summary: tight rows, scrolls only inside the panel if a screen is very short. */
+.ccv .ccv-admin {
+  min-height: 0;
+  gap: 6px;
+}
+
+.ccv .ccv-admin-row {
+  padding: 1px 0;
+  font-size: 11.5px;
+}
+
+.ccv .ccv-admin-row.is-strong {
+  margin: 2px 0;
+  padding: 3px 8px;
+}
+
+.ccv .ccv-admin-row.is-strong b {
+  font-size: 13px;
+}
+
+.ccv .ccv-admin-bills {
+  padding-top: 5px;
+}
+
+.ccv .ccv-admin-grid {
+  gap: 2px 10px;
+  font-size: 11px;
+}
+
+/* Narrow screens stack the columns, so let the body scroll there. */
+@media (max-width: 1000px) {
+  .ccv.is-admin .pd-cc-scroll {
+    overflow: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .ccv .pd-cc-scroll {
+    overflow: auto;
+  }
+}
+
+/* ══ Admin summary — simple plain list that always fits the panel height ══ */
+.ccv .ccv-admin {
+  overflow: hidden;
+  gap: 0;
+  padding: 10px 12px;
+}
+
+.ccv .ccv-admin .ccv-head {
+  flex-shrink: 0;
+  margin-bottom: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Rows share whatever height the panel has — no scrolling, no clipping. */
+.ccv .ccv-admin-rows {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ccv .ccv-admin-rows .ccv-admin-row {
+  flex: 1 1 0;
+  min-height: 0;
+  align-items: center;
+}
+
+.ccv .ccv-admin-row {
+  padding: 0;
+  font-size: 11.5px;
+  line-height: 1.15;
+}
+
+/* Headline figures: just bold, no coloured boxes. */
+.ccv .ccv-admin-row.is-strong {
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-1);
+  font-weight: 800;
+}
+
+.ccv .ccv-admin-row.is-strong b {
+  font-size: 12.5px;
+  color: var(--brand);
+}
+
+.ccv .ccv-admin-row.is-zero,
+.ccv .ccv-admin-row.is-zero b {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.ccv .ccv-admin-bills {
+  flex-shrink: 0;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.ccv .ccv-admin-bills .ccv-admin-row {
+  margin-bottom: 3px;
+}
+
+.ccv .ccv-admin-grid {
+  gap: 1px 10px;
+  font-size: 11px;
+}
+
+/* ══ Admin summary: key figures (like the old screen's highlighted ones) on top ══ */
+.ccv-key {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ccv-key-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  min-width: 0;
+}
+
+.ccv-key-item span {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ccv-key-item b {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.ccv-key-item.is-main {
+  border-color: var(--brand-border);
+  background: var(--brand-bg);
+}
+
+.ccv-key-item.is-main span {
+  color: var(--brand);
+}
+
+.ccv-key-item.is-main b {
+  font-size: 18px;
+  color: var(--brand);
+}
+
+/* Never cut figures off: on a very short screen only this panel scrolls. */
+.ccv .ccv-admin {
+  overflow-y: auto;
+}
+
+/* Action buttons reuse the home screen's .pd-tile — just give them a height here. */
+.ccv .ccv-actions .pd-tile {
+  height: 64px;
+}
+
+/* ══ Money look for the counting tiles ══
+   Notes: banknote icon + a stripe in the note's colour (close to the real AED notes).
+   Coins: a round silver / gold coin badge. */
+.ccv-note {
+  position: relative;
+  overflow: hidden;
+}
+
+.ccv-note-top {
+  gap: 6px;
+}
+
+.ccv-note-top small {
+  margin-left: auto;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: var(--text-3);
+}
+
+.ccv-note-ic {
+  flex-shrink: 0;
+  color: var(--note, var(--text-3));
+}
+
+/* Notes: coloured stripe on the left + faint tint, like a banknote. */
+.ccv-note.is-note {
+  padding-left: 12px;
+  background:
+    linear-gradient(90deg, var(--note-tint, transparent) 0%, #fff 70%);
+}
+
+.ccv-note.is-note::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--note, var(--brand));
+}
+
+.ccv-d-1000 { --note: #8a6a2f; --note-tint: #f6efe1; }
+.ccv-d-500  { --note: #2f4f8f; --note-tint: #e8eef9; }
+.ccv-d-200  { --note: #5f8a3a; --note-tint: #edf5e5; }
+.ccv-d-100  { --note: #b0415c; --note-tint: #fbe9ee; }
+.ccv-d-50   { --note: #6b4c9a; --note-tint: #f0eaf8; }
+.ccv-d-20   { --note: #2b7a9c; --note-tint: #e5f2f8; }
+.ccv-d-10   { --note: #3f8a5a; --note-tint: #e6f4ec; }
+.ccv-d-5    { --note: #8a5a3a; --note-tint: #f5ece5; }
+
+/* Coins: round badge. */
+.ccv-note.is-coin .ccv-note-ic {
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #d9d9d9 55%, #a9a9a9 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  color: #5a5a5a;
+}
+
+/* 1 AED coin in gold. */
+.ccv-d-1.is-coin .ccv-note-ic {
+  background: radial-gradient(circle at 35% 30%, #fff6d8 0%, #e3c46a 55%, #b8932f 100%);
+  color: #6b5210;
+}
+
+/* Keep the focus / filled states readable on top of the money look. */
+.ccv-note.is-note.is-filled {
+  background: linear-gradient(90deg, var(--note-tint, transparent) 0%, #fdf3f5 70%);
+}
+
+.ccv-note.is-focus {
+  background: var(--brand-bg);
+}
+
+.ccv-note.is-focus .ccv-note-ic,
+.ccv-note.is-filled .ccv-note-ic {
+  color: var(--note, var(--brand));
+}
+
+/* ══ Count Cash: tiles read like counting money — [note/coin] × count = amount ══ */
+.ccv-running {
+  margin-left: auto;
+  margin-right: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.ccv-running b {
+  font-weight: 800;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.ccv-running.is-on {
+  background: #e7f6ec;
+  color: #1f7a3d;
+}
+
+.ccv-running.is-on b {
+  color: #1f7a3d;
+}
+
+.ccv .ccv-note {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 1px;
+}
+
+/* Note / coin badge */
+.ccv-money {
+  --note: #8a8a8a;
+  grid-row: 1 / 3;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 28px;
+  border-radius: 5px;
+  background:
+    radial-gradient(circle at 78% 50%, rgba(255, 255, 255, 0.35) 0 6px, transparent 7px),
+    linear-gradient(135deg, var(--note) 0%, color-mix(in srgb, var(--note) 70%, #000) 100%);
+  color: #fff;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  line-height: 1;
+}
+
+.ccv-money em {
+  font-style: normal;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  opacity: 0.85;
+}
+
+.ccv-money b {
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Note colours, close to the real AED notes */
+.ccv-d-1000 .ccv-money { --note: #8d6a3c; }
+.ccv-d-500 .ccv-money { --note: #3b5998; }
+.ccv-d-200 .ccv-money { --note: #6b8e23; }
+.ccv-d-100 .ccv-money { --note: #c0392b; }
+.ccv-d-50 .ccv-money { --note: #7b4ea3; }
+.ccv-d-20 .ccv-money { --note: #2e86c1; }
+.ccv-d-10 .ccv-money { --note: #27865a; }
+.ccv-d-5 .ccv-money { --note: #a0522d; }
+
+/* Coins: round, metallic */
+.is-coin .ccv-money {
+  width: 28px;
+  height: 28px;
+  margin: 0 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff 0%, #dcdcdc 35%, #a9a9a9 100%);
+  color: #444;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.ccv-d-1.is-coin .ccv-money {
+  background: radial-gradient(circle at 35% 30%, #fff8dc 0%, #e6c35c 40%, #b8912a 100%);
+  color: #5a4210;
+}
+
+.is-coin .ccv-money b {
+  font-size: 10px;
+}
+
+.ccv-times {
+  grid-row: 1 / 3;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-3);
+}
+
+.ccv .ccv-note input {
+  grid-column: 3;
+  grid-row: 1;
+  text-align: right;
+}
+
+.ccv-sum {
+  grid-column: 3;
+  grid-row: 2;
+  text-align: right;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ccv-note.is-filled .ccv-sum {
+  color: #1f7a3d;
+  font-weight: 800;
+}
+
+.ccv-note.is-focus .ccv-times {
+  color: var(--brand);
+}
+
+/* ══ Theme only: no multi-coloured boxes — everything uses the primary (maroon) theme ══ */
+
+/* Notes & coins: one primary badge, no per-note colours or tints. */
+.ccv .ccv-note,
+.ccv .ccv-note.is-note,
+.ccv .ccv-note.is-note.is-filled {
+  background: #fff;
+}
+
+.ccv .ccv-note.is-note::before {
+  display: none;
+}
+
+.ccv .ccv-note.is-note {
+  padding-left: 8px;
+}
+
+.ccv .ccv-money,
+.ccv .is-coin .ccv-money,
+.ccv .ccv-d-1.is-coin .ccv-money {
+  --note: var(--brand);
+  background: var(--brand-bg);
+  color: var(--brand);
+  box-shadow: inset 0 0 0 1.5px var(--brand-border);
+}
+
+.ccv .ccv-note-ic,
+.ccv .ccv-note.is-coin .ccv-note-ic,
+.ccv .ccv-d-1.is-coin .ccv-note-ic {
+  background: none;
+  box-shadow: none;
+  color: var(--brand);
+}
+
+.ccv .ccv-note.is-filled {
+  border-color: var(--brand-border);
+}
+
+.ccv .ccv-note.is-focus {
+  border-color: var(--brand);
+  background: var(--brand-bg);
+}
+
+.ccv .ccv-note.is-filled .ccv-sum,
+.ccv .ccv-running.is-on,
+.ccv .ccv-running.is-on b {
+  color: var(--brand);
+}
+
+.ccv .ccv-running.is-on {
+  background: var(--brand-bg);
+}
+
+/* Result: plain white cards, primary text — no green / red / pink boxes. */
+.ccv .ccv-badge {
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.ccv .ccv-box,
+.ccv .ccv-diff.is-even,
+.ccv .ccv-diff.is-short,
+.ccv .ccv-diff.is-over,
+.ccv .ccv-diff.is-idle {
+  border-color: var(--border);
+  background: #fff;
+  color: var(--brand);
+}
+
+.ccv .ccv-diff.is-idle {
+  color: var(--text-3);
+}
+
+/* Admin key figures: white cards, primary values. */
+.ccv .ccv-key-item.is-main {
+  border-color: var(--border);
+  background: #fff;
+}
+
+/* Pending-KOT warning in the theme instead of yellow. */
+.ccv .pd-cc-banner {
+  border-color: var(--brand-border);
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+/* ══ Count Cash tiles: [value] × [count], amount underneath ══ */
+.ccm-total {
+  margin-left: auto;
+  margin-right: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.ccm-total b {
+  margin-left: 3px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ccm-total.is-on {
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+.ccm-note {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 6px;
+  padding: 6px 8px 4px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  cursor: text;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+/* Note / coin value */
+.ccm-val {
+  min-width: 44px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The multiply sign */
+.ccm-x {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-3);
+}
+
+.ccm-note input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  text-align: right;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.ccm-note input::placeholder {
+  color: var(--text-4, #c2bcbe);
+}
+
+/* Amount for this note */
+.ccm-sum {
+  grid-column: 1 / -1;
+  min-height: 14px;
+  text-align: right;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ccm-note.is-filled {
+  border-color: var(--brand-border);
+}
+
+.ccm-note.is-filled .ccm-val {
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+.ccm-note.is-focus {
+  border-color: var(--brand);
+  background: var(--brand-bg);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.ccm-note.is-focus .ccm-val {
+  background: var(--brand);
+  color: #fff;
+}
+
+.ccm-note.is-focus .ccm-x {
+  color: var(--brand);
+}
+
+.ccm-note.is-focus input {
+  border-color: var(--brand);
+}
+
+.ccm-note input:disabled {
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+
+/* ══ Count Cash (cc2): modern tiles — [note] × [count], "= amount" underneath ══ */
+.cc2-total {
+  margin-left: auto;
+  margin-right: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.cc2-total b {
+  margin-left: 2px;
+  font-weight: 800;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc2-total.is-on,
+.cc2-total.is-on b {
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+.cc2-notes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 6px;
+}
+
+.cc2-note {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  column-gap: 6px;
+  padding: 6px 10px 4px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  cursor: text;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+/* Note value: a quiet pill */
+.cc2-den {
+  min-width: 44px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Multiply sign */
+.cc2-x {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-3);
+}
+
+.cc2-note input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: right;
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.cc2-note input::placeholder {
+  color: var(--text-4, #c4bcbf);
+}
+
+/* "= amount" line */
+.cc2-sum {
+  grid-column: 1 / -1;
+  min-height: 13px;
+  text-align: right;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cc2-note.is-filled {
+  border-color: var(--brand-border);
+}
+
+.cc2-note.is-filled .cc2-den {
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+.cc2-note.is-focus {
+  border-color: var(--brand);
+  background: var(--brand-bg);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.cc2-note.is-focus .cc2-den {
+  background: var(--brand);
+  color: #fff;
+}
+
+.cc2-note.is-focus .cc2-x {
+  color: var(--brand);
+}
+
+.cc2-note input:disabled {
+  color: var(--text-3);
+}
+
+/* ══ Count Cash (cc2) — soft card tiles: [icon] note × / count · amount; active tile solid maroon ══ */
+.cc2-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cc2-title-ic {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, var(--pd-grad-start, var(--brand)) 0%, var(--pd-grad-end, var(--brand-2)) 100%);
+  color: #fff;
+}
+
+.ccv .ccv-head .ccv-clear {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--brand-bg);
+  color: var(--brand);
+  font-size: 11.5px;
+}
+
+.cc2-notes {
+  gap: 8px;
+}
+
+.cc2-note {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 9px;
+  row-gap: 1px;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(60, 20, 30, 0.07);
+}
+
+/* Icon square */
+.cc2-ic {
+  grid-row: 1 / 3;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--brand-bg);
+  color: var(--brand);
+}
+
+/* Top line: note value + × */
+.cc2-top {
+  grid-column: 2 / 4;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cc2-den,
+.cc2-note.is-filled .cc2-den,
+.cc2-note.is-focus .cc2-den {
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  font-size: 13.5px;
+  color: var(--text-1);
+}
+
+.cc2-x {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* Bottom line: count (left) · amount (right) */
+.cc2-note input {
+  grid-column: 2;
+  grid-row: 2;
+  height: 20px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.cc2-sum {
+  grid-column: 3;
+  grid-row: 2;
+  min-height: 0;
+  font-size: 11px;
+  color: var(--brand);
+}
+
+.cc2-note.is-filled {
+  border-color: var(--brand-tint);
+}
+
+.cc2-note.is-filled input {
+  color: var(--text-1);
+}
+
+/* Active tile: solid maroon, white text */
+.cc2-note.is-focus {
+  border-color: transparent;
+  background: linear-gradient(145deg, var(--pd-grad-start, var(--brand)) 0%, var(--pd-grad-end, var(--brand-2)) 100%);
+  box-shadow: 0 6px 16px var(--brand-glow);
+}
+
+.cc2-note.is-focus .cc2-ic {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.cc2-note.is-focus .cc2-den,
+.cc2-note.is-focus input,
+.cc2-note.is-focus .cc2-sum {
+  color: #fff;
+}
+
+.cc2-note.is-focus .cc2-x {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.cc2-note.is-focus input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* The × shows only on an untouched tile. Once a tile is tapped or has a count,
+   the × goes and the tile shows the count and its amount. */
+.cc2-note.is-focus .cc2-x,
+.cc2-note.is-filled .cc2-x {
+  display: none;
+}
+
+.cc2-note.is-focus input,
+.cc2-note.is-filled input {
+  grid-column: 2 / -1;
+}
+
+/* Money symbol inside the note pill; count spans the row once the × is gone. */
+.cc2-den {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.cc2-den svg {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.cc2-note input {
+  grid-column: 3;
+}
+
+.cc2-note.is-focus input,
+.cc2-note.is-filled input {
+  grid-column: 2 / -1;
+}
+
+/* ══ Responsive ═══════════════════════════════════════════════════════════
+   Wide: everything fits the window (no scroll).
+   ≤1000px (admin) / ≤720px (cashier): columns stack and the body scrolls.
+   Short windows: tighter tiles and keys so it still fits. */
+
+/* Admin, medium width: summary on top (3 key cards per row), count + result side by side. */
+@media (max-width: 1000px) {
+  .ccv.is-admin .pd-cc-scroll {
+    overflow: auto;
+  }
+
+  .ccv.is-admin .ccv-main {
+    flex: none;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  }
+
+  .ccv.is-admin .ccv-admin {
+    grid-column: 1 / -1;
+    overflow: visible;
+  }
+
+  .ccv.is-admin .ccv-key {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .ccv.is-admin .cc2-notes {
+    flex: none;
+    grid-auto-rows: minmax(56px, auto);
+  }
+}
+
+/* Phones / narrow windows: one column, natural height, body scrolls. */
+@media (max-width: 720px) {
+  .pd-cc.ccv,
+  .pd-cc.ccv.is-admin {
+    width: 100%;
+    height: auto;
+    max-height: calc(96vh / var(--ui-zoom, 1));
+    border-radius: 14px;
+  }
+
+  .ccv .pd-cc-scroll,
+  .ccv.is-admin .pd-cc-scroll {
+    overflow: auto;
+    padding: 10px;
+  }
+
+  .ccv .ccv-main,
+  .ccv.is-admin .ccv-main {
+    flex: none;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ccv .cc2-notes {
+    flex: none;
+    grid-auto-rows: minmax(56px, auto);
+  }
+
+  .ccv .ccv-pad .pd-key {
+    height: 46px;
+    min-height: 46px;
+  }
+
+  .ccv .ccv-remarks {
+    min-height: 0;
+  }
+
+  .ccv .ccv-remarks textarea {
+    min-height: 60px;
+  }
+
+  .ccv .pd-mod-item-name {
+    font-size: 15px;
+  }
+}
+
+/* Very narrow: two note tiles per row, two key cards per row. */
+@media (max-width: 460px) {
+  .ccv .cc2-notes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ccv.is-admin .ccv-key {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cc2-total {
+    margin-right: 6px;
+    padding: 3px 8px;
+  }
+}
+
+/* Short windows (e.g. 1024×600 tills): compact so it still fits without scrolling. */
+@media (max-height: 700px) and (min-width: 721px) {
+  .ccv .pd-cc-scroll {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .ccv .ccv-card {
+    padding: 8px;
+  }
+
+  .ccv .cc2-notes {
+    gap: 4px;
+  }
+
+  .ccv .cc2-note {
+    padding: 3px 8px 2px;
+    border-radius: 10px;
+  }
+
+  .ccv .cc2-note input {
+    height: 20px;
+    font-size: 15px;
+  }
+
+  .ccv .cc2-den {
+    padding: 2px 6px;
+    font-size: 12px;
+  }
+
+  .ccv .ccv-pad .pd-key {
+    height: 32px;
+    min-height: 32px;
+    font-size: 15px;
+  }
+
+  .ccv .ccv-badge {
+    display: none;
+  }
+
+  .ccv .ccv-box {
+    padding: 5px 10px;
+  }
+
+  .ccv .ccv-actions .pd-tile {
+    height: 52px;
+  }
+
+  .ccv .ccv-key-item {
+    padding: 4px 8px;
+  }
+
+  .ccv .ccv-key-item b {
+    font-size: 13px;
+  }
+
+  .ccv .ccv-key-item.is-main b {
+    font-size: 15px;
+  }
+}
+
+/* ══ Count Cash tiles (cc3) — two lines that can never overlap ══
+   top:    [money symbol] 1000 ........ amount
+   bottom: count (big, right-aligned, full width)                     */
+.cc3-notes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 6px;
+}
+
+.cc3-note {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2px;
+  padding: 7px 10px 6px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  cursor: text;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.cc3-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cc3-den {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+}
+
+.cc3-den b {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc3-x {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-4, #c4bcbf);
+}
+
+.cc3-amt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc3-note input {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: right;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.cc3-note input::placeholder {
+  color: var(--text-4, #c4bcbf);
+}
+
+.cc3-note input:disabled {
+  color: var(--text-3);
+}
+
+/* Counted */
+.cc3-note.is-filled {
+  border-color: var(--brand-border);
+  background: var(--brand-bg);
+}
+
+.cc3-note.is-filled .cc3-den {
+  color: var(--brand);
+}
+
+/* Being typed into: filled maroon, white text */
+.cc3-note.is-focus {
+  border-color: transparent;
+  background: linear-gradient(145deg, var(--pd-grad-start, var(--brand)) 0%, var(--pd-grad-end, var(--brand-2)) 100%);
+  box-shadow: 0 6px 14px var(--brand-glow);
+}
+
+.cc3-note.is-focus .cc3-den,
+.cc3-note.is-focus .cc3-den b,
+.cc3-note.is-focus .cc3-amt,
+.cc3-note.is-focus input {
+  color: #fff;
+}
+
+.cc3-note.is-focus .cc3-x,
+.cc3-note.is-focus input::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Responsive: same rules the old tiles had. */
+@media (max-width: 1000px) {
+  .ccv.is-admin .cc3-notes {
+    flex: none;
+    grid-auto-rows: minmax(56px, auto);
+  }
+}
+
+@media (max-width: 720px) {
+  .ccv .cc3-notes {
+    flex: none;
+    grid-auto-rows: minmax(56px, auto);
+  }
+}
+
+@media (max-width: 460px) {
+  .ccv .cc3-notes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-height: 700px) and (min-width: 721px) {
+  .ccv .cc3-notes {
+    gap: 4px;
+  }
+
+  .ccv .cc3-note {
+    padding: 4px 8px 3px;
+    border-radius: 10px;
+  }
+
+  .ccv .cc3-note input {
+    height: 20px;
+    font-size: 16px;
+  }
+
+  .ccv .cc3-den b {
+    font-size: 12px;
+  }
+}
+
+/* ══ Count Cash as a counting sheet (cc4) ══
+   Two columns of plain rows:  1000  ×  [ 7 ]   7000.00
+   Fixed columns, so the count and the amount can never touch.            */
+.cc4-list {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  column-gap: 14px;
+}
+
+.cc4-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 46px 12px 62px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 6px;
+  padding: 3px 6px;
+  border-radius: 9px;
+  border-bottom: 1px solid var(--border);
+  cursor: text;
+  transition: background 0.12s;
+}
+
+.cc4-den {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc4-x {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.cc4-row input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.cc4-row input::placeholder {
+  color: var(--text-4, #c4bcbf);
+}
+
+.cc4-amt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc4-row.is-filled .cc4-amt {
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.cc4-row.is-filled input {
+  border-color: var(--brand-border);
+}
+
+/* The row being typed into */
+.cc4-row.is-focus {
+  background: var(--brand-bg);
+  border-bottom-color: transparent;
+}
+
+.cc4-row.is-focus .cc4-den,
+.cc4-row.is-focus .cc4-x {
+  color: var(--brand);
+}
+
+.cc4-row.is-focus input {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.cc4-row input:disabled {
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+
+/* Stacked / scrolling layouts: rows take their natural height. */
+@media (max-width: 1000px) {
+  .ccv.is-admin .cc4-list {
+    flex: none;
+    grid-template-rows: repeat(6, 38px);
+  }
+}
+
+@media (max-width: 720px) {
+  .ccv .cc4-list {
+    flex: none;
+    grid-template-rows: repeat(6, 40px);
+  }
+}
+
+@media (max-width: 420px) {
+  .ccv .cc4-list {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
+    grid-template-rows: none;
+    grid-auto-rows: 40px;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 721px) {
+  .ccv .cc4-row input {
+    height: 24px;
+    font-size: 13px;
+  }
+
+  .ccv .cc4-row {
+    padding: 1px 6px;
+  }
+}
+
+/* ══ Count Cash as boxes (cc5): 3 × 3 for 1000…1, plus a slim row of 3 small coins ══
+   Each box is a centred stack — value / count / amount — so nothing overlaps. */
+.cc5 {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cc5-grid {
+  flex: 3;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cc5-grid.is-coins {
+  flex: 0.8;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.cc5-box {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 6px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  cursor: text;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.cc5-den {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc5-box input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.cc5-box input::placeholder {
+  color: var(--text-4, #c4bcbf);
+}
+
+.cc5-amt {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small coins: one line each — value, count */
+.cc5-grid.is-coins .cc5-box {
+  flex-direction: row;
+  gap: 6px;
+  padding: 2px 10px;
+}
+
+.cc5-grid.is-coins .cc5-box input {
+  flex: 1;
+  height: 22px;
+  font-size: 16px;
+  text-align: right;
+}
+
+.cc5-grid.is-coins .cc5-amt {
+  display: none;
+}
+
+/* Counted */
+.cc5-box.is-filled {
+  border-color: var(--brand-border);
+  background: var(--brand-bg);
+}
+
+.cc5-box.is-filled .cc5-den {
+  color: var(--brand);
+}
+
+/* Being typed into */
+.cc5-box.is-focus {
+  border-color: var(--brand);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.cc5-box.is-focus .cc5-den {
+  color: var(--brand);
+}
+
+.cc5-box input:disabled {
+  color: var(--text-3);
+}
+
+/* Stacked / scrolling layouts: fixed box heights. */
+@media (max-width: 1000px) {
+  .ccv.is-admin .cc5 {
+    flex: none;
+  }
+
+  .ccv.is-admin .cc5-grid {
+    flex: none;
+    grid-template-rows: repeat(3, 64px);
+  }
+
+  .ccv.is-admin .cc5-grid.is-coins {
+    grid-template-rows: 40px;
+  }
+}
+
+@media (max-width: 720px) {
+  .ccv .cc5 {
+    flex: none;
+  }
+
+  .ccv .cc5-grid {
+    flex: none;
+    grid-template-rows: repeat(3, 66px);
+  }
+
+  .ccv .cc5-grid.is-coins {
+    grid-template-rows: 42px;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 721px) {
+  .ccv .cc5,
+  .ccv .cc5-grid {
+    gap: 4px;
+  }
+
+  .ccv .cc5-box input {
+    height: 22px;
+    font-size: 17px;
+  }
+
+  .ccv .cc5-box {
+    padding: 2px 6px;
+    border-radius: 10px;
+  }
+}
+
+/* Box top line: money symbol · value · × */
+.cc5-den {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.cc5-den b {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.cc5-den i {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-3);
+}
+
+.cc5-den svg {
+  flex-shrink: 0;
+  color: var(--brand);
+}
+
+.cc5-box.is-filled .cc5-den b,
+.cc5-box.is-focus .cc5-den b,
+.cc5-box.is-filled .cc5-den i,
+.cc5-box.is-focus .cc5-den i {
+  color: var(--brand);
+}
+
+.cc5-grid.is-coins .cc5-den {
+  flex-shrink: 0;
+}
+
+/* Full-width Next key under the keypad (bottom row is now C · 0 · .) */
+.ccv-next {
+  flex-shrink: 0;
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--brand);
+}
+
+@media (max-width: 720px) {
+  .ccv-next {
+    height: 46px;
+    min-height: 46px;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 721px) {
+  .ccv-next {
+    height: 32px;
+    min-height: 32px;
+  }
+}
+
+/* Keep the dialog under the app toast (z-index 120) so messages show on top of it. */
+.pd-mod-overlay.pd-cc-overlay {
+  z-index: 110;
+}
+
+/* Admin panel: Bill Count block (as on the old screen) — heading + two columns. */
+.ccv-bills {
+  flex-shrink: 0;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.ccv-bills-head {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.ccv-bills-head b {
+  font-size: 16px;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.ccv-bills-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.ccv-bills-grid span {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.ccv-bills-grid b {
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══ Admin panel, arranged: key cards (top) · figures (middle, scrolls) · bill counts (bottom) ══ */
+.ccv .ccv-admin {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+/* Top: 5 key cards — Total Sales full width, then two per row. */
+.ccv .ccv-key {
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.ccv .ccv-key-item:first-child {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* Middle: grouped figures */
+.ccv-admin-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+.ccv .ccv-admin-title {
+  margin: 0 0 3px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.ccv .ccv-admin-scroll .ccv-admin-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+
+.ccv .ccv-admin-scroll .ccv-admin-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ccv .ccv-admin-scroll .ccv-admin-row b {
+  flex-shrink: 0;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bottom: bill counts, pinned */
+.ccv .ccv-bills {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 10px 12px;
+}
+
+.ccv .ccv-bills-head {
+  justify-content: space-between;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ccv .ccv-bills-grid {
+  gap: 4px 16px;
+}
+
+/* Stacked layouts: the panel is full width, so nothing needs its own scroll. */
+@media (max-width: 1000px) {
+  .ccv.is-admin .ccv-admin {
+    overflow: visible;
+  }
+
+  .ccv.is-admin .ccv-admin-scroll {
+    overflow: visible;
+  }
+
+  .ccv.is-admin .ccv-key-item:first-child {
+    grid-column: auto;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* ══ Bill Count block — numbers always stay inside the box ══
+   Columns may shrink (minmax(0, 1fr)); the label shortens with "…", the
+   number never does. When the block itself is narrow it becomes one column. */
+.ccv .ccv-bills {
+  container-type: inline-size;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ccv .ccv-bills-head {
+  gap: 8px;
+  min-width: 0;
+}
+
+.ccv .ccv-bills-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 14px;
+}
+
+.ccv .ccv-bills-grid span {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 6px;
+  white-space: normal;
+}
+
+.ccv .ccv-bills-grid i {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.ccv .ccv-bills-grid b {
+  text-align: right;
+}
+
+/* Narrow panel: one count per line, so every label shows in full. */
+@container (max-width: 270px) {
+  .ccv .ccv-bills-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Wide panel (stacked layout, full width): three per row. */
+@container (min-width: 520px) {
+  .ccv .ccv-bills-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px 22px;
+  }
+}
+
+/* ══ Admin reading (als) — the old screen's full list, in the app style ══
+   Label left, amount right; headline rows stand out; rows share the panel's
+   height so everything shows without scrolling on a normal screen. */
+.als {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
+}
+
+.als-row {
+  flex: 1 1 0;
+  min-height: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--text-2);
+}
+
+.als-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.als-row b {
+  flex-shrink: 0;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.als-row.is-zero,
+.als-row.is-zero b {
+  color: var(--text-3);
+}
+
+.als-row.is-zero b {
+  font-weight: 700;
+}
+
+/* A little air before a new block, like the old screen's spacing */
+.als-row.has-gap {
+  margin-top: 6px;
+}
+
+/* Cash To Be Collected */
+.als-row.is-main {
+  flex: 1.5 1 0;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--brand-border);
+  border-radius: 10px;
+  background: var(--brand-bg);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--brand);
+}
+
+.als-row.is-main b {
+  font-size: 15px;
+  color: var(--brand);
+}
+
+/* Total Sales · Tax Amount */
+.als-row.is-total {
+  flex: 1.4 1 0;
+  min-height: 26px;
+  border-bottom: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.als-row.is-total b {
+  font-size: 15px;
+  color: var(--brand);
+}
+
+.als-row.is-total.has-gap {
+  padding-top: 4px;
+  border-top: 2px solid var(--brand-border);
+}
+
+.als-title {
+  flex-shrink: 0;
+  margin: 8px 0 2px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+/* Stacked layout (panel is full width): two columns of lines, natural height. */
+@media (max-width: 1000px) {
+  .ccv.is-admin .als {
+    overflow: visible;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 18px;
+  }
+
+  .ccv.is-admin .als-row {
+    min-height: 24px;
+  }
+
+  .ccv.is-admin .als-row.has-gap {
+    margin-top: 0;
+  }
+
+  .ccv.is-admin .als-title {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 520px) {
+  .ccv.is-admin .als {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ══ Admin panel (adm) — headline card + grouped figure cards ══ */
+.ccv .ccv-admin {
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface-2);
+}
+
+/* Headline: Total Sales (big) · Tax */
+.adm-hero {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  border-radius: 14px;
+  background: linear-gradient(140deg, var(--pd-grad-start, var(--brand)) 0%, var(--pd-grad-end, var(--brand-2)) 100%);
+  color: #fff;
+  box-shadow: 0 6px 16px var(--brand-glow);
+  overflow: hidden;
+}
+
+.adm-hero div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 12px;
+}
+
+.adm-hero .is-tax {
+  background: rgba(255, 255, 255, 0.12);
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.adm-hero span {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.adm-hero b {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.adm-hero .is-tax b {
+  font-size: 16px;
+}
+
+/* Figure cards */
+.adm-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+}
+
+.adm-card {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.adm-card h4 {
+  margin: 0 0 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.adm-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2.5px 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+
+.adm-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-row b {
+  flex-shrink: 0;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.adm-row.is-zero,
+.adm-row.is-zero b {
+  color: var(--text-4, #b8b0b3);
+  font-weight: 600;
+}
+
+/* The card's bottom line, e.g. Cash To Be Collected */
+.adm-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px -4px 0;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: var(--brand-bg);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--brand);
+}
+
+.adm-total b {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bill counts card sits on the same grey panel */
+.ccv .ccv-admin .ccv-bills {
+  border-radius: 12px;
+  background: #fff;
+}
+
+/* Stacked layout: cards side by side, no inner scroll */
+@media (max-width: 1000px) {
+  .ccv.is-admin .adm-scroll {
+    overflow: visible;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@media (max-width: 560px) {
+  .ccv.is-admin .adm-scroll {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Short screens: tighter rows so more fits before the cards scroll */
+@media (max-height: 760px) and (min-width: 1001px) {
+  .adm-row {
+    padding: 1px 0;
+    font-size: 11.5px;
+  }
+
+  .adm-card {
+    padding: 6px 10px;
+  }
+
+  .adm-hero div {
+    padding: 7px 12px;
+  }
+
+  .adm-hero b {
+    font-size: 19px;
+  }
+}
+
+/* ══ Admin panel: everything in view — no scrolling on the side-by-side layout ══
+   Cards split the panel's height by their line count (flex-grow set inline);
+   inside a card the lines share its height. Text scales a little with the
+   window height so it still fits on short screens. */
+@media (min-width: 1001px) {
+  .ccv.is-admin .ccv-admin {
+    overflow: hidden;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .ccv.is-admin .adm-hero div {
+    padding: clamp(5px, 1vh, 10px) 12px;
+  }
+
+  .ccv.is-admin .adm-hero b {
+    font-size: clamp(16px, 2.5vh, 22px);
+  }
+
+  .ccv.is-admin .adm-hero .is-tax b {
+    font-size: clamp(13px, 1.9vh, 16px);
+  }
+
+  .ccv.is-admin .adm-scroll {
+    overflow: hidden;
+    gap: 6px;
+  }
+
+  .ccv.is-admin .adm-card {
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: clamp(3px, 0.7vh, 8px) 10px;
+    overflow: hidden;
+  }
+
+  .ccv.is-admin .adm-card h4 {
+    flex: 1 1 0;
+    min-height: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    font-size: clamp(9px, 1.25vh, 10.5px);
+  }
+
+  .ccv.is-admin .adm-row {
+    flex: 1 1 0;
+    min-height: 0;
+    align-items: center;
+    padding: 0;
+    font-size: clamp(10px, 1.5vh, 12px);
+    line-height: 1.1;
+  }
+
+  .ccv.is-admin .adm-total {
+    flex: 1.6 1 0;
+    min-height: 0;
+    align-items: center;
+    margin: 2px -4px 0;
+    padding: 0 10px;
+    font-size: clamp(10.5px, 1.55vh, 12.5px);
+  }
+
+  .ccv.is-admin .adm-total b {
+    font-size: clamp(12px, 1.9vh, 15px);
+  }
+
+  /* Bill counts: compact so the figures get the room */
+  .ccv.is-admin .ccv-admin .ccv-bills {
+    padding: clamp(4px, 0.8vh, 8px) 10px;
+  }
+
+  .ccv.is-admin .ccv-bills-head {
+    margin-bottom: 3px;
+    padding-bottom: 3px;
+    font-size: clamp(11px, 1.6vh, 13px);
+  }
+
+  .ccv.is-admin .ccv-bills-head b {
+    font-size: clamp(12.5px, 1.9vh, 16px);
+  }
+
+  .ccv.is-admin .ccv-bills-grid {
+    gap: 1px 14px;
+    font-size: clamp(10px, 1.4vh, 11.5px);
+  }
+}
+
+/* Dismiss (✕) on the "KOTs still pending" notice */
+.pd-cc-banner > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-cc-banner-x {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.pd-cc-banner-x:hover {
+  opacity: 1;
+  background: rgba(120, 8, 41, 0.1);
+}
+
+/* ══ Total Sales · Tax Amount — white card with a maroon accent (no solid block) ══ */
+.ccv .adm-hero {
+  position: relative;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text-1);
+  box-shadow: none;
+}
+
+.ccv .adm-hero::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--brand);
+}
+
+.ccv .adm-hero div {
+  padding-left: 16px;
+}
+
+.ccv .adm-hero .is-tax {
+  background: none;
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+}
+
+.ccv .adm-hero span {
+  opacity: 1;
+  color: var(--text-3);
+}
+
+.ccv .adm-hero b {
+  color: var(--brand);
+}
+
+.ccv .adm-hero .is-tax b {
+  color: var(--text-1);
 }

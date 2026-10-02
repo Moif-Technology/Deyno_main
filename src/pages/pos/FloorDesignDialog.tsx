@@ -11,7 +11,6 @@ import {
   Plus,
   RectangleHorizontal,
   RefreshCw,
-  Save,
   Square,
   Tag,
   Trash2,
@@ -69,7 +68,7 @@ type DragState =
 type PaintDraft = { tool: 'square' | 'rectangle' | 'round' | 'oval'; start: PctPoint; current: PctPoint }
 type PromptState = { kind: 'label' | 'zone' | 'edit'; id?: string; value: string }
 
-type Props = { onClose: () => void }
+type Props = { onClose: () => void; onSaved?: () => void }
 
 function errMessage(err: unknown, fallback: string) {
   if (err instanceof ApiError && err.message) return err.message
@@ -93,7 +92,7 @@ function defaultColor(type: string) {
   return '#B0C4DE'
 }
 
-export default function FloorDesignDialog({ onClose }: Props) {
+export default function FloorDesignDialog({ onClose, onSaved }: Props) {
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const [areas, setAreas] = useState<AreaOpt[]>([])
   const [areaId, setAreaId] = useState(0)
@@ -657,6 +656,8 @@ export default function FloorDesignDialog({ onClose }: Props) {
         })),
       })
       setHint('Floor border and tables saved successfully.')
+      onSaved?.()
+      onClose()
     } catch (err) {
       setError(errMessage(err, 'Error saving layout'))
     } finally {
@@ -708,7 +709,7 @@ export default function FloorDesignDialog({ onClose }: Props) {
             </button>
           </div>
           <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close" disabled={busy}>
-            <X size={13} />
+            <X size={16} />
           </button>
         </header>
 
@@ -783,14 +784,6 @@ export default function FloorDesignDialog({ onClose }: Props) {
                 <Trash2 size={14} /> Delete
               </button>
             ) : null}
-          </div>
-          <div className="pd-fd-group is-end">
-            <button type="button" className="pd-fd-save" onClick={() => void onSave()} disabled={busy}>
-              <Save size={15} /> {busy ? 'Saving…' : 'Save'}
-            </button>
-            <button type="button" className="pd-fd-close" onClick={onClose} disabled={busy}>
-              <X size={15} /> Close
-            </button>
           </div>
         </div>
 
@@ -935,9 +928,10 @@ export default function FloorDesignDialog({ onClose }: Props) {
           })}
         </div>
 
-        <div className="pd-fd-foot">
-          <button type="button" className="pd-fd-save" onClick={() => void onSave()} disabled={busy}>
-            <Save size={15} /> {busy ? 'Saving…' : 'Save'}
+        <div className="pd-mod-foot">
+          <span className="pd-mod-foot-spacer" />
+          <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void onSave()} disabled={busy}>
+            {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
 
@@ -955,8 +949,8 @@ export default function FloorDesignDialog({ onClose }: Props) {
                 }}
               />
               <div className="pd-fd-prompt-actions">
-                <button type="button" onClick={() => setPrompt(null)}>Cancel</button>
-                <button type="button" className="is-ok" onClick={confirmPrompt}>OK</button>
+                <button type="button" className="pd-mod-foot-btn" onClick={() => setPrompt(null)}>Cancel</button>
+                <button type="button" className="pd-mod-foot-btn is-ok" onClick={confirmPrompt}>OK</button>
               </div>
             </div>
           </div>

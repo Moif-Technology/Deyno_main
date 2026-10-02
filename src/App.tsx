@@ -8,6 +8,7 @@ import { getEnrollment } from './utils/deviceEnrollment'
 import { clearStaffSession, hasActiveStaffSession } from './utils/pinLoginSession'
 import { setUnauthorizedHandler } from './lib/api'
 import { handleEnterMovesFocus } from './utils/focusNav'
+import { installAutoScrollNewRows } from './utils/autoScrollNewRows'
 
 function RequireEnrollment({ children }: { children: React.ReactNode }) {
   const enrollment = getEnrollment()
@@ -28,6 +29,9 @@ export default function App() {
     })
     return () => setUnauthorizedHandler(null)
   }, [])
+
+  // Scroll modal tables to a newly added row, app-wide.
+  useEffect(() => installAutoScrollNewRows(), [])
 
   return (
     // Enter-moves-to-next-field for every form in the app — attached once

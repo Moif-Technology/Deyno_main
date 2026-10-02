@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
+import { digits } from '../../utils/validate'
 import { DatePicker } from '../../components/common/DatePicker'
 import { SearchBar } from '../../components/common/SearchBar'
 import SalesBillDialog from './SalesBillDialog'
@@ -147,7 +148,7 @@ export default function SalesViewerDialog({ areas, onClose }: Props) {
           </label>
           <label>
             <span>Counter</span>
-            <input value={counterNo} onChange={(e) => setCounterNo(e.target.value)} placeholder="Counter" />
+            <input value={counterNo} onChange={(e) => setCounterNo(digits(e.target.value, 6))} placeholder="Counter" />
           </label>
           <label>
             <span>Customer</span>
