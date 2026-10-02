@@ -3,11 +3,10 @@
  * Double-click → SalesMasterBackOfficeFrm (read-only bill).
  */
 import { useEffect, useMemo, useState } from 'react'
-import { X } from 'lucide-react'
+import { FileText, Receipt, Search, X } from 'lucide-react'
 import { apiService, ApiError } from '../../api/apiService'
 import { digits } from '../../utils/validate'
-import { DatePicker } from '../../components/common/DatePicker'
-import { SearchBar } from '../../components/common/SearchBar'
+import { DateRangePicker } from '../../components/common/DateRangePicker'
 import SalesBillDialog from './SalesBillDialog'
 
 type AreaOpt = { id: number; name: string }
@@ -106,7 +105,11 @@ export default function SalesViewerDialog({ areas, onClose }: Props) {
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [dateFrom, dateTo, paymentMode, areaId])
+
+  function onFilterKey(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') void load()
+  }
 
   function openRow(row: BillRow) {
     const id = String(row.salesId ?? row.SalesID ?? '')
@@ -122,170 +125,216 @@ export default function SalesViewerDialog({ areas, onClose }: Props) {
         if (e.target === e.currentTarget && !openSalesId) onClose()
       }}
     >
-      <div className="pd-sv" role="dialog" aria-modal="true" aria-labelledby="pd-sv-title">
-        <header className="pd-sv-head">
-          <div>
-            <p className="pd-mod-kicker">Report Viewers</p>
-            <h2 id="pd-sv-title">SALES VIEWER</h2>
+      <div className="pd-sv svx" role="dialog" aria-modal="true" aria-labelledby="pd-sv-title">
+        <div className="pd-mod-header">
+          <div className="pd-mod-header-left">
+            <div className="pd-mod-header-icon">
+              <Receipt size={15} strokeWidth={2} />
+            </div>
+            <div>
+              <p className="pd-mod-kicker">Reports A4</p>
+              <h2 id="pd-sv-title" className="pd-mod-item-name">
+                Sales Viewer
+              </h2>
+            </div>
           </div>
           <button type="button" className="pd-mod-x" onClick={onClose} aria-label="Close">
             <X size={13} />
           </button>
-        </header>
+        </div>
 
-        <div className="pd-sv-filters">
-          <label>
-            <span>From</span>
-            <DatePicker value={dateFrom} onChange={setDateFrom} max={dateTo} />
-          </label>
-          <label>
-            <span>To</span>
-            <DatePicker value={dateTo} onChange={setDateTo} min={dateFrom} />
-          </label>
-          <label>
-            <span>Bill No</span>
-            <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="Bill No" />
-          </label>
-          <label>
-            <span>Counter</span>
-            <input value={counterNo} onChange={(e) => setCounterNo(digits(e.target.value, 6))} placeholder="Counter" />
-          </label>
-          <label>
-            <span>Customer</span>
+        <div className="svx-body">
+          {/* Row 1: quick find in the loaded bills, date range, payment mode */}
+          <div className="lst-bar svx-top">
+            <span className="lst-search">
+              <Search size={14} />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Find bill, customer or cashier"
+                autoFocus
+              />
+              {search ? (
+                <button type="button" onClick={() => setSearch('')} aria-label="Clear search">
+                  <X size={12} />
+                </button>
+              ) : null}
+            </span>
+            <DateRangePicker
+              from={dateFrom}
+              to={dateTo}
+              onChange={(from, to) => {
+                setDateFrom(from)
+                setDateTo(to)
+              }}
+            />
+            <div className="lst-seg" role="radiogroup" aria-label="Payment mode">
+              {[
+                ['ALL', 'All'],
+                ['CASH', 'Cash'],
+                ['CREDITCARD', 'Card'],
+                ['ONLINE', 'Online'],
+                ['SPLITPAY', 'Split'],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={paymentMode === value}
+                  className={paymentMode === value ? 'is-on' : ''}
+                  onClick={() => setPaymentMode(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Row 2: the narrower filters */}
+          <div className="lst-bar svx-more">
             <input
+              className="svx-input"
+              value={billNo}
+              onChange={(e) => setBillNo(e.target.value)}
+              onKeyDown={onFilterKey}
+              placeholder="Bill No"
+              aria-label="Bill No"
+            />
+            <input
+              className="svx-input"
+              inputMode="numeric"
+              value={counterNo}
+              onChange={(e) => setCounterNo(digits(e.target.value, 6))}
+              onKeyDown={onFilterKey}
+              placeholder="Counter"
+              aria-label="Counter"
+            />
+            <input
+              className="svx-input is-wide"
               value={customerName}
               onChange={(e) => {
                 setCustomerName(e.target.value)
                 if (!e.target.value) setCustomerId('')
               }}
               placeholder="Customer"
+              aria-label="Customer"
             />
-          </label>
-          <label>
-            <span>Location</span>
-            <select value={areaId} onChange={(e) => setAreaId(e.target.value)}>
-              <option value="ALL">ALL</option>
+            <select className="lst-select" value={areaId} onChange={(e) => setAreaId(e.target.value)} aria-label="Location">
+              <option value="ALL">All locations</option>
               {areas.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
                 </option>
               ))}
             </select>
-          </label>
-          <label>
-            <span>Payment</span>
-            <select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
-              <option value="ALL">All</option>
-              <option value="CASH">CASH</option>
-              <option value="CREDITCARD">CREDITCARD</option>
-              <option value="ONLINE">ONLINE</option>
-              <option value="SPLITPAY">SPLITPAY</option>
-            </select>
-          </label>
-          <label className="pd-sv-search">
-            <span>Search</span>
-            <SearchBar
-              size="sm"
-              value={search}
-              onValueChange={setSearch}
-              onSubmit={() => void load()}
-              placeholder="Bill / customer / cashier"
-            />
-          </label>
-          <button type="button" className="pd-sv-search-btn" onClick={() => void load()}>
-            Search
-          </button>
-        </div>
+            <button type="button" className="lst-btn is-primary" onClick={() => void load()} disabled={state === 'loading'}>
+              <Search size={14} /> Search
+            </button>
+          </div>
 
-        <div className="pd-sv-grid-wrap">
-          <table className="pd-sv-grid">
-            <thead>
-              <tr>
-                <th>Bill No</th>
-                <th>Counter</th>
-                <th>Customer</th>
-                <th>Bill Date</th>
-                <th>Bill Time</th>
-                <th>Payment</th>
-                <th>Waiter</th>
-                <th className="num">Amount</th>
-                <th className="num">Discount</th>
-                <th className="num">Taxable</th>
-                <th className="num">Tax</th>
-                <th className="num">Total</th>
-                <th>Post</th>
-                <th>Cashier</th>
-                <th>Close</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state === 'loading' ? (
+          <div className="pd-sv-grid-wrap svx-grid-wrap">
+            <table className="svx-grid">
+              <thead>
                 <tr>
-                  <td colSpan={15} className="pd-sv-empty">
-                    Loading…
-                  </td>
+                  <th>Bill No</th>
+                  <th>Counter</th>
+                  <th>Customer</th>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Payment</th>
+                  <th>Waiter</th>
+                  <th className="num">Amount</th>
+                  <th className="num">Discount</th>
+                  <th className="num">Taxable</th>
+                  <th className="num">Tax</th>
+                  <th className="num">Total</th>
+                  <th>Post</th>
+                  <th>Cashier</th>
+                  <th>Close</th>
                 </tr>
-              ) : null}
-              {state === 'error' ? (
-                <tr>
-                  <td colSpan={15} className="pd-sv-empty">
-                    {error}
-                  </td>
-                </tr>
-              ) : null}
-              {state === 'idle' && visible.length === 0 ? (
-                <tr>
-                  <td colSpan={15} className="pd-sv-empty">
-                    No data to print............
-                  </td>
-                </tr>
-              ) : null}
-              {visible.map((row) => {
-                const id = String(row.salesId ?? row.SalesID)
-                return (
-                  <tr
-                    key={id}
-                    className={selectedId === id ? 'is-sel' : undefined}
-                    onClick={() => setSelectedId(id)}
-                    onDoubleClick={() => openRow(row)}
-                  >
-                    <td>{String(row.billNo ?? row.BillNo ?? '')}</td>
-                    <td>{String(row.counterNo ?? row.CounterNo ?? '')}</td>
-                    <td>{String(row.customerName ?? row.CustomerName ?? '')}</td>
-                    <td>{fmtDate(row.billDate ?? row.BillDate)}</td>
-                    <td>{fmtTime(row.billTime ?? row.BillTime)}</td>
-                    <td>{String(row.paymentMode ?? row.PaymentMode ?? '')}</td>
-                    <td>{String(row.deliveryBoy ?? row.DeliveryBoy ?? '')}</td>
-                    <td className="num">{money(row.amount ?? row.Amount)}</td>
-                    <td className="num">{money(row.discount ?? row.Discount)}</td>
-                    <td className="num">{money(row.taxableAmount ?? row.TaxableAmount)}</td>
-                    <td className="num">{money(row.tax1AmountM ?? row.Tax1AmountM)}</td>
-                    <td className="num">{money(row.total ?? row.Total)}</td>
-                    <td>{String(row.postStatus ?? row.PostStatus ?? '')}</td>
-                    <td>{String(row.cashierName ?? row.CashierName ?? '')}</td>
-                    <td>{String(row.counterCloseStatus ?? row.CounterCloseStatus ?? '')}</td>
+              </thead>
+              <tbody>
+                {state === 'loading' ? (
+                  <tr>
+                    <td colSpan={15} className="pd-sv-empty">
+                      Loading bills…
+                    </td>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                ) : null}
+                {state === 'error' ? (
+                  <tr>
+                    <td colSpan={15} className="pd-sv-empty">
+                      {error}
+                    </td>
+                  </tr>
+                ) : null}
+                {state === 'idle' && visible.length === 0 ? (
+                  <tr>
+                    <td colSpan={15} className="pd-sv-empty">
+                      {rows.length === 0 ? 'No bills for these filters' : 'No bill matches this search'}
+                    </td>
+                  </tr>
+                ) : null}
+                {state === 'loading'
+                  ? null
+                  : visible.map((row) => {
+                      const id = String(row.salesId ?? row.SalesID)
+                      const pay = String(row.paymentMode ?? row.PaymentMode ?? '')
+                      return (
+                        <tr
+                          key={id}
+                          className={selectedId === id ? 'is-sel' : undefined}
+                          onClick={() => setSelectedId(id)}
+                          onDoubleClick={() => openRow(row)}
+                        >
+                          <td>
+                            <b>{String(row.billNo ?? row.BillNo ?? '')}</b>
+                          </td>
+                          <td>{String(row.counterNo ?? row.CounterNo ?? '')}</td>
+                          <td title={String(row.customerName ?? row.CustomerName ?? '')}>{String(row.customerName ?? row.CustomerName ?? '')}</td>
+                          <td>{fmtDate(row.billDate ?? row.BillDate)}</td>
+                          <td>{fmtTime(row.billTime ?? row.BillTime)}</td>
+                          <td>{pay ? <span className="lst-tag">{pay}</span> : null}</td>
+                          <td title={String(row.deliveryBoy ?? row.DeliveryBoy ?? '')}>{String(row.deliveryBoy ?? row.DeliveryBoy ?? '')}</td>
+                          <td className="num">{money(row.amount ?? row.Amount)}</td>
+                          <td className="num">{money(row.discount ?? row.Discount)}</td>
+                          <td className="num">{money(row.taxableAmount ?? row.TaxableAmount)}</td>
+                          <td className="num">{money(row.tax1AmountM ?? row.Tax1AmountM)}</td>
+                          <td className="num">
+                            <b>{money(row.total ?? row.Total)}</b>
+                          </td>
+                          <td>{String(row.postStatus ?? row.PostStatus ?? '')}</td>
+                          <td title={String(row.cashierName ?? row.CashierName ?? '')}>{String(row.cashierName ?? row.CashierName ?? '')}</td>
+                          <td>{String(row.counterCloseStatus ?? row.CounterCloseStatus ?? '')}</td>
+                        </tr>
+                      )
+                    })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <footer className="pd-sv-foot">
-          <span>COUNT : {visible.length}</span>
-          <span>TOTAL AMOUNT : {money(totalAmt)}</span>
-          <span className="pd-sv-hint">Double-click a row to open the bill</span>
+        <div className="pd-mod-foot svx-foot">
+          <span className="lst-count">
+            Bills <b>{visible.length}</b>
+          </span>
+          <span className="lst-count">
+            Total <b>{money(totalAmt)}</b>
+          </span>
+          <span className="svx-hint">Double-tap a bill to open it</span>
+          <span className="pd-mod-foot-spacer" />
           <button
             type="button"
-            className="pd-sv-search-btn"
+            className="pd-mod-foot-btn is-ok"
+            disabled={!selectedId}
             onClick={() => {
               const row = visible.find((r) => String(r.salesId ?? r.SalesID) === selectedId)
               if (row) openRow(row)
             }}
           >
-            Select
+            <FileText size={14} /> Open Bill
           </button>
-        </footer>
+        </div>
       </div>
 
       {openSalesId ? (

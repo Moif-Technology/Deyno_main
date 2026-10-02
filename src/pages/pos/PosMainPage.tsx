@@ -1412,6 +1412,7 @@ export default function PosMainPage() {
   const [reportsMenuOpen, setReportsMenuOpen] = useState(false)
   const [, setReportViewersOpen] = useState(false)
   const [salesViewerOpen, setSalesViewerOpen] = useState(false)
+  const [variantFor, setVariantFor] = useState<{ p: ProductTile; x: number; y: number } | null>(null)
   const [stockReportOpen, setStockReportOpen] = useState(false)
   const [movementReportOpen, setMovementReportOpen] = useState(false)
   const [stockDocType, setStockDocType] = useState<StockDocType>('ADJ')
@@ -1990,6 +1991,22 @@ export default function PosMainPage() {
     return () => window.clearTimeout(t)
   }, [discountOpen, discountFocus])
 
+  // Size popup: any tap elsewhere (or a scroll) closes it. Bound on the next tick
+  // so the tap that opened it doesn't close it straight away.
+  useEffect(() => {
+    if (!variantFor) return
+    const close = () => setVariantFor(null)
+    const t = window.setTimeout(() => {
+      window.addEventListener('click', close)
+      window.addEventListener('scroll', close, true)
+    }, 0)
+    return () => {
+      window.clearTimeout(t)
+      window.removeEventListener('click', close)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [variantFor])
+
   useEffect(() => {
     if (!rowMenu) return
     const close = () => setRowMenu(null)
@@ -2483,7 +2500,14 @@ export default function PosMainPage() {
     }
   }
 
-  function onItemClick(p: ProductTile) {
+  /** MOCK variants: any item (or group) with "juice" in its name asks for a size.
+   * The size is only written on the line as its note — the price is the same for all three. */
+  function hasVariants(p: ProductTile) {
+    const group = groups.find((g) => g.id === p.groupId)?.name ?? ''
+    return /juice/i.test(p.name) || /juice/i.test(group)
+  }
+
+  function onItemClick(p: ProductTile, size?: string, at?: { x: number; y: number }) {
     const qty = pendingQty()
     if (!Number.isFinite(qty) || qty === 0) {
       clearQty()
@@ -2499,11 +2523,26 @@ export default function PosMainPage() {
       clearQty()
       return
     }
+    if (size === undefined && hasVariants(p)) {
+      // Same radial popup as the order row menu, centred on the tap and kept on-screen.
+      const z = uiZoom()
+      const margin = 110
+      const x = at?.x ?? window.innerWidth / 2
+      const y = at?.y ?? window.innerHeight / 2
+      setVariantFor({
+        p,
+        x: Math.min(Math.max(x / z, margin), window.innerWidth / z - margin),
+        y: Math.min(Math.max(y / z, margin), window.innerHeight / z - margin),
+      })
+      return
+    }
+    setVariantFor(null)
     const price = round2(p.price)
     const existing = lines.find(
       (l) =>
         l.productId === p.id &&
         round2(l.price) === price &&
+        (size === undefined || l.modifiers === size) &&
         kotPrintStatus(l.androidPrint) !== 'PRINTED',
     )
     if (existing) {
@@ -2522,7 +2561,7 @@ export default function PosMainPage() {
           key,
           productId: p.id,
           item: p.name,
-          modifiers: '',
+          modifiers: size ?? '',
           qty,
           price,
           taxRate: p.taxRate,
@@ -6962,49 +7001,77 @@ export default function PosMainPage() {
       case 'billReprint':
         return (
           <>
-            <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
-              1 Print
-            </button>
+            <span className="pd-mfg-count lst-count">
+              Bills <b>{reprintBills.length}</b>
+            </span>
+            <span className="pd-mod-foot-spacer" />
             <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Other Bill — coming soon', 'info')}>
-              2 Other Bill
+              Other Bill
             </button>
             <button type="button" className="pd-mod-foot-btn" onClick={() => toast('KOT Print — coming soon', 'info')}>
-              3 KOT Print
+              KOT Print
+            </button>
+            <button
+              type="button"
+              className="pd-mod-foot-btn is-ok"
+              disabled={!reprintRaw}
+              onClick={() => {
+                if (!reprintRaw) return
+                void printViewerBill(reprintRaw).catch((err) => {
+                  toast(err instanceof Error ? err.message : 'Bill print failed')
+                })
+              }}
+            >
+              <Printer size={14} /> Print
             </button>
           </>
         )
       case 'counterCloseReportsRP':
         return (
           <>
-            <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
-              Print
-            </button>
+            <span className="pd-mod-foot-spacer" />
             <button type="button" className="pd-mod-foot-btn" onClick={selectTxnRow}>
               Select
             </button>
-            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={printReport}>
+              <Printer size={14} /> Print
+            </button>
           </>
         )
       case 'delBoyCommission':
         return (
           <>
-            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('All groups checked', 'success')}>
-              Check All
+            <button
+              type="button"
+              className="pd-mod-foot-btn"
+              onClick={() =>
+                setMrSelectedGroups(mrSelectedGroups.size === groups.length ? new Set() : new Set(groups.map((g) => g.id)))
+              }
+            >
+              {groups.length > 0 && mrSelectedGroups.size === groups.length ? 'Uncheck All' : 'Check All'}
             </button>
             <span className="pd-mod-foot-spacer" />
-            <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
-              Print
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={printReport}>
+              <Printer size={14} /> Print
             </button>
           </>
         )
       case 'areawiseA4':
+        return (
+          <>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => toast('Report shown below (mock data)', 'success')}>
+              Show
+            </button>
+          </>
+        )
       case 'waiterwise':
         return (
           <>
-            <button type="button" className="pd-mod-foot-btn" onClick={() => toast('Report shown below (mock data)', 'success')}>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => toast('Report shown below (mock data)', 'success')}>
               Show
             </button>
-            <span className="pd-mod-foot-spacer" />
           </>
         )
       case 'areaWiseReportRP':
@@ -7030,6 +7097,7 @@ export default function PosMainPage() {
       case 'graphReport':
       case 'itemwiseViewer':
       case 'productMovementFast':
+      case 'productMovementSlow':
       case 'dayCloseReport':
         return (
           <>
@@ -7037,15 +7105,6 @@ export default function PosMainPage() {
             <button type="button" className="pd-mod-foot-btn is-ok" onClick={printReport}>
               <Printer size={14} /> Print
             </button>
-          </>
-        )
-      case 'productMovementSlow':
-        return (
-          <>
-            <button type="button" className="pd-mod-foot-btn" onClick={printReport}>
-              Print
-            </button>
-            <span className="pd-mod-foot-spacer" />
           </>
         )
       case 'incomeExpenseEntry':
@@ -7888,7 +7947,7 @@ export default function PosMainPage() {
             ) : (
               <>
               {products.map((p) => (
-                  <button key={p.id} type="button" className="pd-product" onClick={() => onItemClick(p)}>
+                  <button key={p.id} type="button" className="pd-product" onClick={(e) => onItemClick(p, undefined, { x: e.clientX, y: e.clientY })}>
                     <span className="pd-product-name">{p.name.toLowerCase()}</span>
                       {p.sub && p.sub !== p.name ? (
                         <span className="pd-product-sub">{p.sub.toLowerCase()}</span>
@@ -9498,10 +9557,10 @@ export default function PosMainPage() {
                   ? 'pd-ol-damage'
                 : entryModal === 'table' || entryModal === 'combo' || entryModal === 'messMaster' || entryModal === 'bookingList'
                   ? 'pd-ol-table'
-                  : (['area', 'onlineSource', 'booking', 'dayCloseReport', 'activateAccessCard', 'vatCorrectionUtility'] as EntryKey[]).includes(entryModal)
+                  : (['area', 'onlineSource', 'booking', 'dayCloseReport', 'activateAccessCard', 'vatCorrectionUtility', 'areaWiseReportRP', 'groupWiseRP', 'itemWiseRP', 'areawiseA4', 'itemVoidReportRP', 'itemVoidA4', 'salesmanWise', 'cancelBillSummary', 'salesBillWiseRP', 'dayWiseRP', 'counterCloseDetailsA4', 'incomeExpense', 'productionReport', 'counterWiseA4', 'counterWiseTimewise', 'itemwiseSummary', 'itemwiseDetails', 'waiterwise', 'customerAnalysisDetailed', 'customerAnalysisSummary', 'graphReport'] as EntryKey[]).includes(entryModal)
                   ? 'pd-ol-narrow'
                   : ''
-            }${entryModal === 'booking' || entryModal === 'bookingList' ? ' pd-ol-booking' : ''}${entryModal === 'supplierList' || entryModal === 'purchaseList' || entryModal === 'purchaseReturnList' || entryModal === 'discountList' || entryModal === 'changeSettlement' || entryModal === 'productListEdit' || entryModal === 'printerSetup' || entryModal === 'partyOrderList' ? ' lst-dialog' : ''}${(['osBalanceList', 'advanceViewer', 'creditReceiptList', 'messBillViewer'] as EntryKey[]).includes(entryModal) ? ' lst-dialog lst-sm' : ''}${(['advanceViewer', 'creditReceiptList', 'messBillViewer'] as EntryKey[]).includes(entryModal) ? ' lst-xs' : ''}${entryModal === 'printerSetup' || entryModal === 'userList' || entryModal === 'langSetup' ? ' lst-dialog lst-sm lst-xs' : ''}${entryModal === 'controlPanel' ? ' cpl-dialog' : ''}${entryModal === 'cashInOut' ? (cashMode === 'pick' ? ' pd-ol-narrow' : ' cash-dialog') : ''}${entryModal === 'partyOrderList' ? ' lst-sm' : ''}`}
+            }${entryModal === 'booking' || entryModal === 'bookingList' ? ' pd-ol-booking' : ''}${entryModal === 'supplierList' || entryModal === 'purchaseList' || entryModal === 'purchaseReturnList' || entryModal === 'discountList' || entryModal === 'changeSettlement' || entryModal === 'productListEdit' || entryModal === 'printerSetup' || entryModal === 'partyOrderList' || entryModal === 'billReprint' || entryModal === 'counterCloseReportsRP' || entryModal === 'pendingOrderList' || entryModal === 'itemwiseViewer' || entryModal === 'productMovementFast' || entryModal === 'productMovementSlow' ? ' lst-dialog' : ''}${(['osBalanceList', 'advanceViewer', 'creditReceiptList', 'messBillViewer'] as EntryKey[]).includes(entryModal) ? ' lst-dialog lst-sm' : ''}${(['advanceViewer', 'creditReceiptList', 'messBillViewer'] as EntryKey[]).includes(entryModal) ? ' lst-xs' : ''}${entryModal === 'printerSetup' || entryModal === 'userList' || entryModal === 'langSetup' ? ' lst-dialog lst-sm lst-xs' : ''}${entryModal === 'controlPanel' ? ' cpl-dialog' : ''}${entryModal === 'cashInOut' ? (cashMode === 'pick' ? ' pd-ol-narrow' : ' cash-dialog') : ''}${entryModal === 'partyOrderList' ? ' lst-sm' : ''}`}
             role="dialog"
             aria-modal="true"
           >
@@ -11209,110 +11268,145 @@ export default function PosMainPage() {
                 : null}
 
               {entryModal === 'billReprint' ? (
-                <div className="pd-bill-reprint-body">
-                  <div className="pd-form-row" style={{ justifyContent: 'flex-end' }}>
-                    <button
-                      type="button"
-                      className="pd-mod-foot-btn"
-                      disabled={!reprintRaw}
-                      onClick={() => {
-                        if (!reprintRaw) return
-                        void printViewerBill(reprintRaw).catch((err) => {
-                          toast(err instanceof Error ? err.message : 'Bill print failed')
-                        })
-                      }}
-                    >
-                      Print
-                    </button>
-                  </div>
-                  <div className="pd-grid-wrap">
-                    <table className="pd-grid">
-                      <thead>
-                        <tr>
-                          <th>Bill No</th>
-                          <th>KOT No</th>
-                          <th>BillTime</th>
-                          <th>Payment Mode</th>
-                          <th>TotalAmount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {reprintState === 'loading' ? (
-                          <tr>
-                            <td colSpan={5}>Loading bills…</td>
-                          </tr>
-                        ) : reprintBills.length === 0 ? (
-                          <tr>
-                            <td colSpan={5}>{reprintState === 'error' ? 'Could not load bills' : 'No bills found'}</td>
-                          </tr>
+                (() => {
+                  const q = ef('searchValue').trim().toLowerCase()
+                  const bills = q
+                    ? reprintBills.filter(
+                        (r) => String(r.billNo).toLowerCase().includes(q) || String(r.paymentMode).toLowerCase().includes(q),
+                      )
+                    : reprintBills
+                  const picked = reprintBills.find((r) => r.salesId === reprintPick)
+                  return (
+                    <div className="brp">
+                      {/* Left: bills */}
+                      <div className="brp-left">
+                        <span className="lst-search">
+                          <Search size={14} />
+                          <input
+                            value={ef('searchValue')}
+                            onChange={(e) => setEf('searchValue', e.target.value)}
+                            placeholder="Search bill no or payment mode"
+                            autoFocus
+                          />
+                          {ef('searchValue') ? (
+                            <button type="button" onClick={() => setEf('searchValue', '')} aria-label="Clear search">
+                              <X size={12} />
+                            </button>
+                          ) : null}
+                        </span>
+                        <div className="brp-bills">
+                          {reprintState === 'loading' ? (
+                            <p className="brp-msg">Loading bills…</p>
+                          ) : bills.length === 0 ? (
+                            <p className="brp-msg">
+                              {reprintState === 'error' ? 'Could not load bills' : q ? 'No bill matches this search' : 'No bills found'}
+                            </p>
+                          ) : (
+                            bills.map((row) => (
+                              <button
+                                key={row.salesId}
+                                type="button"
+                                className={`brp-bill${reprintPick === row.salesId ? ' is-on' : ''}`}
+                                onClick={() => void openReprintBill(row.salesId)}
+                                onDoubleClick={() => void openReprintBill(row.salesId, true)}
+                                title="Double-tap to print"
+                              >
+                                <span className="brp-bill-main">
+                                  <b>{row.billNo}</b>
+                                  <small>
+                                    {row.billTime
+                                      ? new Date(row.billTime).toLocaleString('en-GB', {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })
+                                      : ''}
+                                  </small>
+                                </span>
+                                <span className="lst-tag">{row.paymentMode || '—'}</span>
+                                <b className="brp-bill-amt">{money(row.total)}</b>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: the selected bill */}
+                      <div className="brp-right">
+                        {picked ? (
+                          <>
+                            <div className="brp-head">
+                              <span>
+                                <small>Bill</small>
+                                <b>{picked.billNo}</b>
+                              </span>
+                              <span className="is-total">
+                                <small>Total</small>
+                                <b>AED {money(picked.total)}</b>
+                              </span>
+                            </div>
+                            <div className="pd-grid-wrap brp-items">
+                              <table className="pd-grid">
+                                <thead>
+                                  <tr>
+                                    <th>#</th>
+                                    <th>Item</th>
+                                    <th className="num">Qty</th>
+                                    <th className="num">Price</th>
+                                    <th className="num">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {reprintItems.length === 0 ? (
+                                    <tr>
+                                      <td colSpan={5}>Loading items…</td>
+                                    </tr>
+                                  ) : (
+                                    reprintItems.map((it) => (
+                                      <tr key={it.sl}>
+                                        <td>{it.sl}</td>
+                                        <td title={it.barcode ? `Barcode ${it.barcode}` : undefined}>{it.name}</td>
+                                        <td className="num">{it.qty}</td>
+                                        <td className="num">{money(it.unitPrice)}</td>
+                                        <td className="num">{money(it.lineTotal)}</td>
+                                      </tr>
+                                    ))
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
                         ) : (
-                          reprintBills.map((row) => (
-                            <tr
-                              key={row.salesId}
-                              onClick={() => void openReprintBill(row.salesId)}
-                              onDoubleClick={() => void openReprintBill(row.salesId, true)}
-                              style={{
-                                cursor: 'pointer',
-                                background: reprintPick === row.salesId ? 'rgba(64, 0, 0, 0.08)' : undefined,
-                              }}
-                            >
-                              <td>{row.billNo}</td>
-                              <td />
-                              <td>{row.billTime ? new Date(row.billTime).toLocaleString('en-GB') : ''}</td>
-                              <td>{row.paymentMode}</td>
-                              <td>{money(row.total)}</td>
-                            </tr>
-                          ))
+                          <div className="brp-empty">
+                            <Receipt size={28} />
+                            <strong>Select a bill</strong>
+                            <span>Tap a bill to see its items. Double-tap to print it straight away.</span>
+                          </div>
                         )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="pd-grid-wrap">
-                    <table className="pd-grid">
-                      <thead>
-                        <tr>
-                          <th>SL</th>
-                          <th>BarCode</th>
-                          <th>Short Description</th>
-                          <th>Qty</th>
-                          <th>Unit Price</th>
-                          <th>Line Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {reprintItems.length === 0 ? (
-                          <tr>
-                            <td colSpan={6}>Select a bill</td>
-                          </tr>
-                        ) : (
-                          reprintItems.map((it) => (
-                            <tr key={it.sl}>
-                              <td>{it.sl}</td>
-                              <td>{it.barcode}</td>
-                              <td>{it.name}</td>
-                              <td>{it.qty}</td>
-                              <td>{money(it.unitPrice)}</td>
-                              <td>{money(it.lineTotal)}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                      </div>
+                    </div>
+                  )
+                })()
               ) : null}
 
               {entryModal === 'areaWiseReportRP' || entryModal === 'groupWiseRP' || entryModal === 'itemWiseRP' ? (
-                <>
+                <div className="rpf">
                   {entryModal === 'itemWiseRP' ? (
-                    <div className="pd-form-grid-2">
-                      <div className="pd-form-row">
-                        <label>Counter No</label>
-                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
+                    <div className="rpf-two">
+                      <div className="rpf-field">
+                        <span className="rpf-label">Counter No</span>
+                        <input
+                          className="rpf-input"
+                          inputMode="numeric"
+                          placeholder="All"
+                          value={ef('rCounterNo')}
+                          onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))}
+                        />
                       </div>
-                      <div className="pd-form-row">
-                        <label>Group</label>
-                        <select value={ef('rGroup')} onChange={(e) => setEf('rGroup', e.target.value)}>
+                      <div className="rpf-field">
+                        <span className="rpf-label">Group</span>
+                        <select className="rpf-input" value={ef('rGroup')} onChange={(e) => setEf('rGroup', e.target.value)}>
                           <option value="">All Groups</option>
                           {groups.map((g) => (
                             <option key={g.id} value={g.name}>
@@ -11323,104 +11417,125 @@ export default function PosMainPage() {
                       </div>
                     </div>
                   ) : null}
-                  <div className="pd-form-row">
-                    <label>Report with</label>
-                    <div className="pd-entry-radio-row">
-                      <label className="pd-entry-radio">
-                        <input type="radio" name="rMode" checked={ef('rMode') === 'date'} onChange={() => setEf('rMode', 'date')} />
-                        Date
-                      </label>
-                      <label className="pd-entry-radio">
-                        <input
-                          type="radio"
-                          name="rMode"
-                          checked={ef('rMode') === 'counterClose'}
-                          onChange={() => setEf('rMode', 'counterClose')}
-                        />
-                        Counter Close No.
-                      </label>
+                  <div className="rpf-field">
+                    <span className="rpf-label">Report by</span>
+                    <div className="lst-seg rpf-seg" role="radiogroup" aria-label="Report by">
+                      {[
+                        ['date', 'Date'],
+                        ['counterClose', 'Counter Close No'],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={ef('rMode') === value}
+                          className={ef('rMode') === value ? 'is-on' : ''}
+                          onClick={() => setEf('rMode', value)}
+                        >
+                          {label}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  <div className="pd-form-row">
-                    <label>Counter Close No</label>
-                    <input
-                      value={ef('rCounterCloseNo')}
-                      onChange={(e) => setEf('rCounterCloseNo', digits(e.target.value, 6))}
-                      disabled={ef('rMode') !== 'counterClose'}
-                    />
-                  </div>
-                  <Toggle checked={efBool('rCounterCloseWise')} onChange={(v) => setEf('rCounterCloseWise', v)} label="Counter Close Wise" />
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>Report Date From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                  {ef('rMode') === 'counterClose' ? (
+                    <div className="rpf-field">
+                      <span className="rpf-label">Counter Close No</span>
+                      <input
+                        className="rpf-input"
+                        inputMode="numeric"
+                        placeholder="Enter counter close no"
+                        autoFocus
+                        value={ef('rCounterCloseNo')}
+                        onChange={(e) => setEf('rCounterCloseNo', digits(e.target.value, 6))}
+                      />
                     </div>
-                    <div className="pd-form-row">
-                      <label>Report Date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                  ) : (
+                    <div className="rpf-field">
+                      <span className="rpf-label">Report date</span>
+                      <DateRangePicker
+                        from={ef('rFrom')}
+                        to={ef('rTo')}
+                        onChange={(from, to) => {
+                          setEf('rFrom', from)
+                          setEf('rTo', to)
+                        }}
+                      />
                     </div>
+                  )}
+                  <div className="rpf-opt">
+                    <Toggle checked={efBool('rCounterCloseWise')} onChange={(v) => setEf('rCounterCloseWise', v)} label="Counter Close Wise" />
                   </div>
-                </>
+                </div>
               ) : null}
 
               {entryModal === 'itemVoidReportRP' || entryModal === 'itemVoidA4' || entryModal === 'salesmanWise' ? (
-                <>
-                  <div className="pd-form-grid-2">
+                <div className="rpf">
+                  <div className={entryModal === 'salesmanWise' ? 'rpf-two' : undefined}>
                     {entryModal === 'salesmanWise' ? (
-                      <div className="pd-form-row">
-                        <label>Counter No</label>
-                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
+                      <div className="rpf-field">
+                        <span className="rpf-label">Counter No</span>
+                        <input
+                          className="rpf-input"
+                          inputMode="numeric"
+                          placeholder="All"
+                          value={ef('rCounterNo')}
+                          onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))}
+                        />
                       </div>
                     ) : null}
-                    <div className="pd-form-row">
-                      <label>{entryModal === 'salesmanWise' ? 'SalesMan Name' : 'Cashier Name'}</label>
+                    <div className="rpf-field">
+                      <span className="rpf-label">{entryModal === 'salesmanWise' ? 'Salesman Name' : 'Cashier Name'}</span>
                       <input
+                        className="rpf-input"
                         value={ef('rCashierName')}
                         onChange={(e) => setEf('rCashierName', e.target.value)}
-                        placeholder={entryModal === 'salesmanWise' ? undefined : 'All'}
+                        placeholder="All"
                       />
                     </div>
                   </div>
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>{entryModal === 'salesmanWise' ? 'Reoprt Date From' : 'Report Date From'}</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Report Date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
+                  <div className="rpf-field">
+                    <span className="rpf-label">Report date</span>
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
                   </div>
-                </>
+                </div>
               ) : null}
 
               {entryModal === 'cancelBillDetails' ? (
                 <>
-                  <div className="pd-txn-search-row">
-                    <div className="pd-form-row">
-                      <label>Report From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Report To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
-                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
-                      Search
+                  <div className="lst-bar">
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
+                    <button type="button" className="lst-btn is-primary" onClick={searchTxnList}>
+                      <Search size={14} /> Search
                     </button>
                   </div>
                   <div className="pd-grid-wrap">
                     <table className="pd-grid">
                       <thead>
                         <tr>
-                          <th>Kot</th>
-                          <th>Cashier Name</th>
-                          <th>Waiter Name</th>
+                          <th>KOT</th>
+                          <th>Cashier</th>
+                          <th>Waiter</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr>
-                          <td colSpan={3}>No records found</td>
+                          <td colSpan={3} className="rpf-none">
+                            No cancelled bills in this range
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -11434,72 +11549,90 @@ export default function PosMainPage() {
               entryModal === 'counterCloseDetailsA4' ||
               entryModal === 'incomeExpense' ||
               entryModal === 'productionReport' ? (
-                <>
+                <div className="rpf">
                   {entryModal === 'counterCloseDetailsA4' || entryModal === 'incomeExpense' || entryModal === 'productionReport' ? (
-                    <div className="pd-form-grid-2">
-                      <div className="pd-form-row">
-                        <label>Counter No</label>
-                        <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
+                    <div className="rpf-two">
+                      <div className="rpf-field">
+                        <span className="rpf-label">Counter No</span>
+                        <input
+                          className="rpf-input"
+                          inputMode="numeric"
+                          placeholder="All"
+                          value={ef('rCounterNo')}
+                          onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))}
+                        />
                       </div>
-                      <div className="pd-form-row">
-                        <label>Cashier Name</label>
-                        <input value={ef('rCashierName')} onChange={(e) => setEf('rCashierName', e.target.value)} />
+                      <div className="rpf-field">
+                        <span className="rpf-label">Cashier Name</span>
+                        <input
+                          className="rpf-input"
+                          placeholder="All"
+                          value={ef('rCashierName')}
+                          onChange={(e) => setEf('rCashierName', e.target.value)}
+                        />
                       </div>
                     </div>
                   ) : null}
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>Report Date From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Report Date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
+                  <div className="rpf-field">
+                    <span className="rpf-label">Report date</span>
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
                   </div>
-                </>
+                </div>
               ) : null}
 
               {entryModal === 'counterCloseReportsRP' ? (
                 <>
-                  <div className="pd-txn-search-row">
-                    <div className="pd-form-row">
-                      <label>Counter No</label>
-                      <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
-                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
-                      Search
+                  <div className="lst-bar">
+                    <input
+                      className="rpf-input rpf-counter"
+                      inputMode="numeric"
+                      placeholder="Counter No (all)"
+                      aria-label="Counter No"
+                      value={ef('rCounterNo')}
+                      onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))}
+                    />
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
+                    <button type="button" className="lst-btn is-primary" onClick={searchTxnList}>
+                      <Search size={14} /> Search
                     </button>
                   </div>
                   <div className="pd-grid-wrap">
-                    <table className="pd-grid">
+                    <table className="pd-grid rpf-grid">
                       <thead>
                         <tr>
-                          <th>CounterNo</th>
-                          <th>CloseDate</th>
-                          <th>CloseTime</th>
-                          <th>BillCount</th>
-                          <th>CashSale</th>
-                          <th>CreditSale</th>
-                          <th>TotalOnline</th>
-                          <th>TotalDiscount</th>
-                          <th>TotalSale</th>
-                          <th>CashToBeCollected</th>
-                          <th>CollectedCash</th>
-                          <th>CashDifference</th>
+                          <th>Counter</th>
+                          <th>Close Date</th>
+                          <th>Time</th>
+                          <th className="num">Bills</th>
+                          <th className="num">Cash Sale</th>
+                          <th className="num">Credit Sale</th>
+                          <th className="num">Online</th>
+                          <th className="num">Discount</th>
+                          <th className="num">Total Sale</th>
+                          <th className="num">To Collect</th>
+                          <th className="num">Collected</th>
+                          <th className="num">Difference</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr>
-                          <td colSpan={12}>No records found</td>
+                          <td colSpan={12} className="rpf-none">
+                            No counter closes in this range
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -11509,58 +11642,70 @@ export default function PosMainPage() {
 
               {entryModal === 'pendingOrderList' ? (
                 <>
-                  <div className="pd-txn-search-row">
-                    <div className="pd-form-row">
-                      <label>From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                  <div className="lst-bar lst-bar-one">
+                    <div className="lst-seg" role="radiogroup" aria-label="Order status">
+                      {[
+                        ['PENDING', 'Pending'],
+                        ['COMPLETED', 'Completed'],
+                        ['ALL', 'All'],
+                      ].map(([value, label]) => {
+                        const on = (ef('rOrderStatus') || 'PENDING') === value
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            className={on ? 'is-on' : ''}
+                            onClick={() => setEf('rOrderStatus', value)}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
                     </div>
-                    <div className="pd-form-row">
-                      <label>To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Order Status</label>
-                      <select value={ef('rOrderStatus') || 'PENDING'} onChange={(e) => setEf('rOrderStatus', e.target.value)}>
-                        <option value="PENDING">PENDING</option>
-                        <option value="COMPLETED">COMPLETED</option>
-                        <option value="ALL">ALL</option>
-                      </select>
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Area</label>
-                      <select value={ef('rArea') || 'ALL'} onChange={(e) => setEf('rArea', e.target.value)}>
-                        <option value="ALL">ALL</option>
-                        {areas.map((a) => (
-                          <option key={a.id} value={a.name}>
-                            {a.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
-                      Search
+                    <select className="lst-select" aria-label="Area" value={ef('rArea') || 'ALL'} onChange={(e) => setEf('rArea', e.target.value)}>
+                      <option value="ALL">All areas</option>
+                      {areas.map((a) => (
+                        <option key={a.id} value={a.name}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
+                    <button type="button" className="lst-btn is-primary" onClick={searchTxnList}>
+                      <Search size={14} /> Search
                     </button>
                   </div>
                   <div className="pd-grid-wrap">
-                    <table className="pd-grid">
+                    <table className="pd-grid rpf-grid">
                       <thead>
                         <tr>
                           <th>Order No</th>
-                          <th>Order Time</th>
+                          <th>Time</th>
                           <th>Table</th>
                           <th>Area</th>
                           <th>Waiter</th>
-                          <th>Guests</th>
-                          <th>SubTotal</th>
-                          <th>Discount</th>
-                          <th>Tax</th>
-                          <th>Amount</th>
-                          <th>Order Status</th>
+                          <th className="num">Guests</th>
+                          <th className="num">Sub Total</th>
+                          <th className="num">Discount</th>
+                          <th className="num">Tax</th>
+                          <th className="num">Amount</th>
+                          <th>Status</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr>
-                          <td colSpan={11}>No records found</td>
+                          <td colSpan={11} className="rpf-none">
+                            No orders in this range
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -11569,246 +11714,307 @@ export default function PosMainPage() {
               ) : null}
 
               {entryModal === 'counterWiseA4' || entryModal === 'counterWiseTimewise' ? (
-                <>
-                  <div className="pd-form-row">
-                    <label>Counter No</label>
-                    <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
+                <div className="rpf">
+                  <div className="rpf-field">
+                    <span className="rpf-label">Counter No</span>
+                    <input
+                      className="rpf-input"
+                      inputMode="numeric"
+                      placeholder="All"
+                      value={ef('rCounterNo')}
+                      onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))}
+                    />
                   </div>
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>Sales Date From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Sales Date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
+                  <div className="rpf-field">
+                    <span className="rpf-label">Sales date</span>
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
                   </div>
                   {entryModal === 'counterWiseTimewise' ? (
-                    <div className="pd-form-grid-2">
-                      <div className="pd-form-row">
-                        <label>From Time</label>
-                        <input value={ef('rFromTime') || '5:00:00 AM'} onChange={(e) => setEf('rFromTime', e.target.value)} />
+                    <div className="rpf-two">
+                      <div className="rpf-field">
+                        <span className="rpf-label">From time</span>
+                        <input className="rpf-input" value={ef('rFromTime') || '5:00:00 AM'} onChange={(e) => setEf('rFromTime', e.target.value)} />
                       </div>
-                      <div className="pd-form-row">
-                        <label>To Time</label>
-                        <input value={ef('rToTime') || '5:00:00 AM'} onChange={(e) => setEf('rToTime', e.target.value)} />
+                      <div className="rpf-field">
+                        <span className="rpf-label">To time</span>
+                        <input className="rpf-input" value={ef('rToTime') || '5:00:00 AM'} onChange={(e) => setEf('rToTime', e.target.value)} />
                       </div>
                     </div>
                   ) : null}
-                  <Toggle checked={efBool('rSummaryOnly')} onChange={(v) => setEf('rSummaryOnly', v)} label="Sales Summary Only" />
-                  <Toggle checked={efBool('rCashierWise')} onChange={(v) => setEf('rCashierWise', v)} label="Cashier Wise" />
-                  <Toggle checked={efBool('rCounterOnly')} onChange={(v) => setEf('rCounterOnly', v)} label="Counter Only" />
-                </>
+                  <div className="rpf-opt">
+                    <Toggle checked={efBool('rSummaryOnly')} onChange={(v) => setEf('rSummaryOnly', v)} label="Sales Summary Only" />
+                    <Toggle checked={efBool('rCashierWise')} onChange={(v) => setEf('rCashierWise', v)} label="Cashier Wise" />
+                    <Toggle checked={efBool('rCounterOnly')} onChange={(v) => setEf('rCounterOnly', v)} label="Counter Only" />
+                  </div>
+                </div>
               ) : null}
 
               {entryModal === 'itemwiseSummary' || entryModal === 'itemwiseDetails' ? (
-                <>
-                  <div className="pd-form-row">
-                    <label>Group</label>
-                    <select value={ef('rGroup')} onChange={(e) => setEf('rGroup', e.target.value)}>
-                      <option value="">All Groups</option>
-                      {groups.map((g) => (
-                        <option key={g.id} value={g.name}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="pd-form-row">
-                    <label>SubGroup</label>
-                    <select value={ef('rSubGroup')} onChange={(e) => setEf('rSubGroup', e.target.value)}>
-                      <option value="">All Sub Groups</option>
-                      {allSubGroups.map((s) => (
-                        <option key={s.id} value={s.name}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>Report Date From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                <div className="rpf">
+                  <div className="rpf-two">
+                    <div className="rpf-field">
+                      <span className="rpf-label">Group</span>
+                      <select className="rpf-input" value={ef('rGroup')} onChange={(e) => setEf('rGroup', e.target.value)}>
+                        <option value="">All Groups</option>
+                        {groups.map((g) => (
+                          <option key={g.id} value={g.name}>
+                            {g.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <div className="pd-form-row">
-                      <label>Report Date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                    <div className="rpf-field">
+                      <span className="rpf-label">Sub Group</span>
+                      <select className="rpf-input" value={ef('rSubGroup')} onChange={(e) => setEf('rSubGroup', e.target.value)}>
+                        <option value="">All Sub Groups</option>
+                        {allSubGroups.map((s) => (
+                          <option key={s.id} value={s.name}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
-                  <Toggle checked={efBool('rCashierWise')} onChange={(v) => setEf('rCashierWise', v)} label="Cashier Wise" />
-                  <Toggle checked={efBool('rReceiptPrinter')} onChange={(v) => setEf('rReceiptPrinter', v)} label="Receipt Printer" />
-                </>
+                  <div className="rpf-field">
+                    <span className="rpf-label">Report date</span>
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
+                  </div>
+                  <div className="rpf-opt">
+                    <Toggle checked={efBool('rCashierWise')} onChange={(v) => setEf('rCashierWise', v)} label="Cashier Wise" />
+                    <Toggle checked={efBool('rReceiptPrinter')} onChange={(v) => setEf('rReceiptPrinter', v)} label="Receipt Printer" />
+                  </div>
+                </div>
               ) : null}
 
               {entryModal === 'areawiseA4' ? (
-                <>
-                  <div className="pd-form-row">
-                    <label>Location</label>
-                    <select value={ef('rArea') || 'ALL'} onChange={(e) => setEf('rArea', e.target.value)}>
-                      <option value="ALL">ALL</option>
-                      {areas.map((a) => (
-                        <option key={a.id} value={a.name}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>Report Date from</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                <div className="rpf">
+                  <div className="rpf-field">
+                    <span className="rpf-label">Location</span>
+                    <div className="rpf-chips" role="radiogroup" aria-label="Location">
+                      {[{ id: 'ALL', name: 'ALL' }, ...areas].map((a) => {
+                        const on = (ef('rArea') || 'ALL') === a.name
+                        return (
+                          <button
+                            key={a.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            className={`rpf-chip${on ? ' is-on' : ''}`}
+                            onClick={() => setEf('rArea', a.name)}
+                          >
+                            {a.name === 'ALL' ? 'All' : a.name}
+                          </button>
+                        )
+                      })}
                     </div>
-                    <div className="pd-form-row">
-                      <label>Report Date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
                   </div>
-                  <Toggle checked={efBool('rSummaryOnly')} onChange={(v) => setEf('rSummaryOnly', v)} label="Summary" />
-                </>
+                    <div className="rpf-field">
+                      <span className="rpf-label">Report date</span>
+                      <DateRangePicker
+                        from={ef('rFrom')}
+                        to={ef('rTo')}
+                        onChange={(from, to) => {
+                          setEf('rFrom', from)
+                          setEf('rTo', to)
+                        }}
+                      />
+                    </div>
+                  <div className="rpf-opt">
+                    <Toggle checked={efBool('rSummaryOnly')} onChange={(v) => setEf('rSummaryOnly', v)} label="Summary" />
+                  </div>
+                </div>
               ) : null}
 
               {entryModal === 'waiterwise' ? (
-                <>
-                  <div className="pd-form-row">
-                    <label>Waiter</label>
-                    <input value={ef('rWaiterName')} onChange={(e) => setEf('rWaiterName', e.target.value)} />
+                <div className="rpf">
+                  <div className="rpf-field">
+                    <span className="rpf-label">Waiter</span>
+                    <input className="rpf-input" placeholder="All" value={ef('rWaiterName')} onChange={(e) => setEf('rWaiterName', e.target.value)} />
                   </div>
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>Report Date From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
+                  <div className="rpf-field">
+                    <span className="rpf-label">Report date</span>
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
+                  </div>
+                  <div className="rpf-field">
+                    <span className="rpf-label">Report type</span>
+                    <div className="lst-seg rpf-seg" role="radiogroup" aria-label="Report type">
+                      {[
+                        ['detailed', 'Detailed'],
+                        ['summary', 'Summary'],
+                      ].map(([value, label]) => {
+                        const on = (ef('rDetailMode')) === value
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            className={on ? 'is-on' : ''}
+                            onClick={() => setEf('rDetailMode', value)}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
                     </div>
-                    <div className="pd-form-row">
-                      <label>Report date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
                   </div>
-                  <div className="pd-entry-radio-row">
-                    <label className="pd-entry-radio">
-                      <input
-                        type="radio"
-                        name="rDetailMode"
-                        checked={ef('rDetailMode') === 'detailed'}
-                        onChange={() => setEf('rDetailMode', 'detailed')}
-                      />
-                      Detailed
-                    </label>
-                    <label className="pd-entry-radio">
-                      <input
-                        type="radio"
-                        name="rDetailMode"
-                        checked={ef('rDetailMode') === 'summary'}
-                        onChange={() => setEf('rDetailMode', 'summary')}
-                      />
-                      Summary
-                    </label>
-                  </div>
-                </>
+                </div>
               ) : null}
 
               {entryModal === 'customerAnalysisDetailed' || entryModal === 'customerAnalysisSummary' ? (
-                <>
-                  <div className="pd-form-row">
-                    <label>Area</label>
-                    <select value={ef('rArea')} onChange={(e) => setEf('rArea', e.target.value)}>
-                      <option value="">Select…</option>
-                      {areas.map((a) => (
-                        <option key={a.id} value={a.name}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
+                <div className="rpf">
+                  <div className="rpf-field">
+                    <span className="rpf-label">Area</span>
+                    <div className="rpf-chips" role="radiogroup" aria-label="Area">
+                      {[{ id: 'ALL', name: '' }, ...areas].map((a) => {
+                        const on = (ef('rArea') || '') === a.name
+                        return (
+                          <button
+                            key={a.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            className={`rpf-chip${on ? ' is-on' : ''}`}
+                            onClick={() => setEf('rArea', a.name)}
+                          >
+                            {a.id === 'ALL' ? 'All' : a.name}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>Date From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
+                  <div className="rpf-field">
+                    <span className="rpf-label">Report date</span>
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
                   </div>
                   {entryModal === 'customerAnalysisSummary' ? (
-                    <Toggle checked={efBool('rSummaryOnly')} onChange={(v) => setEf('rSummaryOnly', v)} label="Summary" />
+                    <div className="rpf-opt">
+                      <Toggle checked={efBool('rSummaryOnly')} onChange={(v) => setEf('rSummaryOnly', v)} label="Summary" />
+                    </div>
                   ) : null}
-                </>
+                </div>
               ) : null}
 
               {entryModal === 'graphReport' ? (
-                <>
-                  <div className="pd-form-row">
-                    <label>Counter No</label>
-                    <input value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))} />
+                <div className="rpf">
+                  <div className="rpf-field">
+                    <span className="rpf-label">Counter No</span>
+                    <input
+                      className="rpf-input"
+                      inputMode="numeric"
+                      placeholder="All"
+                      value={ef('rCounterNo')}
+                      onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))}
+                    />
                   </div>
-                  <div className="pd-form-grid-2">
-                    <div className="pd-form-row">
-                      <label>Sales Date From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Sales Date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                  <div className="rpf-field">
+                    <span className="rpf-label">Sales date</span>
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
+                  </div>
+                  <div className="rpf-field">
+                    <span className="rpf-label">Report by</span>
+                    <div className="lst-seg rpf-seg" role="radiogroup" aria-label="Report by">
+                      {[
+                        ['Hour', 'Hour'],
+                        ['Day', 'Day'],
+                        ['Month', 'Month'],
+                      ].map(([value, label]) => {
+                        const on = (ef('rReportBy') || 'Hour') === value
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            className={on ? 'is-on' : ''}
+                            onClick={() => setEf('rReportBy', value)}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
-                  <div className="pd-form-row">
-                    <label>Report by</label>
-                    <div className="pd-entry-radio-row">
-                      {(['Hour', 'Day', 'Month'] as const).map((m) => (
-                        <label key={m} className="pd-entry-radio">
-                          <input
-                            type="radio"
-                            name="rReportBy"
-                            checked={(ef('rReportBy') || 'Hour') === m}
-                            onChange={() => setEf('rReportBy', m)}
-                          />
-                          {m}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </>
+                </div>
               ) : null}
 
               {entryModal === 'itemwiseViewer' ? (
                 <>
-                  <div className="pd-txn-search-row">
-                    <div className="pd-form-row">
-                      <label>Counter No</label>
-                      <select value={ef('rCounterNo')} onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))}>
-                        <option value="">All</option>
-                      </select>
-                    </div>
-                    <div className="pd-form-row">
-                      <label>From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
-                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={displayCreditList}>
-                      Display
+                  <div className="lst-bar lst-bar-one">
+                    <input
+                      className="rpf-input rpf-counter"
+                      inputMode="numeric"
+                      placeholder="Counter No (all)"
+                      aria-label="Counter No"
+                      value={ef('rCounterNo')}
+                      onChange={(e) => setEf('rCounterNo', digits(e.target.value, 6))}
+                    />
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
+                    <button type="button" className="lst-btn is-primary" onClick={displayCreditList}>
+                      <Search size={14} /> Display
                     </button>
                   </div>
                   <div className="pd-grid-wrap">
-                    <table className="pd-grid">
+                    <table className="pd-grid rpf-grid">
                       <thead>
                         <tr>
-                          <th>Sl No</th>
+                          <th>#</th>
                           <th>Barcode</th>
-                          <th>Item Name</th>
+                          <th>Item</th>
                           <th>Group</th>
-                          <th>SaleQty</th>
-                          <th>TotalUnitPrice</th>
-                          <th>Discount</th>
-                          <th>SubTotal</th>
+                          <th className="num">Qty</th>
+                          <th className="num">Unit Price</th>
+                          <th className="num">Discount</th>
+                          <th className="num">Sub Total</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr>
-                          <td colSpan={8}>No records found</td>
+                          <td colSpan={8} className="rpf-none">
+                            No items in this range
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -11817,48 +12023,62 @@ export default function PosMainPage() {
               ) : null}
 
               {entryModal === 'delBoyCommission' ? (
-                <div className="pd-mr-body">
-                  <div className="pd-mr-groups">
-                    {groups.length === 0 ? (
-                      <p className="pd-cat-msg">No groups loaded</p>
-                    ) : (
-                      groups.map((g) => (
-                        <label key={g.id} className="pd-mr-group-row">
-                          <input
-                            type="checkbox"
-                            checked={mrSelectedGroups.has(g.id)}
-                            onChange={() =>
-                              setMrSelectedGroups((prev) => {
-                                const next = new Set(prev)
-                                if (next.has(g.id)) next.delete(g.id)
-                                else next.add(g.id)
-                                return next
-                              })
-                            }
-                          />
-                          {g.name}
-                        </label>
-                      ))
-                    )}
+                <div className="rpf rpf-split">
+                  <div className="rpf">
+                    <div className="rpf-two">
+                      <div className="rpf-field">
+                        <span className="rpf-label">Delivery boy</span>
+                        <select className="rpf-input" value={ef('rDeliveryBoy')} onChange={(e) => setEf('rDeliveryBoy', e.target.value)}>
+                          <option value="">Select…</option>
+                        </select>
+                      </div>
+                      <div className="rpf-field">
+                        <span className="rpf-label">Commission %</span>
+                        <div className="rpf-input rpf-static">{ef('rCommission') || '3.5'}</div>
+                      </div>
+                    </div>
+                    <div className="rpf-field">
+                      <span className="rpf-label">Sales date</span>
+                      <DateRangePicker
+                        from={ef('rFrom')}
+                        to={ef('rTo')}
+                        onChange={(from, to) => {
+                          setEf('rFrom', from)
+                          setEf('rTo', to)
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="pd-mr-filters">
-                    <div className="pd-form-row">
-                      <label>Commission %</label>
-                      <div className="pd-form-computed">{ef('rCommission') || '3.5'}</div>
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Delivery Boy</label>
-                      <select value={ef('rDeliveryBoy')} onChange={(e) => setEf('rDeliveryBoy', e.target.value)}>
-                        <option value="">Select…</option>
-                      </select>
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Sales Date From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Sales Date To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
+                  <div className="rpf-field">
+                    <span className="rpf-label">
+                      Groups · {mrSelectedGroups.size} of {groups.length}
+                    </span>
+                    <div className="rpf-chips rpf-chips-tall">
+                      {groups.length === 0 ? (
+                        <p className="pd-cat-msg">No groups loaded</p>
+                      ) : (
+                        groups.map((g) => {
+                          const on = mrSelectedGroups.has(g.id)
+                          return (
+                            <button
+                              key={g.id}
+                              type="button"
+                              aria-pressed={on}
+                              className={`rpf-chip${on ? ' is-on' : ''}`}
+                              onClick={() =>
+                                setMrSelectedGroups((prev) => {
+                                  const next = new Set(prev)
+                                  if (next.has(g.id)) next.delete(g.id)
+                                  else next.add(g.id)
+                                  return next
+                                })
+                              }
+                            >
+                              {g.name}
+                            </button>
+                          )
+                        })
+                      )}
                     </div>
                   </div>
                 </div>
@@ -11866,36 +12086,43 @@ export default function PosMainPage() {
 
               {entryModal === 'productMovementFast' || entryModal === 'productMovementSlow' ? (
                 <>
-                  <div className="pd-txn-search-row">
-                    <div className="pd-form-row">
-                      <label>From</label>
-                      <DatePicker value={ef('rFrom')} onChange={(v) => setEf('rFrom', v)} max={ef('rTo')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>To</label>
-                      <DatePicker value={ef('rTo')} onChange={(v) => setEf('rTo', v)} min={ef('rFrom')} />
-                    </div>
-                    <div className="pd-form-row">
-                      <label>Min</label>
-                      <input value={ef('rMin')} onChange={(e) => setEf('rMin', digits(e.target.value))} />
-                    </div>
-                    <button type="button" className="pd-form-code-btn pd-txn-search-btn" onClick={searchTxnList}>
-                      Search
+                  <div className="lst-bar lst-bar-one">
+                    <DateRangePicker
+                      from={ef('rFrom')}
+                      to={ef('rTo')}
+                      onChange={(from, to) => {
+                        setEf('rFrom', from)
+                        setEf('rTo', to)
+                      }}
+                    />
+                    <label className="rpf-inline">
+                      Min qty
+                      <input
+                        className="rpf-input"
+                        inputMode="numeric"
+                        value={ef('rMin')}
+                        onChange={(e) => setEf('rMin', digits(e.target.value))}
+                      />
+                    </label>
+                    <button type="button" className="lst-btn is-primary" onClick={searchTxnList}>
+                      <Search size={14} /> Search
                     </button>
                   </div>
                   <div className="pd-grid-wrap">
-                    <table className="pd-grid">
+                    <table className="pd-grid rpf-grid">
                       <thead>
                         <tr>
                           <th>Group</th>
-                          <th>Item Description</th>
-                          <th>Unit Price</th>
-                          <th>Total Qty Sold</th>
+                          <th>Item</th>
+                          <th className="num">Unit Price</th>
+                          <th className="num">Qty Sold</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr>
-                          <td colSpan={4}>No records found</td>
+                          <td colSpan={4} className="rpf-none">
+                            No items in this range
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -14144,6 +14371,40 @@ export default function PosMainPage() {
           onCompleted={onSettlementCompleted}
           onAlreadySettled={onSettlementAlreadySettled}
         />
+      ) : null}
+
+      {variantFor ? (
+        <div
+          className="pd-radial-menu vrt-wrap"
+          style={{ left: variantFor.x, top: variantFor.y }}
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-label={`Choose size for ${variantFor.p.name}`}
+        >
+          {/* Same blurred halo as the order row menu */}
+          <div className="pd-radial-backdrop" aria-hidden />
+          <div className="vrt-bar">
+          {(
+            [
+              { short: 'S', label: 'Small', icon: 13 },
+              { short: 'M', label: 'Medium', icon: 16 },
+              { short: 'L', label: 'Large', icon: 19 },
+            ] as const
+          ).map(({ short, label, icon }) => (
+            <button
+              key={label}
+              type="button"
+              className="vrt-size"
+              title={label}
+              aria-label={label}
+              onClick={() => onItemClick(variantFor.p, label)}
+            >
+              <CupSoda size={icon} strokeWidth={2} />
+              <b>{short}</b>
+            </button>
+          ))}
+          </div>
+        </div>
       ) : null}
 
       {salesViewerOpen ? (

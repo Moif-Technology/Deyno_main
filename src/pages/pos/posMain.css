@@ -12948,3 +12948,103 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Footer buttons: icon and label on one line */
+.pd-mod-foot-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.pd-mod-foot-btn > svg {
+  flex: none;
+}
+
+/* ── Size picker (mock variants): a small horizontal S / M / L bar at the tap ── */
+.vrt-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--brand-border);
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(64, 0, 0, 0.2);
+  animation: vrt-in 0.12s ease-out;
+}
+
+@keyframes vrt-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+}
+
+.vrt-size {
+  width: 40px;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  padding-bottom: 4px;
+  border-radius: 9px;
+  color: var(--brand);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.vrt-size b {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.vrt-size:hover,
+.vrt-size:active {
+  background: var(--brand);
+  color: #fff;
+}
+
+/* Size picker: the blurred halo is a rounded rectangle around the bar, not a circle */
+.vrt-wrap .pd-radial-backdrop {
+  width: 176px;
+  height: 90px;
+  margin: -45px 0 0 -88px;
+  border-radius: 24px;
+  background: rgba(120, 8, 41, 0.22);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Size picker: no white box — the S / M / L buttons sit straight on the blurred panel */
+.vrt-wrap .vrt-bar {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.vrt-wrap .pd-radial-backdrop {
+  width: 150px;
+  height: 64px;
+  margin: -32px 0 0 -75px;
+  border-radius: 18px;
+  background: rgba(120, 8, 41, 0.62);
+  box-shadow: 0 8px 24px rgba(64, 0, 0, 0.25);
+}
+
+.vrt-wrap .vrt-size {
+  color: #fff;
+}
+
+.vrt-wrap .vrt-size:hover,
+.vrt-wrap .vrt-size:active {
+  background: #fff;
+  color: var(--brand);
+}
