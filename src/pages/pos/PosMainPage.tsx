@@ -22,7 +22,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Check, PenLine, StickyNote, ArrowRight, Clock, ChevronRight, ChevronDown, Hash, Home, LogOut, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Globe, Gift, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, Menu as MenuIcon, Repeat, Package, SeparatorHorizontal, Info, Search, UserPlus, CheckCircle2, HelpCircle, Mail, Factory, Trees, Zap, ZoomIn, ZoomOut } from 'lucide-react'
+import { AlertTriangle, Check, PenLine, StickyNote, ArrowRight, Clock, ChevronRight, ChevronDown, Hash, Home, LogOut, Tag, Trash2, X, Printer, Save, MessageSquare, Percent, FileText, Ban, CircleOff, RotateCcw, MinusCircle, Receipt, MapPinned, Utensils, ShoppingBag, Truck, CreditCard, SlidersHorizontal, Plus, ClipboardList, Users, User, ScanBarcode, Sandwich, Soup, Coffee, Flame, Cake, CupSoda, GlassWater, Star, Fish, Salad, Pizza, Drumstick, Beef, Egg, UtensilsCrossed, Smile, Sunrise, MoreHorizontal, Banknote, Wallet, Globe, Gift, CircleCheck, Merge, Pencil, ArrowLeftRight, BarChart3, ShieldCheck, Settings as SettingsIcon, Menu as MenuIcon, Repeat, Package, SeparatorHorizontal, Info, Search, UserPlus, CheckCircle2, HelpCircle, Mail, Factory, Trees, Zap, ZoomIn, ZoomOut, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react'
 import { SessionManager } from '../../utils/sessionManager'
 import { clearStaffSession } from '../../utils/pinLoginSession'
 import { getEnrollment } from '../../utils/deviceEnrollment'
@@ -1799,7 +1799,12 @@ export default function PosMainPage() {
   // Cash In / Cash Out — real backend (fetchCashInOut/addCashInOut) already
   // exists for the counter's cash-drawer movements.
   const [cashMode, setCashMode] = useState<'pick' | 'in' | 'out'>('pick')
+  /** Every description used before (Cash In and Cash Out) — the quick-pick column. */
+  const [cashDescs, setCashDescs] = useState<string[]>([])
+  /** Entries of the open type (Cash In or Cash Out) — the list on the left. */
   const [cashRows, setCashRows] = useState<{ desc: string; amount: number }[]>([])
+  /** Totals of every Cash In and Cash Out entry — balance = in − out. */
+  const [cashTotals, setCashTotals] = useState({ in: 0, out: 0 })
 
   const [customerEntryOpen, setCustomerEntryOpen] = useState(false)
   const [customerEntryName, setCustomerEntryName] = useState('')
@@ -5524,7 +5529,6 @@ export default function PosMainPage() {
     }
     if (key === 'cashInOut') {
       setCashMode('pick')
-      setCashRows([])
     }
   }
 
@@ -6100,6 +6104,24 @@ export default function PosMainPage() {
   async function loadCashRows(mode: 'in' | 'out') {
     try {
       const rows = await apiService.fetchCashInOut()
+      const seen = new Set<string>()
+      const descs: string[] = []
+      for (const r of rows) {
+        const d = String(r.remarks ?? r.Remarks ?? '').trim()
+        if (!d || seen.has(d.toUpperCase())) continue
+        seen.add(d.toUpperCase())
+        descs.push(d)
+      }
+      setCashDescs(descs)
+      let totIn = 0
+      let totOut = 0
+      for (const r of rows) {
+        const amt = Number(r.amount ?? r.Amount) || 0
+        const type = String(r.transactionType ?? r.TransactionType ?? '').toUpperCase()
+        if (type === 'CASH_IN') totIn += amt
+        else if (type === 'CASH_OUT') totOut += amt
+      }
+      setCashTotals({ in: round2(totIn), out: round2(totOut) })
       const wantType = mode === 'in' ? 'CASH_IN' : 'CASH_OUT'
       setCashRows(
         rows
@@ -6111,6 +6133,8 @@ export default function PosMainPage() {
       )
     } catch {
       setCashRows([])
+      setCashDescs([])
+      setCashTotals({ in: 0, out: 0 })
     }
   }
 
@@ -6690,17 +6714,7 @@ export default function PosMainPage() {
           </div>
         )
       case 'kitchenMessage':
-        return (
-          <>
-            <button type="button" className="pd-mod-foot-btn" disabled={kitchenMsgSelected == null} onClick={deleteKitchenMessage}>
-              Delete
-            </button>
-            <span className="pd-mod-foot-spacer" />
-            <button type="button" className="pd-mod-foot-btn is-ok" onClick={saveKitchenMessage}>
-              Save
-            </button>
-          </>
-        )
+        return null
       case 'combo':
         return (
           <>
@@ -7240,8 +7254,12 @@ export default function PosMainPage() {
           </button>
         ) : (
           <>
-            <button type="button" className="pd-mod-foot-btn is-ok" onClick={() => void addCashMovement()}>
-              Save
+            <button type="button" className="pd-mod-foot-btn" onClick={() => setCashMode('pick')}>
+              Back
+            </button>
+            <span className="pd-mod-foot-spacer" />
+            <button type="button" className="pd-mod-foot-btn is-close" onClick={closeEntryModal}>
+              Close
             </button>
           </>
         )
@@ -9456,7 +9474,6 @@ export default function PosMainPage() {
                   'incomeExpenseEntry', 'discountEntry', 'discountList',
                   'productListEdit', 'eventLogs',
                   'controlPanel', 'partyOrderList', 'printerSetup',
-                  'cashInOut',
                 ] as EntryKey[]
               ).includes(entryModal)
                 ? 'pd-ol-wide'
@@ -9467,7 +9484,7 @@ export default function PosMainPage() {
                   : (['area', 'onlineSource', 'booking', 'dayCloseReport', 'activateAccessCard', 'vatCorrectionUtility'] as EntryKey[]).includes(entryModal)
                   ? 'pd-ol-narrow'
                   : ''
-            }${entryModal === 'booking' || entryModal === 'bookingList' ? ' pd-ol-booking' : ''}${entryModal === 'supplierList' || entryModal === 'purchaseList' || entryModal === 'purchaseReturnList' || entryModal === 'discountList' || entryModal === 'changeSettlement' || entryModal === 'productListEdit' || entryModal === 'printerSetup' || entryModal === 'partyOrderList' ? ' lst-dialog' : ''}${(['osBalanceList', 'advanceViewer', 'creditReceiptList', 'messBillViewer'] as EntryKey[]).includes(entryModal) ? ' lst-dialog lst-sm' : ''}${(['advanceViewer', 'creditReceiptList', 'messBillViewer'] as EntryKey[]).includes(entryModal) ? ' lst-xs' : ''}${entryModal === 'printerSetup' || entryModal === 'userList' || entryModal === 'langSetup' ? ' lst-dialog lst-sm lst-xs' : ''}${entryModal === 'controlPanel' ? ' cpl-dialog' : ''}${entryModal === 'partyOrderList' ? ' lst-sm' : ''}`}
+            }${entryModal === 'booking' || entryModal === 'bookingList' ? ' pd-ol-booking' : ''}${entryModal === 'supplierList' || entryModal === 'purchaseList' || entryModal === 'purchaseReturnList' || entryModal === 'discountList' || entryModal === 'changeSettlement' || entryModal === 'productListEdit' || entryModal === 'printerSetup' || entryModal === 'partyOrderList' ? ' lst-dialog' : ''}${(['osBalanceList', 'advanceViewer', 'creditReceiptList', 'messBillViewer'] as EntryKey[]).includes(entryModal) ? ' lst-dialog lst-sm' : ''}${(['advanceViewer', 'creditReceiptList', 'messBillViewer'] as EntryKey[]).includes(entryModal) ? ' lst-xs' : ''}${entryModal === 'printerSetup' || entryModal === 'userList' || entryModal === 'langSetup' ? ' lst-dialog lst-sm lst-xs' : ''}${entryModal === 'controlPanel' ? ' cpl-dialog' : ''}${entryModal === 'cashInOut' ? (cashMode === 'pick' ? ' pd-ol-narrow' : ' cash-dialog') : ''}${entryModal === 'partyOrderList' ? ' lst-sm' : ''}`}
             role="dialog"
             aria-modal="true"
           >
@@ -9708,43 +9725,119 @@ export default function PosMainPage() {
               ) : null}
 
               {entryModal === 'kitchenMessage' ? (
-                <>
-                  <div className="pd-form-row">
-                    <label>Kitchen Message</label>
-                    <input value={ef('kmMessage')} onChange={(e) => setEfWithArabicAutoFill('kmMessage', 'kmArabic', e.target.value)} />
-                  </div>
-                  <div className="pd-form-row">
-                    <label>Message Arabic</label>
-                    <ArabicInput value={ef('kmArabic')} onValueChange={(v) => setEf('kmArabic', v)} source={ef('kmMessage')} onTranslateError={notifyTranslateDown} />
-                  </div>
-                  <div className="pd-grid-wrap">
-                    <table className="pd-grid">
-                      <thead>
-                        <tr>
-                          <th>Message</th>
-                          <th>Message Arabic</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {kitchenMessages.map((m) => (
-                          <tr
-                            key={m.id}
-                            className={kitchenMsgSelected === m.id ? 'is-selected' : undefined}
-                            style={{ cursor: 'pointer' }}
+                <div className="pd-nt">
+                  {/* Pad: write / edit a message (same look as Note Entry) */}
+                  <div className={`pd-nt-pad${kitchenMsgSelected != null ? ' is-editing' : ''}`}>
+                    <div className="pd-nt-pad-top">
+                      <span>
+                        <MessageSquare size={14} />
+                        {kitchenMsgSelected != null ? 'Editing message' : 'New message'}
+                      </span>
+                      {kitchenMsgSelected != null ? (
+                        <span className="pd-nt-pad-actions">
+                          <button type="button" className="pd-nt-new is-danger" onClick={deleteKitchenMessage}>
+                            <Trash2 size={13} /> Delete
+                          </button>
+                          <button
+                            type="button"
+                            className="pd-nt-new"
                             onClick={() => {
-                              setKitchenMsgSelected(m.id)
-                              setEf('kmMessage', m.message)
-                              setEf('kmArabic', m.arabic)
+                              setKitchenMsgSelected(null)
+                              setEf('kmMessage', '')
+                              setEf('kmArabic', '')
                             }}
                           >
-                            <td>{m.message}</td>
-                            <td dir="rtl">{m.arabic}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                            <Plus size={13} /> New
+                          </button>
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="pd-km-fields">
+                      <input
+                        placeholder="Kitchen message…"
+                        value={ef('kmMessage')}
+                        autoFocus
+                        onChange={(e) => setEfWithArabicAutoFill('kmMessage', 'kmArabic', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveKitchenMessage()
+                        }}
+                      />
+                      <ArabicInput
+                        placeholder="الرسالة بالعربية"
+                        value={ef('kmArabic')}
+                        onValueChange={(v) => setEf('kmArabic', v)}
+                        source={ef('kmMessage')}
+                        onTranslateError={notifyTranslateDown}
+                      />
+                    </div>
+                    <div className="pd-nt-pad-foot">
+                      <small>Arabic fills in automatically — you can edit it.</small>
+                      <button type="button" className="pd-nt-save" disabled={!ef('kmMessage').trim()} onClick={saveKitchenMessage}>
+                        <Check size={14} strokeWidth={2.6} /> {kitchenMsgSelected != null ? 'Update' : 'Save'}
+                      </button>
+                    </div>
                   </div>
-                </>
+
+                  <div className="pd-nt-bar">
+                    <b>
+                      Messages <em>{kitchenMessages.length}</em>
+                    </b>
+                  </div>
+
+                  {/* Board: saved messages — tap one to edit */}
+                  <div className="pd-nt-board">
+                    {kitchenMessages.length === 0 ? (
+                      <div className="pd-nt-empty">
+                        <MessageSquare size={26} strokeWidth={1.6} />
+                        <span>No kitchen messages yet — write your first one above.</span>
+                      </div>
+                    ) : (
+                      kitchenMessages.map((m) => {
+                        const pick = () => {
+                          setKitchenMsgSelected(m.id)
+                          setEf('kmMessage', m.message)
+                          setEf('kmArabic', m.arabic)
+                        }
+                        return (
+                          <div
+                            key={m.id}
+                            role="button"
+                            tabIndex={0}
+                            className={`pd-nt-card${kitchenMsgSelected === m.id ? ' is-on' : ''}`}
+                            onClick={pick}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') pick()
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="pd-nt-del"
+                              aria-label="Delete message"
+                              title="Delete message"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setKitchenMessages((prev) => prev.filter((x) => x.id !== m.id))
+                                if (kitchenMsgSelected === m.id) {
+                                  setKitchenMsgSelected(null)
+                                  setEf('kmMessage', '')
+                                  setEf('kmArabic', '')
+                                }
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                            <span className="pd-nt-text">{m.message}</span>
+                            {m.arabic ? (
+                              <span className="pd-km-ar" dir="rtl">
+                                {m.arabic}
+                              </span>
+                            ) : null}
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
               ) : null}
 
               {entryModal === 'combo' ? (
@@ -12907,72 +13000,85 @@ export default function PosMainPage() {
               ) : null}
 
               {entryModal === 'cashInOut' && cashMode === 'pick' ? (
-                <div className="pd-cash-pick">
-                  <button type="button" className="pd-cash-pick-btn" onClick={() => openCashMode('in')}>
-                    CASH IN
+                <div className="csh-pick">
+                  <button type="button" className="csh-pick-card is-in" onClick={() => openCashMode('in')}>
+                    <span className="csh-pick-ic">
+                      <ArrowDownToLine size={22} />
+                    </span>
+                    <b>Cash In</b>
+                    <small>Money put into the drawer</small>
                   </button>
-                  <button type="button" className="pd-cash-pick-btn" onClick={() => openCashMode('out')}>
-                    CASH OUT
+                  <button type="button" className="csh-pick-card is-out" onClick={() => openCashMode('out')}>
+                    <span className="csh-pick-ic">
+                      <ArrowUpFromLine size={22} />
+                    </span>
+                    <b>Cash Out</b>
+                    <small>Money taken out of the drawer</small>
                   </button>
                 </div>
               ) : null}
 
               {entryModal === 'cashInOut' && cashMode !== 'pick' ? (
-                <div className="pd-cash-entry">
-                  <h3 className="pd-cash-entry-title">{cashMode === 'in' ? 'Cash IN Entry' : 'Cash Out Entry'}</h3>
-                  <div className="pd-cash-entry-top">
-                    <div className="pd-form-row" style={{ flex: 1 }}>
-                      <label>Type Description</label>
-                      <input value={ef('cashDesc')} onChange={(e) => setEf('cashDesc', e.target.value)} />
-                    </div>
-                    <span className="pd-cash-tag">Cash</span>
-                  </div>
-                  <div className="pd-cash-entry-body">
-                    <div className="pd-grid-wrap pd-cash-list">
-                      <table className="pd-grid">
-                        <thead>
-                          <tr>
-                            <th>Account Name</th>
-                            <th>{cashMode === 'in' ? 'Cash In Amount' : 'CashOut Amount'}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {cashRows.length === 0 ? (
-                            <tr>
-                              <td colSpan={2}>No entries yet</td>
-                            </tr>
-                          ) : (
-                            cashRows.map((r, i) => (
-                              <tr key={i}>
-                                <td>{r.desc || '—'}</td>
-                                <td>{money(r.amount)}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="pd-cash-quick">
-                      {Array.from(new Set(cashRows.map((r) => r.desc).filter(Boolean)))
-                        .slice(0, 8)
-                        .map((d) => (
-                          <button key={d} type="button" className="pd-cash-quick-btn" onClick={() => setEf('cashDesc', d)}>
+                <div className={`cs2 is-${cashMode}`}>
+                  {/* Left: description · past descriptions · this type's entries */}
+                  <div className="cs2-left">
+                    <input
+                      className="csm-desc"
+                      value={ef('cashDesc')}
+                      onChange={(e) => setEf('cashDesc', e.target.value)}
+                      placeholder="Description"
+                      aria-label="Description"
+                      autoFocus
+                    />
+                    {cashDescs.length ? (
+                      <div className="cs2-chips">
+                        {cashDescs.map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            className={ef('cashDesc') === d ? 'is-on' : undefined}
+                            onClick={() => setEf('cashDesc', d)}
+                            title={d}
+                          >
                             {d}
                           </button>
                         ))}
-                      {cashRows.length === 0 ? <p className="pd-cat-msg">No recent descriptions yet</p> : null}
+                      </div>
+                    ) : null}
+                    <div className="cs2-list">
+                      {cashRows.length === 0 ? (
+                        <p className="csh-empty">No {cashMode === 'in' ? 'cash in' : 'cash out'} entries yet</p>
+                      ) : (
+                        cashRows.map((r, i) => (
+                          <div key={i} className="csh-row">
+                            <span>{r.desc || '—'}</span>
+                            <b>{money(r.amount)}</b>
+                          </div>
+                        ))
+                      )}
                     </div>
-                    <div className="pd-cash-keys">
-                      <input className="pd-cash-amount-display" value={ef('cashAmount')} readOnly placeholder="0" />
-                      <NumberKeypad className="pd-keys" onKey={onCashKey} />
-                      <button type="button" className="pd-cash-enter" onClick={() => void addCashMovement()}>
-                        Enter
-                      </button>
-                    </div>
+                    <p className="cs2-total">
+                      Total {cashMode === 'in' ? 'cash in' : 'cash out'}{' '}
+                      <b>AED {money(cashRows.reduce((sum, r) => sum + r.amount, 0))}</b>
+                    </p>
                   </div>
-                  <div className="pd-form-row">
-                    <label>Total Amount</label>
-                    <div className="pd-form-computed">AED {money(cashRows.reduce((sum, r) => sum + r.amount, 0))}</div>
+
+                  {/* Right: amount · keypad · save */}
+                  <div className="cs2-right">
+                    <div className="csm-amount">
+                      <em>AED</em>
+                      <b>{ef('cashAmount') || '0'}</b>
+                    </div>
+                    <NumberPad className="csm-pad cs2-pad" keys={['0', '.', 'C']} onKey={onCashKey} />
+                    <button type="button" className="csh-save" onClick={() => void addCashMovement()}>
+                      Save {cashMode === 'in' ? 'Cash In' : 'Cash Out'}
+                    </button>
+                    <p className="csm-sum">
+                      Balance{' '}
+                      <b className={cashTotals.in - cashTotals.out < 0 ? 'is-neg' : undefined}>
+                        AED {money(cashTotals.in - cashTotals.out)}
+                      </b>
+                    </p>
                   </div>
                 </div>
               ) : null}

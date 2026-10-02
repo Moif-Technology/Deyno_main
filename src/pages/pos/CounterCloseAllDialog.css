@@ -3264,3 +3264,215 @@
 .pd-mod-overlay.pd-cc-overlay {
   z-index: 110;
 }
+
+/* Admin panel: Bill Count block (as on the old screen) — heading + two columns. */
+.ccv-bills {
+  flex-shrink: 0;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.ccv-bills-head {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-1);
+}
+
+.ccv-bills-head b {
+  font-size: 16px;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.ccv-bills-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.ccv-bills-grid span {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.ccv-bills-grid b {
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══ Admin panel, arranged: key cards (top) · figures (middle, scrolls) · bill counts (bottom) ══ */
+.ccv .ccv-admin {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+/* Top: 5 key cards — Total Sales full width, then two per row. */
+.ccv .ccv-key {
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.ccv .ccv-key-item:first-child {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* Middle: grouped figures */
+.ccv-admin-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+.ccv .ccv-admin-title {
+  margin: 0 0 3px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.ccv .ccv-admin-scroll .ccv-admin-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+
+.ccv .ccv-admin-scroll .ccv-admin-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ccv .ccv-admin-scroll .ccv-admin-row b {
+  flex-shrink: 0;
+  font-weight: 800;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bottom: bill counts, pinned */
+.ccv .ccv-bills {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 10px 12px;
+}
+
+.ccv .ccv-bills-head {
+  justify-content: space-between;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ccv .ccv-bills-grid {
+  gap: 4px 16px;
+}
+
+/* Stacked layouts: the panel is full width, so nothing needs its own scroll. */
+@media (max-width: 1000px) {
+  .ccv.is-admin .ccv-admin {
+    overflow: visible;
+  }
+
+  .ccv.is-admin .ccv-admin-scroll {
+    overflow: visible;
+  }
+
+  .ccv.is-admin .ccv-key-item:first-child {
+    grid-column: auto;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* ══ Bill Count block — numbers always stay inside the box ══
+   Columns may shrink (minmax(0, 1fr)); the label shortens with "…", the
+   number never does. When the block itself is narrow it becomes one column. */
+.ccv .ccv-bills {
+  container-type: inline-size;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ccv .ccv-bills-head {
+  gap: 8px;
+  min-width: 0;
+}
+
+.ccv .ccv-bills-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 14px;
+}
+
+.ccv .ccv-bills-grid span {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 6px;
+  white-space: normal;
+}
+
+.ccv .ccv-bills-grid i {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.ccv .ccv-bills-grid b {
+  text-align: right;
+}
+
+/* Narrow panel: one count per line, so every label shows in full. */
+@container (max-width: 270px) {
+  .ccv .ccv-bills-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Wide panel (stacked layout, full width): three per row. */
+@container (min-width: 520px) {
+  .ccv .ccv-bills-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px 22px;
+  }
+}

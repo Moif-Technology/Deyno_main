@@ -285,16 +285,17 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose, notify 
         { label: 'Total Cash', value: money(data.totalCash) },
         { label: 'Net Card (Sale + Tip)', value: money(data.netCardAmount) },
         { label: 'Tax Amount', value: money(data.totalTax) },
-        { label: 'Bill Count', value: String(n(data.billCount)) },
       ]
     : []
 
+  /** Bill counts, in the old screen's order (two per row). Zeros are shown. */
   const billCounts: [string, unknown][] = [
-    ['Cash', data?.cashBillCount],
-    ['Credit', data?.creditBillCount],
-    ['Card', data?.cardBillCount],
-    ['Multi Pay', data?.multiBillCount],
-    ['Compliment', data?.complimentBillCount],
+    ['Cash Bill', data?.cashBillCount],
+    ['Credit Bill', data?.creditBillCount],
+    ['Credit Card Bill', data?.cardBillCount],
+    ['Multi Payment Bill', data?.multiBillCount],
+    ['Compliment Bill', data?.complimentBillCount],
+    ['No Of Customers', data?.noOfCustomers],
   ]
 
   return (
@@ -371,47 +372,51 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose, notify 
                       </div>
                     ))}
                   </div>
-                  {adminGroups.map((g) => {
-                    const rows = g.rows.filter(([, v]) => n(v) !== 0)
-                    if (!rows.length) return null
-                    return (
-                      <div key={g.title}>
-                        <p className="ccv-admin-title">{g.title}</p>
-                        {rows.map(([label, value]) => (
-                          <div key={label} className="ccv-admin-row">
-                            <span>{label}</span>
-                            <b>{money(value)}</b>
+                  {/* Middle: the figures — scrolls on its own if the screen is short */}
+                  <div className="ccv-admin-scroll">
+                    {adminGroups.map((g) => {
+                      const rows = g.rows.filter(([, v]) => n(v) !== 0)
+                      if (!rows.length) return null
+                      return (
+                        <div key={g.title}>
+                          <p className="ccv-admin-title">{g.title}</p>
+                          {rows.map(([label, value]) => (
+                            <div key={label} className="ccv-admin-row">
+                              <span>{label}</span>
+                              <b>{money(value)}</b>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                    {staffSales.length > 1 ? (
+                      <div>
+                        <p className="ccv-admin-title">By cashier</p>
+                        {staffSales.map((st) => (
+                          <div key={`${st.staffId}-${st.staffName}`} className="ccv-admin-row">
+                            <span>
+                              {st.staffName} · {st.billCount} bills
+                            </span>
+                            <b>{money(st.saleAmount)}</b>
                           </div>
                         ))}
                       </div>
-                    )
-                  })}
-                  <div>
-                    <p className="ccv-admin-title">
-                      Bills {n(data.billCount)} · Customers {n(data.noOfCustomers)}
-                    </p>
-                    {billCounts
-                      .filter(([, v]) => n(v) !== 0)
-                      .map(([label, value]) => (
-                        <div key={label} className="ccv-admin-row">
-                          <span>{label}</span>
-                          <b>{n(value)}</b>
-                        </div>
-                      ))}
+                    ) : null}
                   </div>
-                  {staffSales.length > 1 ? (
-                    <div>
-                      <p className="ccv-admin-title">By cashier</p>
-                      {staffSales.map((st) => (
-                        <div key={`${st.staffId}-${st.staffName}`} className="ccv-admin-row">
-                          <span>
-                            {st.staffName} · {st.billCount} bills
-                          </span>
-                          <b>{money(st.saleAmount)}</b>
-                        </div>
+                  {/* Bottom: bill counts, always visible */}
+                  <div className="ccv-bills">
+                    <p className="ccv-bills-head">
+                      Bill Count <b>{n(data.billCount)}</b>
+                    </p>
+                    <div className="ccv-bills-grid">
+                      {billCounts.map(([label, value]) => (
+                        <span key={label}>
+                          <i>{label}</i>
+                          <b>{n(value)}</b>
+                        </span>
                       ))}
                     </div>
-                  ) : null}
+                  </div>
                 </aside>
               ) : null}
 
