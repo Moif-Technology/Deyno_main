@@ -12779,3 +12779,172 @@
     padding-left: 0;
   }
 }
+
+/* ══ Kitchen Message popup (More → Kitchen Message) ══ */
+.pd-mod-dialog.kmx {
+  width: min(620px, 100%);
+  height: min(520px, calc(90vh / var(--ui-zoom, 1)));
+}
+
+.kmx-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+
+/* Message box */
+.kmx-box {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.kmx-text {
+  width: 100%;
+  min-height: 64px;
+  max-height: 110px;
+  padding: 10px 38px 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--brand-border);
+  background: var(--brand-bg);
+  resize: none;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text-1);
+}
+
+.kmx-text::placeholder {
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.kmx-text:focus {
+  outline: none;
+  border-color: var(--brand);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+.kmx-clear {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.kmx-clear:hover {
+  color: var(--red, #dc2626);
+  border-color: var(--red-border, #fecaca);
+}
+
+.kmx-title {
+  flex-shrink: 0;
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.kmx-title em {
+  font-style: normal;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+/* Quick messages: boxes */
+.kmx-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  grid-auto-rows: 44px;
+  gap: 8px;
+  align-content: start;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.kmx-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 24px 0;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.kmx-chip {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  box-shadow: var(--shadow-xs);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-1);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s, transform 0.08s;
+}
+
+.kmx-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kmx-chip svg {
+  flex-shrink: 0;
+}
+
+.kmx-chip:hover {
+  border-color: var(--brand-border);
+  color: var(--brand);
+}
+
+.kmx-chip:active {
+  transform: scale(0.97);
+}
+
+.kmx-chip.is-on {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+}
+
+.kmx-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 480px) {
+  .kmx-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

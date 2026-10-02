@@ -2622,6 +2622,13 @@ export default function PosMainPage() {
     }
   }
 
+  // Kitchen Message box: when the text outgrows the box, keep the latest part in view.
+  useEffect(() => {
+    if (!notesOpen) return
+    const el = modifierTextRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [notesText, notesOpen])
+
   function openModifierForSelection() {
     const key = selectedLine ?? lines[lines.length - 1]?.key
     if (key == null) {
@@ -2634,7 +2641,17 @@ export default function PosMainPage() {
   function appendModifier(name: string) {
     const label = name.trim()
     if (!label) return
-    setNotesText((prev) => (prev ? `${prev}-${label}` : label))
+    // Messages are joined with a comma: "No onion, Less spicy".
+    setNotesText((prev) => (prev.trim() ? `${prev.trim().replace(/,$/, '')}, ${label}` : label))
+  }
+
+  /** Quick message tap: adds it, or removes it when it is already in the message. */
+  function toggleModifier(name: string) {
+    const label = name.trim()
+    if (!label) return
+    const parts = notesText.split(',').map((p) => p.trim()).filter(Boolean)
+    if (parts.includes(label)) setNotesText(parts.filter((p) => p !== label).join(', '))
+    else appendModifier(label)
   }
 
   function applyModifier() {
@@ -13525,7 +13542,7 @@ export default function PosMainPage() {
           }}
         >
           <div
-            className="pd-mod-dialog"
+            className="pd-mod-dialog kmx"
             role="dialog"
             aria-modal="true"
             aria-labelledby="pd-mod-title"
@@ -13546,50 +13563,57 @@ export default function PosMainPage() {
                 <X size={13} />
               </button>
             </div>
-            <div className="pd-mod-top">
-              <div className="pd-mod-top-row">
-                <button type="button" className="pd-mod-clear" onClick={() => setNotesText('')}>
-                  Clear
-                </button>
-              </div>
-              <textarea
-                ref={modifierTextRef}
-                className="pd-mod-text"
-                value={notesText}
-                onChange={(e) => setNotesText(e.target.value)}
-                rows={1}
-              />
-            </div>
-            <div className="pd-mod-chips">
-              {modifiers.length === 0 ? (
-                <p className="pd-cat-msg">No modifiers on this branch</p>
-              ) : (
-                modifiers.map((m, i) => (
-                  <button
-                    key={`${m.id}-${m.name}-${i}`}
-                    type="button"
-                    className="pd-mod-chip"
-                    onClick={() => appendModifier(m.name)}
-                  >
-                    {m.name}
+            <div className="kmx-body">
+              {/* The message that goes to the kitchen */}
+              <div className="kmx-box">
+                <textarea
+                  ref={modifierTextRef}
+                  className="kmx-text"
+                  value={notesText}
+                  onChange={(e) => setNotesText(e.target.value)}
+                  placeholder="Type a message, or tap one below"
+                  rows={2}
+                />
+                {notesText ? (
+                  <button type="button" className="kmx-clear" onClick={() => setNotesText('')} aria-label="Clear message">
+                    <X size={13} />
                   </button>
-                ))
-              )}
+                ) : null}
+              </div>
+
+              {/* Quick messages — tap to add, tap again to remove */}
+              <p className="kmx-title">
+                Quick messages <em>{modifiers.length}</em>
+              </p>
+              <div className="kmx-grid">
+                {modifiers.length === 0 ? (
+                  <p className="kmx-empty">No quick messages on this branch</p>
+                ) : (
+                  (() => {
+                    const picked = new Set(notesText.split(',').map((p) => p.trim()).filter(Boolean))
+                    return modifiers.map((m, i) => (
+                      <button
+                        key={`${m.id}-${m.name}-${i}`}
+                        type="button"
+                        className={`kmx-chip${picked.has(m.name.trim()) ? ' is-on' : ''}`}
+                        onClick={() => toggleModifier(m.name)}
+                        title={m.name}
+                      >
+                        {picked.has(m.name.trim()) ? <Check size={13} strokeWidth={3} /> : null}
+                        <span>{m.name}</span>
+                      </button>
+                    ))
+                  })()
+                )}
+              </div>
             </div>
             <div className="pd-mod-foot">
-              <button
-                type="button"
-                className="pd-mod-foot-btn"
-                onClick={() => modifierTextRef.current?.focus()}
-              >
-                KeyBoard
+              <button type="button" className="pd-mod-foot-btn is-close" onClick={closeModifierForm}>
+                Cancel
               </button>
               <span className="pd-mod-foot-spacer" />
-              <button type="button" className="pd-mod-foot-btn is-ok" onClick={applyModifier}>
-                Ok
-              </button>
-              <button type="button" className="pd-mod-foot-btn is-close" onClick={closeModifierForm}>
-                Close
+              <button type="button" className="pd-mod-foot-btn is-ok kmx-done" onClick={applyModifier}>
+                <Check size={14} strokeWidth={2.6} /> Done
               </button>
             </div>
           </div>
