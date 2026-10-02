@@ -364,3 +364,120 @@ export async function printCounterReport(data: MoneyRow, meta: CounterReportMeta
       : { ...meta, ...(await loadPrintHeadings()) }
   await printHtmlOnDefaultPrinter(buildCounterReportHtml(data, headings))
 }
+
+export type NightSummaryOrder = {
+  kotNo: string
+  billNo?: string
+  customerName?: string
+  paymentMode: string
+  amount: number
+}
+
+function payLabel(mode: string) {
+  const u = mode.toUpperCase()
+  if (u.includes('CREDIT') || u === 'CARD') return 'CARD'
+  return 'CASH'
+}
+
+/** One slip after delivery night settle: each order, then cash / card counts and totals. */
+export async function printDeliveryNightSummary(input: {
+  boyName: string
+  cashier: string
+  counterNo: string
+  orders: NightSummaryOrder[]
+  at?: Date
+}) {
+  const head = await loadPrintHeadings()
+  const at = input.at ?? new Date()
+  const orders = input.orders.filter((o) => Number.isFinite(o.amount))
+  let cashCount = 0
+  let cashAmt = 0
+  let cardCount = 0
+  let cardAmt = 0
+  const rows = orders
+    .map((o) => {
+      const pay = payLabel(o.paymentMode)
+      if (pay === 'CARD') {
+        cardCount += 1
+        cardAmt += o.amount
+      } else {
+        cashCount += 1
+        cashAmt += o.amount
+      }
+      const who = String(o.customerName ?? '').trim()
+      const bill = String(o.billNo ?? '').trim()
+      return `
+      <tr>
+        <td>${esc(o.kotNo || '—')}${who ? `<div class="xr-sub">${esc(who)}</div>` : ''}${bill ? `<div class="xr-sub">Inv ${esc(bill)}</div>` : ''}</td>
+        <td class="c">${pay}</td>
+        <td class="r">${fmtMoney(o.amount)}</td>
+      </tr>`
+    })
+    .join('')
+  const total = cashAmt + cardAmt
+  const bodyHtml = `
+  ${head.heading1 ? `<div class="store-name">${esc(head.heading1)}</div>` : '<div class="store-name">MOIF TECHNOLOGY</div>'}
+  ${head.heading2 ? `<div class="meta-line">${esc(head.heading2)}</div>` : ''}
+  ${head.heading3 ? `<div class="meta-line">${esc(head.heading3)}</div>` : ''}
+
+  <hr class="dash" />
+  <div class="xr-title">DELIVERY SETTLEMENT</div>
+  <hr class="dash" />
+
+  <div class="xr-row"><span class="xr-lbl">DATE</span><span class="xr-val">${fmtReportDate(at)}</span></div>
+  <div class="xr-row"><span class="xr-lbl">TIME</span><span class="xr-val">${fmtReportTime(at)}</span></div>
+  <div class="xr-row"><span class="xr-lbl">DELIVERY BOY</span><span class="xr-val">${esc(input.boyName)}</span></div>
+  <div class="xr-row"><span class="xr-lbl">CASHIER</span><span class="xr-val">${esc(input.cashier)}</span></div>
+  <div class="xr-row"><span class="xr-lbl">COUNTER</span><span class="xr-val">${esc(input.counterNo)}</span></div>
+  <div class="xr-row"><span class="xr-lbl">ORDERS</span><span class="xr-val">${orders.length}</span></div>
+
+  <hr class="dash" />
+  <div class="xr-section">ORDERS</div>
+  <table class="xr-table">
+    <thead>
+      <tr><th>KOT</th><th class="c">Pay</th><th class="r">Amount</th></tr>
+    </thead>
+    <tbody>
+      ${rows || '<tr><td colspan="3" class="c">—</td></tr>'}
+    </tbody>
+  </table>
+
+  <hr class="dash" />
+  <div class="xr-section">SETTLEMENT</div>
+  <table class="xr-table">
+    <thead>
+      <tr><th></th><th class="c">Count</th><th class="r">Amount</th></tr>
+    </thead>
+    <tbody>
+      ${countAmtRow('CASH', cashCount, cashAmt)}
+      ${countAmtRow('CARD', cardCount, cardAmt)}
+      <tr class="xr-total">
+        <td>TOTAL</td>
+        <td class="c">${orders.length}</td>
+        <td class="r">${fmtMoney(total)}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="footer">Delivery Settlement — End</div>
+  `
+  const html = buildReceiptDocumentHtml({
+    title: 'Delivery Settlement',
+    autoPrint: false,
+    bodyHtml,
+    extraCss: `
+      .xr-title { text-align: center; font-size: 13px; font-weight: 700; margin: 2px 0; }
+      .xr-section { text-align: center; font-size: 11px; font-weight: 700; margin: 4px 0 2px; text-transform: uppercase; }
+      .xr-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; font-weight: 700; margin: 1px 0; gap: 4px; }
+      .xr-lbl { flex: 1 1 auto; min-width: 0; }
+      .xr-val { flex: 0 0 auto; text-align: right; white-space: nowrap; }
+      .xr-sub { font-size: 10px; font-weight: 700; }
+      table.xr-table { width: 100%; border-collapse: collapse; font-size: 10px; font-weight: 700; margin: 2px 0; table-layout: fixed; }
+      table.xr-table th, table.xr-table td { padding: 1px 0; font-weight: 700; vertical-align: top; }
+      table.xr-table th { text-align: left; border-bottom: 1px dashed #000; }
+      table.xr-table th.c, table.xr-table td.c { text-align: center; width: 42px; }
+      table.xr-table th.r, table.xr-table td.r { text-align: right; white-space: nowrap; width: 58px; }
+      table.xr-table tr.xr-total td { font-weight: 700; padding-top: 5px; border-top: 1px dashed #000; }
+    `,
+  })
+  await printHtmlOnDefaultPrinter(html)
+}

@@ -373,6 +373,29 @@ class ApiService {
     return api.post<Row>('/pos/kot/split', payload)
   }
 
+  async fetchDeliveryBoys(): Promise<Row[]> {
+    const res = await api.get<Row>('/pos/kot/delivery-boys')
+    return listOf(res, 'data')
+  }
+
+  /** Scan dummy-bill KOT barcode, or type the KOT number, onto the selected boy. */
+  async assignDeliveryBoy(payload: { deliveryBoyId: number; kotNo: string }): Promise<Row> {
+    return api.post<Row>('/pos/kot/assign-delivery', payload)
+  }
+
+  async fetchDeliveryBoyOrders(deliveryBoyId: number): Promise<Row> {
+    return api.get<Row>(`/pos/sales/delivery-boy-orders${qs({ deliveryBoyId })}`)
+  }
+
+  async settleDeliveryBoyNight(payload: {
+    deliveryBoyId: number
+    stationId: number
+    counterNo: number
+    orders: { kotMasterId: number; paymentMode: 'CASH' | 'CREDITCARD' }[]
+  }): Promise<Row> {
+    return api.post<Row>('/pos/sales/delivery-night-settle', payload)
+  }
+
   async fetchKotDetails(kotMasterId: string): Promise<Row> {
     const id = String(kotMasterId ?? '').trim()
     if (!id) return { success: true, data: [] }

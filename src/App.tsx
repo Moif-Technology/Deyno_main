@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import EnrollPage from './pages/EnrollPage'
 import LoginPage from './pages/LoginPage'
 import TillPlaceholderPage from './pages/TillPlaceholderPage'
@@ -24,7 +24,7 @@ export default function App() {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       clearStaffSession()
-      window.location.assign('/')
+      window.location.hash = '#/'
     })
     return () => setUnauthorizedHandler(null)
   }, [])
@@ -34,7 +34,7 @@ export default function App() {
     // here (rather than per-page) so it also covers Login/Enroll, not just
     // the POS screen. Tab already does this natively; only Enter needs it.
     <div onKeyDown={handleEnterMovesFocus}>
-      <BrowserRouter>
+      <HashRouter>
         <Routes>
           <Route path="/enroll" element={<EnrollPage />} />
           <Route
@@ -63,7 +63,7 @@ export default function App() {
           />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
     </div>
   )
 }

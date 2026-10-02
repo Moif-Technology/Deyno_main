@@ -6,7 +6,8 @@
  *   SubGroupBtnClick → load sub-subgroups (if any) + items for that subgroup
  *   SubSubGroupBtnClick → items for that sub-sub-group
  *   ItemBtnClick → add/merge a ticket line using txtQty
- *   btnQty → if keypad (txtSearch) > 0, copy into txtQty and clear search
+ *   Keypad 0-9 / . / C writes into the search box (txtSearch). C deletes the last character.
+ *   btnQty → if that search text is > 0, copy into txtQty and clear search
  *   btnQtyChange / "Change Qty" → QtyChangefrm, write new qty onto current row
    *   btnPriceChange / "Change Price" → AdminLoginFrm then PriceChangefrm; unit price onto current row
    *   btnDiscount_Click → AdminLoginFrm then Discountfrm (bill vs item); CalcTotal; persist KOT
@@ -30,6 +31,7 @@ import { getPosSession } from '../../utils/posSession'
 import { translateToArabic } from '../../utils/translate'
 import { apiService, ApiError } from '../../api/apiService'
 import { printSettlementBill, printViewerBill } from '../../lib/printSettlementBill'
+import { printDeliveryNightSummary } from '../../lib/printCounterReport'
 import { TableCard, TableGlyph } from '../../components/common/TableCard'
 import { Toast, type ToastKind } from '../../components/common/Toast'
 import { DatePicker } from '../../components/common/DatePicker'
@@ -417,6 +419,10 @@ type TicketLine = {
   barcode: string
   androidPrint: string
   kotDisplayStatus: string
+  /** Mainfrm BatchNo. 0 = not yet grouped by Line. */
+  batchNo: number
+  /** Mainfrm BatchPrintStatus. 0 = not fired, 1 = printed. */
+  batchPrintStatus: number
   applyDiscount: boolean
 }
 type ModifierPreset = { id: number; name: string; arabic: string }
@@ -1013,6 +1019,34 @@ function calcKotTotals(lines: TicketLine[], billDiscount: number, tax1Pct: numbe
   }
 }
 
+/**
+ * Mainfrm.BatchCreation / btnLine_Click.
+ * Pending rows are BatchPrintStatus = 0 and BatchNo = 0. They all take
+ * max(BatchNo)+1. Nothing happens when every row already has a batch.
+ */
+function assignNextBatch(ticket: TicketLine[]): TicketLine[] {
+  const hasPending = ticket.some((l) => (l.batchPrintStatus || 0) === 0 && (l.batchNo || 0) === 0)
+  if (!hasPending) return ticket
+  let maxBatch = 0
+  for (const line of ticket) {
+    if ((line.batchNo || 0) > maxBatch) maxBatch = line.batchNo
+  }
+  const newBatch = maxBatch + 1
+  return ticket.map((line) =>
+    (line.batchPrintStatus || 0) === 0 && (line.batchNo || 0) === 0
+      ? { ...line, batchNo: newBatch, batchPrintStatus: 0 }
+      : line,
+  )
+}
+
+/** Mainfrm.dgvItemList_CellPainting_BatchSeparator — line under the last row of a batch. */
+function isBatchBoundary(ticket: TicketLine[], index: number) {
+  const cur = ticket[index]?.batchNo || 0
+  if (cur <= 0) return false
+  const next = index + 1 < ticket.length ? ticket[index + 1].batchNo || 0 : -1
+  return next !== cur
+}
+
 /** IsItemDiscountAllowedForRow — GroupID > 0 and MainGroup ApplyDiscount <> 0. */
 function itemDiscountAllowed(line: TicketLine) {
   if (line.groupId <= 0) return false
@@ -1136,7 +1170,13 @@ function NumberKeypad({
   return (
     <div className={className}>
       {KEYS.map((k) => (
-        <button key={k} type="button" className="pd-key" onClick={() => onKey(k)}>
+        <button
+          key={k}
+          type="button"
+          className="pd-key"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onKey(k)}
+        >
           {k}
         </button>
       ))}
@@ -1431,13 +1471,12 @@ export default function PosMainPage() {
   const [topMoveActive, setTopMoveActive] = useState(false)
   const [topMoveProducts, setTopMoveProducts] = useState<ProductTile[]>([])
   const [topMoveLoading, setTopMoveLoading] = useState(false)
+  /** txtSearch — keypad, barcode, and item search share this box. */
   const [query, setQuery] = useState('')
   const [lines, setLines] = useState<TicketLine[]>([])
   const [selectedLine, setSelectedLine] = useState<number | null>(null)
   const [selectedKeys, setSelectedKeys] = useState<Set<number>>(() => new Set())
-  const [separatorAfterKeys, setSeparatorAfterKeys] = useState<Set<number>>(() => new Set())
   const [service, setService] = useState<ServiceKind>('DINE IN')
-  const [entry, setEntry] = useState('')
   const [padQty, setPadQty] = useState('1')
   const [now, setNow] = useState(() => new Date())
   const [catalogueState, setCatalogueState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -1499,6 +1538,21 @@ export default function PosMainPage() {
   const moreCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [commentsOpen, setCommentsOpen] = useState(false)
+  const [deliveryOpen, setDeliveryOpen] = useState(false)
+  const [deliveryMode, setDeliveryMode] = useState<'assign' | 'night'>('assign')
+  const [deliveryBoys, setDeliveryBoys] = useState<{ id: number; name: string }[]>([])
+  const [deliveryBoyId, setDeliveryBoyId] = useState(0)
+  const [deliveryKot, setDeliveryKot] = useState('')
+  const [deliveryBusy, setDeliveryBusy] = useState(false)
+  const [deliveryNote, setDeliveryNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const [deliveryOrders, setDeliveryOrders] = useState<
+    { kotId: number; kotNo: string; customer: string; amount: number; pay: 'CASH' | 'CARD' }[]
+  >([])
+  const [deliveryOrdersTotal, setDeliveryOrdersTotal] = useState(0)
+  const [deliveryOrdersLoading, setDeliveryOrdersLoading] = useState(false)
+  const [deliverySettleBusy, setDeliverySettleBusy] = useState(false)
+  const [deliveryListTick, setDeliveryListTick] = useState(0)
+  const deliveryScanRef = useRef<HTMLInputElement | null>(null)
   const [commentsDraft, setCommentsDraft] = useState('')
   const [itemCancelOpen, setItemCancelOpen] = useState(false)
   const [itemCancelIds, setItemCancelIds] = useState<Record<number, boolean>>({})
@@ -1695,6 +1749,10 @@ export default function PosMainPage() {
     return () => window.clearInterval(t)
   }, [])
 
+  useEffect(() => {
+    searchInputRef.current?.focus()
+  }, [])
+
   // Ctrl+K (⌘K on Mac) opens the side menu with its search box focused.
   useEffect(() => {
     function onKey(e: globalThis.KeyboardEvent) {
@@ -1723,6 +1781,51 @@ export default function PosMainPage() {
   useEffect(() => {
     if (sideNavHidden) setNavSearching(false)
   }, [sideNavHidden])
+
+  useEffect(() => {
+    if (!deliveryOpen || deliveryMode !== 'assign') return
+    const t = window.setTimeout(() => deliveryScanRef.current?.focus(), 40)
+    return () => window.clearTimeout(t)
+  }, [deliveryOpen, deliveryMode, deliveryBoyId])
+
+  useEffect(() => {
+    if (!deliveryOpen || deliveryMode !== 'night' || deliveryBoyId <= 0) {
+      setDeliveryOrders([])
+      setDeliveryOrdersTotal(0)
+      return
+    }
+    let cancelled = false
+    setDeliveryOrdersLoading(true)
+    apiService.fetchDeliveryBoyOrders(deliveryBoyId)
+      .then((res) => {
+        if (cancelled) return
+        const rows = Array.isArray(res.data) ? res.data : []
+        setDeliveryOrders((prev) => {
+          const keep = new Map(prev.map((o) => [o.kotId, o.pay]))
+          return rows.map((r) => {
+            const kotId = num(r.kotMasterId ?? r.kotId)
+            return {
+              kotId,
+              kotNo: String(r.kotNo ?? ''),
+              customer: String(r.customerName ?? ''),
+              amount: num(r.amount),
+              pay: keep.get(kotId) ?? 'CASH',
+            }
+          })
+        })
+        setDeliveryOrdersTotal(num(res.total))
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setDeliveryOrders([])
+        setDeliveryOrdersTotal(0)
+        setDeliveryNote({ ok: false, text: errMessage(err, 'Could not load orders') })
+      })
+      .finally(() => {
+        if (!cancelled) setDeliveryOrdersLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [deliveryOpen, deliveryMode, deliveryBoyId, deliveryListTick])
 
   useEffect(() => {
     if (!notesHint) return
@@ -2056,7 +2159,7 @@ export default function PosMainPage() {
     const q = query.trim().toLowerCase()
     if (q) {
       return allProducts.filter((p) =>
-        `${p.name} ${p.sub ?? ''} ${p.price}`.toLowerCase().includes(q),
+        `${p.name} ${p.sub ?? ''} ${p.barcode} ${p.price}`.toLowerCase().includes(q),
       )
     }
     if (topMoveActive) return topMoveProducts
@@ -2185,18 +2288,23 @@ export default function PosMainPage() {
     return 1
   }
 
-  function clearQty() {
-    setPadQty('1')
-    setEntry('')
+  function focusSearch() {
+    searchInputRef.current?.focus()
   }
 
-  /** btnQty_Click: lock keypad number into txtQty for the next item. */
+  function clearQty() {
+    setPadQty('1')
+    setQuery('')
+  }
+
+  /** btnQty_Click: lock the number typed in the search box into txtQty. */
   function onQtyClick() {
-    const n = Number(entry)
+    const n = Number(query.trim())
     if (Number.isFinite(n) && n > 0) {
       setPadQty(String(n))
-      setEntry('')
+      setQuery('')
     }
+    focusSearch()
   }
 
   function endGroupTouch(pointerId: number) {
@@ -2355,6 +2463,8 @@ export default function PosMainPage() {
           barcode: p.barcode || '',
           androidPrint: 'PENDING',
           kotDisplayStatus: 'PENDING',
+          batchNo: 0,
+          batchPrintStatus: 0,
           applyDiscount: p.applyDiscount,
           ...calcLine(price, qty, vatPerPc, p.taxRate, 0),
         },
@@ -2362,15 +2472,43 @@ export default function PosMainPage() {
       setSelectedLine(key)
     }
     clearQty()
+    focusSearch()
   }
 
+  /** num() / btnC when TabFocus is the search box. C is backspace, not clear-all. */
   function onKey(k: string) {
+    const el = searchInputRef.current
+    const replaceAll =
+      !!el &&
+      document.activeElement === el &&
+      el.selectionStart === 0 &&
+      el.selectionEnd === el.value.length &&
+      el.value.length > 0
     if (k === 'C') {
-      setEntry('')
+      setQuery((prev) => prev.slice(0, -1))
+    } else {
+      setQuery((prev) => {
+        const base = replaceAll ? '' : prev
+        if (k === '.' && base.includes('.')) return base
+        return base + k
+      })
+    }
+    focusSearch()
+  }
+
+  /** txtSearch Enter: exact barcode, otherwise the only matching item. */
+  function onSearchSubmit(value: string) {
+    const q = value.trim().toLowerCase()
+    if (!q) return
+    const exact = allProducts.find((p) => p.barcode.trim().toLowerCase() === q)
+    if (exact) {
+      onItemClick(exact)
       return
     }
-    if (k === '.' && entry.includes('.')) return
-    setEntry((prev) => (prev + k).slice(0, 8))
+    const matches = allProducts.filter((p) =>
+      `${p.name} ${p.sub ?? ''} ${p.barcode} ${p.price}`.toLowerCase().includes(q),
+    )
+    if (matches.length === 1) onItemClick(matches[0])
   }
 
   /** Per-row delete (the trash icon on each line) — only lines that haven't
@@ -2406,21 +2544,9 @@ export default function PosMainPage() {
     }
   }
 
-  /** "Add Line" button above the table — draws a divider after the
-   * currently selected row (or the last row, if none is selected) to mark
-   * a course/batch break. Clicking it again on the same row removes it. */
-  function toggleSeparatorAfterSelected() {
-    if (lines.length === 0) {
-      toast('Add an item first')
-      return
-    }
-    const key = selectedLine ?? lines[lines.length - 1].key
-    setSeparatorAfterKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+  /** btnLine_Click → BatchCreation. Groups every unassigned row into the next batch. */
+  function onAddLine() {
+    setLines((prev) => assignNextBatch(prev))
   }
 
   const notesLine = notesLineKey == null ? null : lines.find((l) => l.key === notesLineKey) ?? null
@@ -2899,10 +3025,10 @@ export default function PosMainPage() {
   }
 
   async function runReturn() {
-    const billNo = Number(entry)
+    const billNo = Number(query.trim())
     if (Number.isFinite(billNo) && billNo !== 0) {
       await loadSalesData(billNo)
-      setEntry('')
+      setQuery('')
       return
     }
     const q = Number(padQty)
@@ -2962,6 +3088,8 @@ export default function PosMainPage() {
         barcode: String(row.barcode ?? row.BarCode ?? tile?.barcode ?? ''),
         androidPrint: 'PENDING',
         kotDisplayStatus: 'PENDING',
+        batchNo: 0,
+        batchPrintStatus: 0,
         applyDiscount: tile?.applyDiscount ?? flagApplyDiscount(row.applyDiscount ?? row.ApplyDiscount, num(row.groupId ?? row.GroupID) || tile?.groupId || 0),
       }
     })
@@ -3288,7 +3416,6 @@ export default function PosMainPage() {
     setLines([])
     setSelectedLine(null)
     setSelectedKeys(new Set())
-    setSeparatorAfterKeys(new Set())
     setCurrentKotId(0)
     setKotNo('')
     setKotPrefix('')
@@ -3637,7 +3764,6 @@ export default function PosMainPage() {
     setLines([])
     setSelectedLine(null)
     setSelectedKeys(new Set())
-    setSeparatorAfterKeys(new Set())
     setCurrentKotId(0)
     setKotNo('')
     setKotTime('')
@@ -3740,6 +3866,8 @@ export default function PosMainPage() {
         barcode: String(row.BarCode ?? row.Barcode ?? tile?.barcode ?? ''),
         androidPrint: kotPrintStatus(row.AndroidPrint ?? row.Androidprint ?? row.android_printed),
         kotDisplayStatus: String(row.KOTDisplayStatus ?? row.kotDisplayStatus ?? 'PENDING'),
+        batchNo: num(row.BatchNo ?? row.batchNo),
+        batchPrintStatus: num(row.BatchPrintStatus ?? row.batchPrintStatus),
         applyDiscount:
           tile?.applyDiscount
           ?? flagApplyDiscount(
@@ -3753,7 +3881,6 @@ export default function PosMainPage() {
     } else {
       setLines(nextLines)
       setSelectedKeys(new Set())
-      setSeparatorAfterKeys(new Set())
     }
     setSelectedLine(nextLines[nextLines.length - 1]?.key ?? null)
     setCurrentKotId(num(first.KotMasterID ?? first.kotMasterID))
@@ -3818,6 +3945,8 @@ export default function PosMainPage() {
         Modifier: line.modifiers,
         AndroidPrint: line.androidPrint || 'PENDING',
         KOTDisplayStatus: line.kotDisplayStatus || 'PENDING',
+        BatchNo: line.batchNo || 0,
+        BatchPrintStatus: line.batchPrintStatus || 0,
         dgvKOTChildID: line.kotChildId > 0 ? line.kotChildId : 0,
         KotChildID: line.kotChildId > 0 ? line.kotChildId : 0,
         kotChildId: line.kotChildId > 0 ? line.kotChildId : 0,
@@ -3888,11 +4017,11 @@ export default function PosMainPage() {
     kotLabel: string
   } | null> {
     if (savingKot && !opts?.forSettlement && !opts?.forDiscount && !opts?.forDummy) return null
-    const ticket = opts?.ticket ?? lines
+    const sourceTicket = opts?.ticket ?? lines
     const discType = opts?.discType ?? discountType
     const discAmt = opts?.billDisc ?? billDiscount
-    const totals = calcKotTotals(ticket, discAmt, defaultTax1, 0)
-    if (ticket.length === 0) {
+    const totals = calcKotTotals(sourceTicket, discAmt, defaultTax1, 0)
+    if (sourceTicket.length === 0) {
       toast('Enter Atleast One Item details...........')
       return null
     }
@@ -3927,6 +4056,10 @@ export default function PosMainPage() {
       void areaClickToPopulationTable(resolvedArea)
       return null
     }
+
+    // SaveBilDetailsToHoldTable calls BatchCreation() before the insert.
+    const ticket = assignNextBatch(sourceTicket)
+    if (!opts?.ticket && ticket !== sourceTicket) setLines(ticket)
 
     const session = getPosSession()
     setSavingKot(true)
@@ -4001,6 +4134,117 @@ export default function PosMainPage() {
   async function onSaveKot() {
     if (savingKot) return
     await saveKotInternal()
+  }
+
+  async function openAssignDelivery(mode: 'assign' | 'night' = 'assign') {
+    setDeliveryMode(mode)
+    setDeliveryOpen(true)
+    setDeliveryKot('')
+    setDeliveryNote(null)
+    setDeliveryOrders([])
+    setDeliveryOrdersTotal(0)
+    try {
+      const rows = await apiService.fetchDeliveryBoys()
+      const boys = rows
+        .map((r) => ({
+          id: num(r.staffId ?? r.staff_id),
+          name: String(r.staffName ?? r.staff_name ?? '').trim(),
+        }))
+        .filter((b) => b.id > 0 && b.name)
+      setDeliveryBoys(boys)
+      setDeliveryBoyId((prev) => (boys.some((b) => b.id === prev) ? prev : boys[0]?.id ?? 0))
+    } catch (err) {
+      setDeliveryBoys([])
+      toast(errMessage(err, 'Could not load delivery boys'))
+    }
+  }
+
+  async function submitAssignDelivery() {
+    const kotNo = deliveryKot.trim()
+    if (deliveryBoyId <= 0) {
+      setDeliveryNote({ ok: false, text: 'Select a delivery boy' })
+      return
+    }
+    if (!kotNo || deliveryBusy) return
+    setDeliveryBusy(true)
+    try {
+      const res = await apiService.assignDeliveryBoy({ deliveryBoyId, kotNo })
+      const who = String(res.customerName ?? '').trim()
+      const base = String(res.message ?? 'Assigned')
+      setDeliveryNote({ ok: true, text: who ? `${base} · ${who}` : base })
+      setDeliveryKot('')
+    } catch (err) {
+      setDeliveryNote({ ok: false, text: errMessage(err, 'KOT not found') })
+    } finally {
+      setDeliveryBusy(false)
+      window.setTimeout(() => deliveryScanRef.current?.focus(), 0)
+    }
+  }
+
+  async function submitNightSettle() {
+    const boy = deliveryBoys.find((b) => b.id === deliveryBoyId)
+    if (!boy) {
+      setDeliveryNote({ ok: false, text: 'Select a delivery boy' })
+      return
+    }
+    if (!deliveryOrders.length || deliverySettleBusy) return
+    const cash = deliveryOrders.filter((o) => o.pay === 'CASH').reduce((n, o) => n + o.amount, 0)
+    const card = deliveryOrders.filter((o) => o.pay === 'CARD').reduce((n, o) => n + o.amount, 0)
+    const parts = [
+      cash > 0 ? `Cash ${money(cash)}` : '',
+      card > 0 ? `Card ${money(card)}` : '',
+    ].filter(Boolean)
+    const ok = await ask(
+      `Settle ${deliveryOrders.length} order${deliveryOrders.length === 1 ? '' : 's'} for ${boy.name}? ${parts.join(', ')}. Total ${money(deliveryOrdersTotal)}`,
+    )
+    if (!ok) return
+    const session = getPosSession()
+    setDeliverySettleBusy(true)
+    try {
+      const res = await apiService.settleDeliveryBoyNight({
+        deliveryBoyId,
+        stationId: session.stationId,
+        counterNo: Number(session.counterNo) || 1,
+        orders: deliveryOrders.map((o) => ({
+          kotMasterId: o.kotId,
+          paymentMode: o.pay === 'CARD' ? 'CREDITCARD' : o.pay,
+        })),
+      })
+      const failed = Array.isArray(res.failed) ? res.failed.length : 0
+      const bills = Array.isArray(res.settled) ? res.settled : []
+      let printError = ''
+      try {
+        if (bills.length) await printDeliveryNightSummary({
+          boyName: boy.name,
+          cashier: session.staffName || waiter,
+          counterNo: String(session.counterNo ?? ''),
+          orders: bills.map((raw) => {
+            const bill = raw as Record<string, unknown>
+            return {
+              kotNo: String(bill.kotNo ?? ''),
+              billNo: String(bill.billNo ?? ''),
+              customerName: String(bill.customerName ?? ''),
+              paymentMode: String(bill.paymentMode ?? 'CASH'),
+              amount: num(bill.amount),
+            }
+          }),
+        })
+      } catch (err) {
+        printError = err instanceof Error ? err.message : 'Summary print failed'
+      }
+      const settledText = String(res.message ?? `Settled ${money(num(res.total))}`)
+      const printText = printError ? `${settledText}. Print failed: ${printError}` : settledText
+      setDeliveryNote({
+        ok: failed === 0 && !printError,
+        text: printText,
+      })
+      toast(printText, failed || printError ? 'error' : 'success')
+      setDeliveryListTick((n) => n + 1)
+    } catch (err) {
+      setDeliveryNote({ ok: false, text: errMessage(err, 'Could not settle') })
+    } finally {
+      setDeliverySettleBusy(false)
+    }
   }
 
   /** btnDummyBill_Click — save the open KOT, then print the pre-settlement dummy slip. */
@@ -4298,7 +4542,7 @@ export default function PosMainPage() {
         label = saved.kotLabel
       }
       const totals = calcKotTotals(ticket, billDiscount, defaultTax1, 0)
-      const keypadPaid = Number(entry)
+      const keypadPaid = Number(query.trim())
       setSettleBill({
         kotId,
         kotLabel: label,
@@ -4317,7 +4561,7 @@ export default function PosMainPage() {
         prefillPaid: Number.isFinite(keypadPaid) && keypadPaid > 0 ? round2(keypadPaid) : 0,
       })
       setSettleOpen(true)
-      setEntry('')
+      setQuery('')
     } finally {
       setSettleOpening(false)
     }
@@ -7100,7 +7344,7 @@ export default function PosMainPage() {
                       </td>
                     </tr>
                     )
-                    if (!separatorAfterKeys.has(line.key)) return [row]
+                    if (!isBatchBoundary(lines, i)) return [row]
                     return [
                       row,
                       <tr key={`sep-${line.key}`} className="pd-line-sep" aria-hidden="true">
@@ -7120,8 +7364,8 @@ export default function PosMainPage() {
               <button
                 type="button"
                 className="pd-line-add"
-                onClick={toggleSeparatorAfterSelected}
-                title="Draw a line after the selected row"
+                onClick={onAddLine}
+                title="Group new items into the next course"
               >
                 <SeparatorHorizontal size={13} /> Add Line
               </button>
@@ -7267,6 +7511,7 @@ export default function PosMainPage() {
             size="sm"
               value={query}
             onValueChange={setQuery}
+            onSubmit={onSearchSubmit}
               placeholder="Search item / barcode"
             />
           <button
@@ -7498,7 +7743,7 @@ export default function PosMainPage() {
             <div className="pd-keypad-wrap">
               <div className="pd-keypad-left">
                 <div className="pd-entry">
-                  <span>{entry || '0'}</span>
+                  <span>{query}</span>
                   <button type="button" className="pd-entry-qty" onClick={onQtyClick}>
                     QTY{padQty !== '1' ? ` ${padQty}` : ''}
                   </button>
@@ -7633,8 +7878,11 @@ export default function PosMainPage() {
                     <button type="button" className="pd-more-item" onClick={onReturnClick}>
                       <BtnIcon icon={RotateCcw} /> <span>Return</span>
                         </button>
-                        <button type="button" className="pd-more-item">
+                        <button type="button" className="pd-more-item" onClick={() => void openAssignDelivery('assign')}>
                       <BtnIcon icon={Package} /> <span>Delivery</span>
+                        </button>
+                        <button type="button" className="pd-more-item" onClick={() => void openAssignDelivery('night')}>
+                      <BtnIcon icon={Banknote} /> <span>Night Settle</span>
                         </button>
                         <button type="button" className="pd-more-item">
                       <BtnIcon icon={Repeat} /> <span>KOT Reprint</span>
@@ -8042,6 +8290,159 @@ export default function PosMainPage() {
                 </div>
               </div>
             ) : null}
+
+      {deliveryOpen ? (
+        <div
+          className="pd-mod-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeliveryOpen(false)
+          }}
+        >
+          <div className={`pd-ol-dialog ${deliveryMode === 'night' ? 'pd-dboy-dialog' : 'pd-ol-narrow'}`} role="dialog" aria-modal="true" aria-label="Assign delivery">
+            <div className="pd-mod-header">
+              <div className="pd-mod-header-left">
+                <div className="pd-mod-header-icon">
+                  <Truck size={15} color="#fff" />
+                </div>
+                <div>
+                  <p className="pd-mod-kicker">Delivery</p>
+                  <h2 className="pd-mod-item-name">{deliveryMode === 'night' ? 'Night settle' : 'Assign boy'}</h2>
+                </div>
+              </div>
+              <button type="button" className="pd-mod-x" onClick={() => setDeliveryOpen(false)} aria-label="Close">
+                <X size={13} />
+              </button>
+            </div>
+            <div className="pd-ol-body">
+              <div className="pd-dboy-tabs">
+                <button
+                  type="button"
+                  className={`pd-dboy${deliveryMode === 'assign' ? ' is-on' : ''}`}
+                  onClick={() => { setDeliveryMode('assign'); setDeliveryNote(null) }}
+                >
+                  Assign
+                </button>
+                <button
+                  type="button"
+                  className={`pd-dboy${deliveryMode === 'night' ? ' is-on' : ''}`}
+                  onClick={() => { setDeliveryMode('night'); setDeliveryNote(null) }}
+                >
+                  Night settle
+                </button>
+              </div>
+              {deliveryBoys.length === 0 ? (
+                <p className="pd-dboy-empty">No delivery boys found.</p>
+              ) : (
+                <div className="pd-dboy-grid">
+                  {deliveryBoys.map((boy) => (
+                    <button
+                      key={boy.id}
+                      type="button"
+                      className={`pd-dboy${deliveryBoyId === boy.id ? ' is-on' : ''}`}
+                      onClick={() => setDeliveryBoyId(boy.id)}
+                    >
+                      {boy.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {deliveryMode === 'assign' ? (
+                <>
+                  <input
+                    ref={deliveryScanRef}
+                    className="pd-dboy-scan"
+                    value={deliveryKot}
+                    placeholder="Scan KOT barcode or type KOT no"
+                    onChange={(e) => setDeliveryKot(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void submitAssignDelivery()
+                      }
+                    }}
+                    autoComplete="off"
+                  />
+                  {deliveryNote ? (
+                    <p className={`pd-dboy-note${deliveryNote.ok ? ' is-ok' : ' is-bad'}`}>{deliveryNote.text}</p>
+                  ) : (
+                    <p className="pd-dboy-note">Pick a boy, then scan each dummy bill.</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  {deliveryOrdersLoading ? (
+                    <p className="pd-dboy-note">Loading orders…</p>
+                  ) : deliveryOrders.length === 0 ? (
+                    <p className="pd-dboy-note">No open orders for this boy.</p>
+                  ) : (
+                    <>
+                      <div className="pd-dboy-quick">
+                        <span>Set all</span>
+                        {(['CASH', 'CARD'] as const).map((pay) => (
+                          <button
+                            key={pay}
+                            type="button"
+                            className={`pd-paychip is-${pay.toLowerCase()}${deliveryOrders.every((o) => o.pay === pay) ? ' is-on' : ''}`}
+                            onClick={() => setDeliveryOrders((prev) => prev.map((o) => ({ ...o, pay })))}
+                          >
+                            {pay === 'CASH' ? 'Cash' : 'Card'}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="pd-dboy-orders">
+                        {deliveryOrders.map((row) => (
+                          <div key={row.kotId} className="pd-dboy-order">
+                            <div className="pd-dboy-order-main">
+                              <span>{row.kotNo}</span>
+                              {row.customer ? <span className="pd-dboy-order-cust">{row.customer}</span> : null}
+                            </div>
+                            <span className="pd-dboy-order-amt">{money(row.amount)}</span>
+                            <div className="pd-dboy-pay">
+                              {(['CASH', 'CARD'] as const).map((pay) => (
+                                <button
+                                  key={pay}
+                                  type="button"
+                                  className={`pd-paychip is-${pay.toLowerCase()}${row.pay === pay ? ' is-on' : ''}`}
+                                  onClick={() =>
+                                    setDeliveryOrders((prev) =>
+                                      prev.map((o) => (o.kotId === row.kotId ? { ...o, pay } : o)),
+                                    )
+                                  }
+                                >
+                                  {pay === 'CASH' ? 'Cash' : 'Card'}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="pd-dboy-split">
+                        <span>Cash {money(deliveryOrders.filter((o) => o.pay === 'CASH').reduce((n, o) => n + o.amount, 0))}</span>
+                        <span>Card {money(deliveryOrders.filter((o) => o.pay === 'CARD').reduce((n, o) => n + o.amount, 0))}</span>
+                        <strong>Total {money(deliveryOrdersTotal)}</strong>
+                      </div>
+                    </>
+                  )}
+                  {deliveryNote ? (
+                    <p className={`pd-dboy-note${deliveryNote.ok ? ' is-ok' : ' is-bad'}`}>{deliveryNote.text}</p>
+                  ) : (
+                    <p className="pd-dboy-note">Tap Cash or Card on each order. One bill still uses Settlement.</p>
+                  )}
+                  <button
+                    type="button"
+                    className="pd-mod-foot-btn is-ok pd-dboy-settle"
+                    disabled={deliverySettleBusy || deliveryOrders.length === 0}
+                    onClick={() => void submitNightSettle()}
+                  >
+                    {deliverySettleBusy ? 'Settling…' : `Settle ${money(deliveryOrdersTotal)}`}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {commentsOpen ? (
         <div

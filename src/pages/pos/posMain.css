@@ -591,10 +591,8 @@
   font-weight: 700;
 }
 
-/* "Add Line" — a fixed bar between the (scrollable) table and the
-   Items/Qty/Total summary footer, so it stays visible without scrolling
-   the ticket no matter how many rows it has. Draws/removes a divider
-   after the selected row (see .pd-line-sep further up in tbody). */
+/* "Add Line" — same dashed divider as before. It now sits under the
+   last item of each course (Mainfrm batch), not under a picked row. */
 .pd-line-bar {
   flex: 0 0 auto;
   display: flex;
@@ -621,6 +619,163 @@
   border-color: var(--brand-border);
   border-style: solid;
   color: var(--brand);
+}
+
+.pd-dboy-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.pd-dboy-dialog {
+  width: min(680px, 100%);
+}
+
+.pd-dboy-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pd-text-2);
+}
+
+.pd-dboy-orders {
+  margin-top: 8px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.pd-dboy-order {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--pd-border);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pd-dboy-order-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pd-dboy-order-cust {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pd-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pd-dboy-order-amt {
+  font-variant-numeric: tabular-nums;
+}
+
+.pd-dboy-pay {
+  display: flex;
+  gap: 4px;
+}
+
+.pd-paychip {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--pd-border);
+  background: transparent;
+  color: var(--pd-text-2);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pd-paychip.is-cash.is-on {
+  background: #1b7f3a;
+  border-color: #1b7f3a;
+  color: #fff;
+}
+
+.pd-paychip.is-card.is-on {
+  background: #1d4e89;
+  border-color: #1d4e89;
+  color: #fff;
+}
+
+.pd-dboy-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pd-dboy-split strong {
+  margin-left: auto;
+}
+
+.pd-dboy-settle {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.pd-dboy-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pd-dboy {
+  min-width: 120px;
+  height: 48px;
+  padding: 0 14px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: var(--pd-surface);
+  color: var(--pd-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pd-dboy.is-on {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.pd-dboy-scan {
+  width: 100%;
+  height: 44px;
+  margin-top: 12px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--pd-border);
+  background: var(--pd-surface);
+  color: var(--pd-text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pd-dboy-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pd-text-2);
+}
+
+.pd-dboy-note.is-ok { color: var(--green); }
+.pd-dboy-note.is-bad { color: var(--red); }
+
+.pd-dboy-empty {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pd-text-2);
 }
 
 .pd-grid tbody tr.pd-line-sep td {
@@ -2216,6 +2371,14 @@
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   font-size: clamp(12px, 1.5vh, 15px);
+}
+
+.pd-entry > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pd-entry {
