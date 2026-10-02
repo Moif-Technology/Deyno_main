@@ -92,6 +92,8 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose, notify 
   const [busy, setBusy] = useState<'X' | 'Z' | null>(null)
   const [closedNo, setClosedNo] = useState<string | null>(null)
   const [confirmZ, setConfirmZ] = useState(false)
+  /** The "KOTs still pending" notice was dismissed with its ✕. */
+  const [bannerClosed, setBannerClosed] = useState(false)
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const collectedRef = useRef<HTMLInputElement | null>(null)
 
@@ -239,52 +241,42 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose, notify 
   const diffLabel = { idle: 'Not counted yet', even: 'Balanced', short: 'Short', over: 'Excess' }[diffState]
   const notesCounted = DENOMS.filter((d) => Number(counts[d.key]) > 0).length
 
-  /** Admin-only summary (left panel): headline figures + grouped tiles. */
-  const adminGroups: { title: string; tone: string; rows: [string, unknown][] }[] = data
+  /** Admin-only reading (left panel): every figure of the old screen, grouped
+   * into cards. `total` is the card's highlighted bottom line. */
+  const adminCards: { title: string; rows: [string, unknown][]; total?: [string, unknown] }[] = data
     ? [
         {
-          title: 'Cash flow',
-          tone: 'cash',
+          title: 'Cash',
           rows: [
+            ['Total Cash', data.totalCash],
             ['Credits Received', data.creditReceiptCash],
+            ['Refund Amt', data.totalRefund],
             ['Advance Received', data.advanceReceived],
-            ['Cash In', data.cashIn],
-            ['Cash Out', data.cashOut],
-            ['Refund', data.totalRefund],
+            ['Total Cash In', data.cashIn],
+            ['Total Cash Out', data.cashOut],
           ],
+          total: ['Cash To Be Collected', data.cashToBeCollected],
         },
         {
-          title: 'Card & tenders',
-          tone: 'card',
+          title: 'Card & other',
           rows: [
             ['Credit Amt', data.totalCredit],
-            ['Card Amt', data.totalCard],
-            ['Online Sale', data.totalOnline],
-            ['Compliment', data.totalCompliment],
-            ['Credit Recd - Card', data.creditReceiptCard],
+            ['Credit Card Amt', data.totalCard],
+            ['Total Tip', data.totalTip],
+            ['Net Card Amount (Sale + Tip)', data.netCardAmount],
+            ['Online Sale Amt', data.totalOnline],
+            ['Online Tip', data.totalOnlineTip],
+            ['Compliment Amt', data.totalCompliment],
+            ['Credit Received - C. Card Amt', data.creditReceiptCard],
           ],
         },
         {
-          title: 'Tips, discount & tax',
-          tone: 'tip',
+          title: 'Discounts',
           rows: [
-            ['Total Tip', data.totalTip],
-            ['Online Tip', data.totalOnlineTip],
-            ['Total Discount', data.totalDiscount],
-            ['Item Discount', data.itemDiscountTotal],
+            ['Total Discount Amount', data.totalDiscount],
+            ['Item Discount Total', data.itemDiscountTotal],
           ],
         },
-      ]
-    : []
-
-  /** The figures the old screen made stand out — shown as cards on top. */
-  const adminKey: { label: string; value: string; main?: boolean }[] = data
-    ? [
-        { label: 'Total Sales', value: money(data.totalSales), main: true },
-        { label: 'Cash To Be Collected', value: money(data.cashToBeCollected), main: true },
-        { label: 'Total Cash', value: money(data.totalCash) },
-        { label: 'Net Card (Sale + Tip)', value: money(data.netCardAmount) },
-        { label: 'Tax Amount', value: money(data.totalTax) },
       ]
     : []
 
@@ -348,7 +340,7 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose, notify 
 
         {data ? (
           <div className="pd-cc-scroll">
-            {pendingKots > 0 ? (
+            {pendingKots > 0 && !bannerClosed ? (
               <div className="pd-cc-banner">
                 <AlertTriangle size={16} />
                 <span>
@@ -357,6 +349,9 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose, notify 
                   </b>{' '}
                   Settle or cancel them before closing.
                 </span>
+                <button type="button" className="pd-cc-banner-x" onClick={() => setBannerClosed(true)} aria-label="Dismiss">
+                  <X size={14} />
+                </button>
               </div>
             ) : null}
 
@@ -364,43 +359,49 @@ export default function CounterCloseAllDialog({ mode = 'admin', onClose, notify 
               {/* Admin only: the full reading. Zero figures are left out. */}
               {allStaff ? (
                 <aside className="ccv-card ccv-admin" aria-label="Admin summary">
-                  <div className="ccv-key">
-                    {adminKey.map((k) => (
-                      <div key={k.label} className={k.main ? 'ccv-key-item is-main' : 'ccv-key-item'}>
-                        <span>{k.label}</span>
-                        <b>{k.value}</b>
-                      </div>
-                    ))}
+                  {/* Headline: Total Sales, with Tax beside it */}
+                  <div className="adm-hero">
+                    <div>
+                      <span>Total Sales</span>
+                      <b>{money(data.totalSales)}</b>
+                    </div>
+                    <div className="is-tax">
+                      <span>Tax Amount</span>
+                      <b>{money(data.totalTax)}</b>
+                    </div>
                   </div>
-                  {/* Middle: the figures — scrolls on its own if the screen is short */}
-                  <div className="ccv-admin-scroll">
-                    {adminGroups.map((g) => {
-                      const rows = g.rows.filter(([, v]) => n(v) !== 0)
-                      if (!rows.length) return null
-                      return (
-                        <div key={g.title}>
-                          <p className="ccv-admin-title">{g.title}</p>
-                          {rows.map(([label, value]) => (
-                            <div key={label} className="ccv-admin-row">
-                              <span>{label}</span>
-                              <b>{money(value)}</b>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    })}
+
+                  {/* The full reading, grouped — every line, zeros included */}
+                  <div className="adm-scroll">
+                    {adminCards.map((c) => (
+                      <section key={c.title} className="adm-card" style={{ flexGrow: c.rows.length + (c.total ? 2.4 : 1) }}>
+                        <h4>{c.title}</h4>
+                        {c.rows.map(([label, value]) => (
+                          <div key={label} className={`adm-row${n(value) === 0 ? ' is-zero' : ''}`}>
+                            <span>{label}</span>
+                            <b>{money(value)}</b>
+                          </div>
+                        ))}
+                        {c.total ? (
+                          <div className="adm-total">
+                            <span>{c.total[0]}</span>
+                            <b>{money(c.total[1])}</b>
+                          </div>
+                        ) : null}
+                      </section>
+                    ))}
                     {staffSales.length > 1 ? (
-                      <div>
-                        <p className="ccv-admin-title">By cashier</p>
+                      <section className="adm-card" style={{ flexGrow: staffSales.length + 1 }}>
+                        <h4>By cashier</h4>
                         {staffSales.map((st) => (
-                          <div key={`${st.staffId}-${st.staffName}`} className="ccv-admin-row">
+                          <div key={`${st.staffId}-${st.staffName}`} className="adm-row">
                             <span>
                               {st.staffName} · {st.billCount} bills
                             </span>
                             <b>{money(st.saleAmount)}</b>
                           </div>
                         ))}
-                      </div>
+                      </section>
                     ) : null}
                   </div>
                   {/* Bottom: bill counts, always visible */}
